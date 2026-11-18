@@ -56,7 +56,7 @@ Every `/api/v1` route needs a logged-in recruiter except `POST /api/v1/auth/logi
 
 `POST`, `PUT`, `PATCH` and `DELETE` requests must carry an `Origin` header (or, failing that, a `Referer`) equal to `FRONTEND_ORIGIN`. Browsers do this automatically through the Next.js proxy; scripts using curl must add `-H "Origin: http://localhost:3000"`.
 
-## Endpoints (Phase 1)
+## Endpoints
 
 The full schema is at `/docs` and `/openapi.json`; the frontend's types are generated from it with `make types`.
 
@@ -112,6 +112,27 @@ Row status: `valid`, `invalid`, `duplicate_in_file` (the first row with a phone 
 | POST | `/api/v1/jobs/{id}/activate` | Makes this the only active job |
 
 `screening_questions` is an ordered list of `{key, prompt, required, type: string|number|boolean, unit}`. The ten standard keys (`current_location` … `interview_availability`) keep their fixed types; other keys are custom questions.
+
+### Calls (Phase 5)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/v1/calls/start` | `{"candidate_ids": [...]}` (1–100) → `202` with one result per candidate: `{candidate_id, ok, call_attempt_id, error: {code, message}}`. Each accepted candidate gets a `queued` attempt and an `initiate_call` job |
+| GET | `/api/v1/calls` | Attempts, newest first; filters `candidate_id`, `call_status`; paginated |
+| GET | `/api/v1/calls/{id}` | One attempt: `call_status`, `provider_status`, `end_reason`, times, `duration_seconds`, `failure_reason` |
+
+Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`, `consent_missing`, `phone_invalid`, `job_inactive`, `call_already_active`, `outside_calling_window` (Mon–Sat 10:00–19:00 IST by default), `telephony_not_configured`; `enqueue_failed` if the job queue is down.
+
+`call_status`: `queued → initiating → (ringing) → in_progress → completed`, or `failed | no_answer | busy | cancelled` from any live state. `end_reason`: `agent_completed`, `candidate_hangup`, `no_answer`, `busy`, `provider_failed`, `technical_failure`, `cancelled`, `invalid_number`.
+
+### Provider endpoints (no session; secret token in the URL)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/cb/{token}` (alias `/api/v1/webhooks/exotel/status/{token}`) | Exotel status callback, form or JSON. Wrong token → 403. Always `200 {"ok": true, "outcome": applied\|ignored\|duplicate\|unknown_call\|unmapped_status\|error}` so Exotel doesn't retry into a failure |
+| WebSocket | `/api/v1/webhooks/exotel/stream/{token}` | Exotel Voicebot media stream ([telephony.md](telephony.md)). Wrong token → closed (1008); unknown call → 1008; media format mismatch → 1003 |
+
+`make exotel-urls` prints both URLs with their tokens.
 
 ## Health
 

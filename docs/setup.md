@@ -110,6 +110,17 @@ The microphone, `say` and recording tools run **on the Mac host** (Docker can't 
 - `make stt-record SPEAKER=name`: record real test clips line by line (only with the speaker's consent; they stay in `backend/artifacts/stt-audio/real/`). Then `make bench-stt args='--sets real'`.
 - `make test-stt`: live STT tests (about 1.5 minutes, a few cents; needs `make stt-clips` first). `make bench-stt`: the full benchmark (about 10 minutes, about $0.50).
 
+### Telephony: Exotel (Phase 5 onwards)
+
+Protocol, verified facts and the test-call log: [telephony.md](telephony.md).
+
+1. `.env`: `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_ACCOUNT_SID`, `EXOTEL_SUBDOMAIN` (`api.exotel.com` for a Singapore-region account, `api.in.exotel.com` for Mumbai), `EXOTEL_CALLER_ID` (the ExoPhone), `EXOTEL_APP_ID` (the flow's id).
+2. Public URL: `make tunnel` (Cloudflare quick tunnel; `brew install cloudflared`). Put its `https://…trycloudflare.com` URL in `PUBLIC_BACKEND_URL`, then `docker compose up -d backend worker` (containers read `.env` only when created). The URL changes every time the tunnel restarts.
+3. `make exotel-urls` prints the Voicebot URL. In Exotel's App Bazaar the flow is exactly **Voicebot** (that URL) → **Hangup**.
+4. Test call to a consenting tester whose number is verified in the Exotel dashboard (trial accounts without KYC can't call anyone else): `make test-call phone=+9198XXXXXXXX` (mode `full`: clip, echo, stop test, backend hangs up) or `mode=listen` (clip, then you hang up). Test calls skip the calling window. Each call writes `backend/artifacts/calls/<attempt>_in.wav` and `_stream.json` (gitignored; delete after review).
+
+The worker places calls (`initiate_call`, one Redis slot per `MAX_CONCURRENT_CALLS`) and checks stuck calls with Exotel every 2 minutes.
+
 Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) before committing.
 
 ## Common problems
@@ -128,6 +139,11 @@ Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) be
 | Log shows `stt_disconnected` then `stt_connected` | The stream dropped and reconnected; up to 2 s of audio was buffered meanwhile (`stt_audio_dropped` if more) |
 | `make stt-mic` / `voice-loop`: `PortAudioError` or no audio | Allow the terminal app microphone access (System Settings → Privacy & Security → Microphone), then restart the terminal |
 | `make test-stt` skips everything | Generate the clips first: `make stt-clips` (on the host) |
+| Test call: HTTP 400 "Invalid 'StatusCallbackEvents' specified" | Don't send `StatusCallbackEvents` (connect-to-flow rejects it). If you changed worker code, check the worker really restarted (`docker compose logs worker`) |
+| Test call: HTTP 403 "not yet KYC compliant" | The number isn't verified in the Exotel dashboard (trial without KYC) |
+| Phone rings but is silent, log shows `stream_unknown_call` or nothing | The Voicebot URL in the flow is stale (tunnel restarted): `make exotel-urls`, update the applet |
+| Log shows `stream_media_format_mismatch` | `TELEPHONY_*` settings differ from what Exotel announced in the start message |
+| Worker ignores code changes | Fixed in Phase 5 (`watchfiles` restarts the process); recreate it with `docker compose up -d worker` |
 | Port already in use | Stop the other service or change the host port in `docker-compose.yml` |
 | Frontend shows "Backend unreachable" | Backend container not up; `docker compose logs backend` |
 | Every change in the UI fails with "Request origin not allowed" | `FRONTEND_ORIGIN` in `.env` doesn't match the URL in the browser (e.g. port 3010 vs 3000); fix it and restart the backend |

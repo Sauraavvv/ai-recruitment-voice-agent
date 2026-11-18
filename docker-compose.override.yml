@@ -22,7 +22,9 @@ services:
       context: ./backend
       args:
         INSTALL_DEV: "true"
-    command: ["arq", "app.workers.settings.WorkerSettings", "--watch", "app"]
+    # watchfiles restarts the whole process on a change. `arq --watch` only restarts the worker
+    # loop inside the same process, so edited modules were never re-imported (Phase 5).
+    command: ["watchfiles", "--filter", "python", "arq app.workers.settings.WorkerSettings", "app"]
     volumes:
       - ./backend/app:/app/app
 

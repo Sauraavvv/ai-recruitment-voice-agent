@@ -6,7 +6,8 @@ VENV := $(BACKEND)/.venv/bin
 .PHONY: help env up down logs ps test test-docker lint fmt typecheck lock venv check-secrets shell-db \
 	migrate migration create-user types agent-cli agent-eval llm-bench \
 	tts-model tts-say test-tts test-deepgram-tts bench-tts \
-	stt-clips stt-file stt-mic stt-record voice-loop test-stt bench-stt
+	stt-clips stt-file stt-mic stt-record voice-loop test-stt bench-stt \
+	tunnel exotel-urls test-call
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -137,3 +138,16 @@ test-stt:  ## Live Deepgram STT tests (about 1.5 minutes, a few cents; needs `ma
 
 bench-stt:  ## STT benchmark (about 10 minutes, ~$0.50): make bench-stt [args='--configs n3-in-8k-500 --sets synthetic,real --misses']
 	docker compose exec -T backend python -m app.scripts.bench_stt $(args)
+
+# --- Phase 5: telephony ---------------------------------------------------------------------
+
+tunnel:  ## Public HTTPS/WSS URL for Exotel (Cloudflare quick tunnel; the URL changes every run)
+	cloudflared tunnel --no-autoupdate --url http://localhost:8010
+
+exotel-urls:  ## URLs to paste into the Exotel flow (they contain secrets: don't share them)
+	docker compose exec -T backend python -m app.scripts.exotel_urls
+
+test-call:  ## Real call to a verified tester: make test-call phone=+9198XXXXXXXX [mode=full|listen]
+	@test -n "$(phone)$(candidate)" || (echo 'usage: make test-call phone=+91XXXXXXXXXX [mode=full|listen]'; exit 1)
+	docker compose exec -T backend python -m app.scripts.test_call \
+	  $(if $(phone),--phone "$(phone)",--candidate-id "$(candidate)") --mode $(or $(mode),full)

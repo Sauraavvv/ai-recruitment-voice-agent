@@ -15,11 +15,14 @@ from app.api.health import router as health_router
 from app.api.middleware import RequestContextMiddleware
 from app.api.responses import register_error_handlers
 from app.api.v1 import api_router
+from app.api.v1.webhooks import callback_router
+from app.api.v1.webhooks import router as webhooks_router
 from app.config import AppEnv, Settings, get_settings
 from app.database.connection import dispose_engine, init_engine
 from app.providers.tts import create_tts_provider
 from app.providers.tts.base import TTSError, TTSProvider
 from app.utils.log import configure_logging, get_logger
+from app.utils.queue import close_queue, init_queue
 from app.utils.redis import close_redis, init_redis
 
 logger = get_logger(__name__)
@@ -40,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         init_engine(settings.database_url.get_secret_value())
         init_redis(settings.redis_url.get_secret_value())
+        await init_queue(settings.redis_url.get_secret_value())
         tts: TTSProvider | None = None
         tts_task: asyncio.Task[None] | None = None
         if settings.tts_preload:
@@ -61,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await tts_task
             if tts is not None:
                 await tts.close()
+            await close_queue()
             await close_redis()
             await dispose_engine()
             logger.info("shutdown")
@@ -86,4 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(api_router)
+    # Provider-facing: token in the URL instead of a session, no CSRF origin check
+    app.include_router(webhooks_router)
+    app.include_router(callback_router)
     return app

@@ -1,0 +1,74 @@
+[
+ {
+  "event": "connected"
+ },
+ {
+  "event": "start",
+  "stream_sid": "capturedsid000000000000000000abi",
+  "sequence_number": "1",
+  "start": {
+   "stream_sid": "capturedsid000000000000000000abi",
+   "call_sid": "capturedsid010000000000000000abj",
+   "leg_sid": "capturedsid020000000000000000abj",
+   "account_sid": "\u2026a1",
+   "from": "\u202673",
+   "to": "\u202642",
+   "custom_parameters": {
+    "00000000000000000000000000000000": ""
+   },
+   "media_format": {
+    "encoding": "base64",
+    "sample_rate": "8000",
+    "bit_rate": "128kbps"
+   }
+  }
+ },
+ {
+  "event": "media",
+  "stream_sid": "capturedsid000000000000000000abi",
+  "sequence_number": "2",
+  "media": {
+   "chunk": "1",
+   "timestamp": "20",
+   "payload": "<base64 428 chars>"
+  }
+ },
+ {
+  "event": "media",
+  "stream_sid": "capturedsid000000000000000000abi",
+  "sequence_number": "3",
+  "media": {
+   "chunk": "2",
+   "timestamp": "40",
+   "payload": "<base64 428 chars>"
+  }
+ },
+ {
+  "event": "media",
+  "stream_sid": "capturedsid000000000000000000abi",
+  "sequence_number": "4",
+  "media": {
+   "chunk": "3",
+   "timestamp": "60",
+   "payload": "<base64 428 chars>"
+  }
+ },
+ {
+  "event": "mark",
+  "stream_sid": "capturedsid000000000000000000abi",
+  "mark": {
+   "name": "intro"
+  }
+ },
+ {
+  "event": "stop",
+  "stream_sid": "capturedsid000000000000000000abi",
+  "sequence_number": "893",
+  "stop": {
+   "call_sid": "capturedsid010000000000000000abj",
+   "leg_sid": "capturedsid020000000000000000abj",
+   "account_sid": "\u2026a1",
+   "reason": "canceled or call ended"
+  }
+ }
+]

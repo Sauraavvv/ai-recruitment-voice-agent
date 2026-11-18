@@ -78,7 +78,7 @@ States: `LISTENING`, `THINKING`, `SPEAKING`, `ENDING`.
 ### 5.4 Interruption (`voice/interruption.py`)
 
 1. Stop dequeuing outbound frames and drop the rest of the current reply.
-2. Send the protocol's buffer-clear message if P5 confirmed it exists. Otherwise rely on the small send-ahead buffer (≤ 200 ms) so audio stops quickly.
+2. Send `clear` (verified in P5: queued audio stops and its mark never returns), then cut the send-ahead buffer.
 3. Estimate how much of the reply was heard (frames sent minus frames still buffered) and record the agent turn as `interrupted`, with the heard portion.
 4. Call `agent.handle_interruption(heard_portion)` so the agent knows its question may not have been heard.
 
@@ -133,6 +133,16 @@ Per turn, record:
 Ways to hit the targets: short first chunk, synthesize chunk N+1 while N plays, phrase cache, pre-synthesized greeting, compact prompts.
 
 **TTS from Phase 3 (2026-11-18):** the primary voice is Deepgram Aura (Harmonia), with Kitten as fallback (`FallbackTTSProvider`). Play replies with `tts.stream(text, call_attempt_id=…)`, never `synthesize()`. Deepgram's first audio comes after about 350 ms but the whole clip takes about half its duration (docs/benchmarks/tts.md), so t2 → t3 is about 350 ms with Deepgram and 200–400 ms with Kitten. On barge-in, stop iterating the stream: the provider closes the HTTP request. At call end, call `tts.forget_call(call_attempt_id)`. Use `tts.apology_clip(call_attempt_id=…)` so the apology matches the voice the call is using. Log each turn with `candidate_id`, `call_attempt_id` and `provider_call_id` (plan.md §12), and monitor event-loop lag.
+
+**Telephony from Phase 5 (verified on real calls 2026-11-19, docs/telephony.md):**
+- Exotel Voicebot, 8 kHz 16-bit mono PCM both ways. Inbound arrives as 320-byte (20 ms) chunks; feed them straight to Deepgram (`linear16`, 8000), no conversion. Outbound: resample TTS 24 kHz → 8 kHz with `audio_converter.StreamResampler` (keeps filter state across streamed chunks), frame with `Framer`, send with `voice/websocket_handler.AudioSender` (paced, ≤ `TELEPHONY_SEND_AHEAD_MS` ahead).
+- `clear` works (verified): use it for barge-in (§5.4 step 2). `mark` comes back about 0.47 s after the audio before it finished at our end: use it as the "playback finished" signal in the turn manager.
+- 3 200-byte outbound frames (200 ms) were clean. Smaller frames would make `clear` and the mark more precise; Exotel's docs say chunks under 3.2 KB distort. Measure 640/1 600 bytes on a call before changing `TELEPHONY_FRAME_BYTES`.
+- "Answered" = the stream's `start` (no answered webhook exists for connect-to-flow). Open the Deepgram stream as soon as the call is placed (connect takes 0.8–1.5 s) or at `start` at the latest.
+- The agent ends the call by closing the WebSocket (flow → Hangup, phone drops within 2 s). Set `end_reason=agent_completed` before closing (`call_service.stream_ended`).
+- Replace `run_poc` in `websocket_handler.py` with the conversation; keep `CallSession`, the inbound queue, the capture switch (`TELEPHONY_CAPTURE_DIR`, off outside tests) and the cleanup path (task count before/after is logged).
+- **Live screening preview (P5, 2026-11-19):** `make test-call mode=screen` already runs a whole screening on a real call (`voice/live_screening.py`: `VoiceLoop` + streamed TTS + mark-based turn end + `services/screening_store.py`). Finding: the tester repeated answers into the agent's ~2 s thinking pause; those queued utterances were answered as if they belonged to the next question. The preview drops utterances that finish while the agent is busy; Phase 6 must replace that with the instant acknowledgement (§5.8), barge-in (§5.4) and utterance merging (§5.3). Mark round trip and TTS first audio (about 1 s on Deepgram for the first reply, cached phrases instant) are in the logs as `live_reply_played`.
+- Enforce the maximum call length in the session too (`MAX_CALL_DURATION_S`); `TimeLimit` is also sent to Exotel.
 
 ### 5.9 Resuming with known data
 

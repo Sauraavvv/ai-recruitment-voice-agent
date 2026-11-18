@@ -26,7 +26,9 @@ artifacts/
 *.onnx
 # Kitten's English G2P fallback, exported to ONNX (app/scripts/export_g2p_onnx.py): small and committed
 !backend/app/voice/g2p/*.onnx
-models/
+# Downloaded voice models only (anchored: an unanchored `models/` also hid
+# backend/app/database/models/ from git until Phase 5)
+/backend/models/
 *.wav
 !backend/app/tests/fixtures/**/*.wav
 

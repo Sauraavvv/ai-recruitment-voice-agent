@@ -281,6 +281,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calls/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Calls
+         * @description Queue a call per candidate. Each candidate gets its own result (ok or a reason).
+         */
+        post: operations["start_calls_api_v1_calls_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Calls */
+        get: operations["list_calls_api_v1_calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_attempt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Call */
+        get: operations["get_call_api_v1_calls__call_attempt_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -295,6 +349,67 @@ export interface components {
             /** Job Id */
             job_id?: string | null;
         };
+        /** CallAttemptOut */
+        CallAttemptOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Attempt Number */
+            attempt_number: number;
+            attempt_type: components["schemas"]["CallAttemptType"];
+            /** Provider */
+            provider: string;
+            /** Provider Call Id */
+            provider_call_id: string | null;
+            /** Provider Status */
+            provider_status: string | null;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /** Start Time */
+            start_time: string | null;
+            /** End Time */
+            end_time: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /** Recording Url */
+            recording_url: string | null;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CallAttemptType
+         * @enum {string}
+         */
+        CallAttemptType: "initial" | "manual" | "retry" | "callback";
+        /**
+         * CallEndReason
+         * @description Normalized reason a call attempt ended (phase-05 §5).
+         * @enum {string}
+         */
+        CallEndReason: "no_answer" | "busy" | "invalid_number" | "candidate_hangup" | "agent_completed" | "provider_failed" | "technical_failure" | "cancelled";
+        /**
+         * CallStatus
+         * @description plan.md Module F.
+         * @enum {string}
+         */
+        CallStatus: "pending" | "queued" | "initiating" | "ringing" | "in_progress" | "completed" | "no_answer" | "busy" | "failed" | "cancelled" | "callback_requested" | "retry_scheduled" | "exhausted";
         /** CandidateCreate */
         CandidateCreate: {
             /** Name */
@@ -440,6 +555,10 @@ export interface components {
             /** Opted Out */
             opted_out?: boolean | null;
         };
+        /** DataResponse[CallAttemptOut] */
+        DataResponse_CallAttemptOut_: {
+            data: components["schemas"]["CallAttemptOut"];
+        };
         /** DataResponse[CandidateOut] */
         DataResponse_CandidateOut_: {
             data: components["schemas"]["CandidateOut"];
@@ -474,6 +593,11 @@ export interface components {
         DataResponse_list_ScreeningQuestion__: {
             /** Data */
             data: components["schemas"]["ScreeningQuestion"][];
+        };
+        /** DataResponse[list[StartCallResult]] */
+        DataResponse_list_StartCallResult__: {
+            /** Data */
+            data: components["schemas"]["StartCallResult"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -687,6 +811,12 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** PageResponse[CallAttemptOut] */
+        PageResponse_CallAttemptOut_: {
+            /** Data */
+            data: components["schemas"]["CallAttemptOut"][];
+            meta: components["schemas"]["PageMeta"];
+        };
         /** PageResponse[CandidateOut] */
         PageResponse_CandidateOut_: {
             /** Data */
@@ -741,6 +871,31 @@ export interface components {
          * @enum {string}
          */
         ScreeningStatus: "not_started" | "in_progress" | "partially_completed" | "completed" | "declined" | "opted_out" | "callback_requested" | "wrong_person";
+        /** StartCallError */
+        StartCallError: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** StartCallResult */
+        StartCallResult: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Ok */
+            ok: boolean;
+            /** Call Attempt Id */
+            call_attempt_id: string | null;
+            error: components["schemas"]["StartCallError"] | null;
+        };
+        /** StartCallsRequest */
+        StartCallsRequest: {
+            /** Candidate Ids */
+            candidate_ids: string[];
+        };
         /** UserOut */
         UserOut: {
             /**
@@ -1369,6 +1524,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_JobOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_calls_api_v1_calls_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCallsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_StartCallResult__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_calls_api_v1_calls_get: {
+        parameters: {
+            query?: {
+                candidate_id?: string | null;
+                call_status?: components["schemas"]["CallStatus"] | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResponse_CallAttemptOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_call_api_v1_calls__call_attempt_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CallAttemptOut_"];
                 };
             };
             /** @description Validation Error */

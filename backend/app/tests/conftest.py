@@ -36,6 +36,14 @@ def make_settings(**overrides: object) -> Settings:
         "tts_preload": False,
         # never pick up the developer's real key from the environment (Docker passes .env)
         "deepgram_api_key": None,
+        "exotel_api_key": None,
+        "exotel_api_token": None,
+        "exotel_account_sid": None,
+        "exotel_subdomain": None,
+        "exotel_caller_id": None,
+        "exotel_app_id": None,
+        "public_backend_url": None,
+        "telephony_capture_dir": None,
         "_env_file": None,
     }
     values.update(overrides)

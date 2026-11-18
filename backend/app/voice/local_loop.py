@@ -62,6 +62,7 @@ class VoiceLoop:
         speak: Speak | None = None,
         silence_timeout_s: float | None = None,
         out: Callable[[str], None] = print,
+        drop_stale: bool = False,
     ) -> None:
         self.stt = stt
         self.manager = manager
@@ -71,6 +72,12 @@ class VoiceLoop:
         self.speak = speak
         self.silence_timeout_s = silence_timeout_s
         self.out = out
+        # Half-duplex calls: drop utterances that finished while the agent was thinking or
+        # speaking (usually the candidate repeating an answer into the silence), so they aren't
+        # taken as the answer to the next question. Phase 6 replaces this with barge-in,
+        # acknowledgement masking and merging.
+        self.drop_stale = drop_stale
+        self.dropped: list[str] = []
         self.assembler = UtteranceAssembler(session_id)
         self.turns: list[TurnRecord] = []
         self.stt_error: str | None = None
@@ -94,6 +101,8 @@ class VoiceLoop:
             listener = asyncio.create_task(self._listen())
             pump = asyncio.create_task(self._pump(frames))
             await self._reply(await self.manager.start())
+            if self.drop_stale:
+                self._drop_stale()
             reason = await self._converse()
         finally:
             if pump is not None:
@@ -124,6 +133,8 @@ class VoiceLoop:
                     continue  # they're mid-sentence
                 silences += 1
                 await self._reply(await self.manager.handle_silence(silences))
+                if self.drop_stale:
+                    self._drop_stale()
                 continue
             if utterance is None:  # the stream ended
                 if self.stt_error:
@@ -153,7 +164,22 @@ class VoiceLoop:
                 agent_ms=int(agent_ms),
             )
             await self._reply(reply, f"stt {stt_ms or 0:.0f} ms + agent {agent_ms:.0f} ms")
+            if self.drop_stale:
+                self._drop_stale()
         return self.manager.state.end_reason or EndReason.COMPLETED
+
+    def _drop_stale(self) -> None:
+        """Discard utterances queued while the agent was busy; keep an end-of-stream marker."""
+        ended = False
+        while not self._utterances.empty():
+            item = self._utterances.get_nowait()
+            if item is None:
+                ended = True
+                continue
+            self.dropped.append(item.text)
+            logger.info("voice_stale_utterance_dropped", utterance=item.text)
+        if ended:
+            self._utterances.put_nowait(None)
 
     async def _reply(self, reply: AgentReply, timing: str = "") -> None:
         if reply.text:

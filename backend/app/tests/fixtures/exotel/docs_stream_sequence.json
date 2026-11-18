@@ -1,0 +1,16 @@
+[
+  {"event": "connected"},
+  {"event": "start", "sequence_number": 1, "stream_sid": "docs-stream-1",
+   "start": {"stream_sid": "docs-stream-1", "call_sid": "b6cfaf0e5d8a4f1fb5b1docs0001",
+             "account_sid": "acct", "from": "+919000009001", "to": "08000000000",
+             "custom_parameters": {},
+             "media_format": {"encoding": "raw", "sample_rate": "8000", "bit_rate": "128"}}},
+  {"event": "media", "sequence_number": 2, "stream_sid": "docs-stream-1",
+   "media": {"chunk": 1, "timestamp": "20", "payload": "<3200 bytes>"}},
+  {"event": "media", "sequence_number": 3, "stream_sid": "docs-stream-1",
+   "media": {"chunk": 2, "timestamp": "220", "payload": "<3200 bytes>"}},
+  {"event": "dtmf", "sequence_number": 4, "stream_sid": "docs-stream-1",
+   "dtmf": {"duration": "200", "digit": "5"}},
+  {"event": "stop", "sequence_number": 5, "stream_sid": "docs-stream-1",
+   "stop": {"call_sid": "b6cfaf0e5d8a4f1fb5b1docs0001", "account_sid": "acct", "reason": "callended"}}
+]

@@ -874,6 +874,180 @@
           }
         }
       }
+    },
+    "/api/v1/calls/start": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Start Calls",
+        "description": "Queue a call per candidate. Each candidate gets its own result (ok or a reason).",
+        "operationId": "start_calls_api_v1_calls_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCallsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_list_StartCallResult__"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calls": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "List Calls",
+        "operationId": "list_calls_api_v1_calls_get",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "call_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CallStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Call Status"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse_CallAttemptOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calls/{call_attempt_id}": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Get Call",
+        "operationId": "get_call_api_v1_calls__call_attempt_id__get",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CallAttemptOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -904,6 +1078,198 @@
           "file"
         ],
         "title": "Body_upload_import_api_v1_candidates_import_post"
+      },
+      "CallAttemptOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "attempt_type": {
+            "$ref": "#/components/schemas/CallAttemptType"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "provider_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Call Id"
+          },
+          "provider_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Status"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Url"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "candidate_id",
+          "attempt_number",
+          "attempt_type",
+          "provider",
+          "provider_call_id",
+          "provider_status",
+          "call_status",
+          "end_reason",
+          "start_time",
+          "end_time",
+          "duration_seconds",
+          "recording_url",
+          "failure_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CallAttemptOut"
+      },
+      "CallAttemptType": {
+        "type": "string",
+        "enum": [
+          "initial",
+          "manual",
+          "retry",
+          "callback"
+        ],
+        "title": "CallAttemptType"
+      },
+      "CallEndReason": {
+        "type": "string",
+        "enum": [
+          "no_answer",
+          "busy",
+          "invalid_number",
+          "candidate_hangup",
+          "agent_completed",
+          "provider_failed",
+          "technical_failure",
+          "cancelled"
+        ],
+        "title": "CallEndReason",
+        "description": "Normalized reason a call attempt ended (phase-05 \u00a75)."
+      },
+      "CallStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "queued",
+          "initiating",
+          "ringing",
+          "in_progress",
+          "completed",
+          "no_answer",
+          "busy",
+          "failed",
+          "cancelled",
+          "callback_requested",
+          "retry_scheduled",
+          "exhausted"
+        ],
+        "title": "CallStatus",
+        "description": "plan.md Module F."
       },
       "CandidateCreate": {
         "properties": {
@@ -1531,6 +1897,18 @@
         "title": "CandidateUpdate",
         "description": "Partial update. Fields left out are unchanged; send null to clear an optional field."
       },
+      "DataResponse_CallAttemptOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CallAttemptOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[CallAttemptOut]"
+      },
       "DataResponse_CandidateOut_": {
         "properties": {
           "data": {
@@ -1642,6 +2020,22 @@
           "data"
         ],
         "title": "DataResponse[list[ScreeningQuestion]]"
+      },
+      "DataResponse_list_StartCallResult__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/StartCallResult"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[list[StartCallResult]]"
       },
       "HTTPValidationError": {
         "properties": {
@@ -2248,6 +2642,26 @@
         ],
         "title": "PageMeta"
       },
+      "PageResponse_CallAttemptOut_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CallAttemptOut"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "PageResponse[CallAttemptOut]"
+      },
       "PageResponse_CandidateOut_": {
         "properties": {
           "data": {
@@ -2386,6 +2800,86 @@
           "wrong_person"
         ],
         "title": "ScreeningStatus"
+      },
+      "StartCallError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "StartCallError"
+      },
+      "StartCallResult": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "call_attempt_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Attempt Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StartCallError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "ok",
+          "call_attempt_id",
+          "error"
+        ],
+        "title": "StartCallResult"
+      },
+      "StartCallsRequest": {
+        "properties": {
+          "candidate_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Candidate Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_ids"
+        ],
+        "title": "StartCallsRequest"
       },
       "UserOut": {
         "properties": {

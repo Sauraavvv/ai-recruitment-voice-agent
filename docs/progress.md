@@ -1,5 +1,74 @@
 # Progress
 
+## Phase 5 addendum: live screening preview (2026-11-19)
+
+**Asked by the user** after the PoC: one live test from the call to the AI's questions to the answers being stored. Built as a preview of Phase 6 on the Phase 5 stream:
+- `voice/live_screening.py`: phone audio → Deepgram STT (8 kHz) → `VoiceLoop` (P4, unchanged apart from a `drop_stale` option) → `ConversationManager` with the real job and candidate from the DB → Aura TTS streamed, resampled to 8 kHz, paced → `mark` → listen again. The agent hangs up when the conversation ends; a caller hang-up gets 30 s to finish and store.
+- `services/screening_store.py`: `conversations` row (transcript, summary, full result) and the candidate's standard fields, `screening_field_meta`, `screening_status`, `opted_out`. Minimal ahead of Phase 7 (no extraction pass, no Sheets outbox).
+- `make test-call phone=… mode=screen` prints the transcript, the stored fields and the summary.
+- Summaries never use gendered pronouns now (prompt rule + a check that asks for a rewrite, then falls back to the facts-only text).
+
+**Live result** (tester's phone, 168 s): all 10 questions asked, all 10 fields stored, `screening_status=completed`, summary stored, call ended by the agent. **Problem:** from mid-call on, answers were processed one question late and some twice, because what the tester said during the agent's thinking pause queued up. Preview fix: drop utterances that finish while the agent is busy. **Re-test** (179 s): every answer matched its question, nothing repeated, all 10 fields stored, read-back confirmed. The real fix (acknowledgement masking, barge-in, merging) is still Phase 6.
+
+**Numbers from the re-test, for Phase 6:** end of speech → agent's voice is about **4 s**: STT p50 0.96 s (max 2.3 s), agent p50 2.0 s, TTS first audio p50 1.0 s (higher than the 350 ms benchmark; check in P6). Smaller issues: a notice period with a buy-out ("30, can buy out to 15") is stored as "30 days"; a CTC's fixed/variable split is only in the raw words; the summary once called the candidate "an AI Engineer" (the role applied for); 0.3 s of inbound audio was dropped once by the bounded queue.
+
+Tests: 478 passed (adds storage, stale-utterance and pronoun tests).
+
+## Phase 5 exit report (2026-11-19)
+
+**Implemented:** outbound calls through Exotel with live two-way audio, verified on real calls to the tester's phone. Protocol facts, test-call log and go/no-go: [telephony.md](telephony.md); deviations from the plan and AC evidence: [phase-05 §13](phases/phase-05-telephony-poc.md#13-as-built-2026-11-19).
+- `providers/telephony/`: `TelephonyProvider` interface; `ExotelProvider` (httpx, connect 5 s / read 10 s, **no retry on timeout**; 401 → config error, 400/403 → refused, timeout → ambiguous); `exotel_models.py` (one status-mapping table, callback and stream-start parsing, dedupe key, form flattening, message shapes for logs).
+- `services/call_state.py`: allowed transitions only; terminal states final; out-of-order events stored but ignored. `services/call_slots.py`: Redis semaphore (`MAX_CONCURRENT_CALLS`, TTL = max call + 5 min). `services/call_service.py`: eligibility, start, webhook processing, stream attach/end, reconcile.
+- Eligibility: not deleted, not opted out, consent recorded, valid phone, active job, no live attempt (also a partial unique index), calling window Mon–Sat 10:00–19:00 IST, telephony configured. Errors are per candidate. Re-checked in the worker before dialing.
+- `workers/call_worker.py`: `initiate_call` (job id `call:{attempt}`; no free slot → retry in 15 s) and `reconcile_calls` (cron every 2 min and at startup: stuck initiating/ringing/in_progress → Exotel Call Details, or a search by number after an initiate timeout; no record → `failed`/`technical_failure`).
+- `api/v1/calls.py`: `POST /calls/start`, `GET /calls`, `GET /calls/{id}` (recruiter login). `api/v1/webhooks.py`: status callback `POST /cb/{token}` (and the planned path) and the Voicebot WebSocket `/api/v1/webhooks/exotel/stream/{token}`; tokens derived from `APP_SECRET_KEY`, compared in constant time.
+- `voice/audio_converter.py`: soxr resampling (whole clip and streaming), G.711 μ-law bit-exact with the reference, framing with carry-over and padding of the last frame only. `voice/websocket_handler.py`: start → resolve and verify the attempt → media-format check → `CallSession` (bounded 2 s inbound queue, drop-oldest) → paced `AudioSender` (`media`/`mark`/`clear`) → PoC script → cleanup (tasks cancelled, task count logged, slot released) → capture saved.
+- Migration `0002_telephony`: `call_attempts.attempt_type`, `provider_status`, `stream_id`, `end_reason` (+ CHECKs), one-live-attempt partial unique index, unique `(candidate_id, attempt_number)`, `webhook_events` table.
+- Tools: `make tunnel`, `make exotel-urls`, `make test-call phone=… [mode=full|listen]`.
+
+**Files created / changed:**
+- Backend, new: `providers/telephony/base.py`, `exotel_provider.py`, `exotel_models.py`; `services/call_state.py`, `call_slots.py`, `call_service.py`; `repositories/call_repo.py`; `schemas/call.py`; `api/v1/calls.py`, `webhooks.py`; `workers/call_worker.py`; `voice/audio_converter.py`, `websocket_handler.py`; `utils/queue.py`; `database/models/webhook_event.py`; `migrations/versions/0002_telephony.py`; `scripts/test_call.py`, `exotel_urls.py`; tests `unit/telephony/` (converter, models, state, provider), `integration/test_telephony.py`; fixtures `fixtures/exotel/` (docs-shaped and **captured** real payloads, sanitized).
+- Backend, changed: `config.py` (`EXOTEL_APP_ID`, Exotel timeouts, `TELEPHONY_*`, ring/call limits, calling window, capture dir, `exotel_configured`, `derived_secret`); `models/enums.py`, `call_attempt.py`, `__init__.py`; `main.py` (job queue, webhook routers); `api/v1/__init__.py`; `workers/settings.py`; `tests/conftest.py` (Exotel settings pinned to None, like the Deepgram key); `test_migrations.py`.
+- Infra: `docker-compose.override.yml` (dev worker restarts its whole process on code changes via `watchfiles`); Makefile targets; `.env.example`. No new dependencies (`cloudflared` installed with Homebrew on the host).
+- Frontend: regenerated `types/api.ts` / `openapi.json` (new `/calls` routes).
+- Docs: `telephony.md` (rewritten with verified facts), `api.md`, `setup.md`, `phases/phase-05` (§13), `phases/phase-06` (telephony inputs, `clear` for barge-in).
+
+**Tests run:**
+- `make test` → 474 passed, 1 skipped; `make test-docker` → 474 passed. `make lint`, `make typecheck` → clean.
+- Real calls (tester's own verified phone, 2026-11-19 00:20–00:41 IST): full PoC call, tester hang-up, reject, ring-out, unverified number, duplicate and out-of-order webhook replays. Log: telephony.md §3.
+
+**Acceptance criteria:** P5-AC1 to P5-AC8 ✅ (evidence in phase-05 §13). Tester: clip clear 4/5, echo heard, the count stopped at "three" after `clear`, the phone dropped within 2 s after the backend hung up.
+
+**Go / no-go:** recommendation **Go** (telephony.md §4); decision to be recorded with the user.
+
+**Deferred or not done:**
+- Phone switched off / unreachable: not tested (needs a second phone).
+- A real `invalid_number` response: only visible after KYC; on the trial every unverified number gets HTTP 403.
+- Smaller outbound frames (640/1 600 bytes) and 16 kHz: measure in Phase 6 if barge-in needs it.
+- Voice-provider health in eligibility: Phase 6. Duration from Exotel Call Details (updates about 2 minutes after the call): not fetched; we use our own timestamps.
+- Captured WAVs in `backend/artifacts/calls/` (the tester's voice): delete after review.
+
+**Needs credentials or manual provider configuration:**
+- Done: Exotel API key/token, SID, subdomain, ExoPhone and flow 1390568 (Voicebot → Hangup) are in `.env` and the dashboard. **The API key and token were pasted in chat: rotate them in the Exotel dashboard** (then update `.env`).
+- Each time the quick tunnel restarts: new `PUBLIC_BACKEND_URL`, `docker compose up -d backend worker`, and paste the new `make exotel-urls` Voicebot URL into the flow.
+- Before Phase 10: KYC; ask Exotel about concurrency, per-minute cost, DND rules and `CallType=trans`.
+
+**Risks or surprises discovered:**
+- Exotel's connect-to-flow rejects `StatusCallbackEvents` with a 400 that names the parameter but is easy to misread. So there's no `answered` callback (the stream `start` is the signal) and the callback carries only `Status`, `CallSid`, `DateUpdated`.
+- `arq --watch` doesn't re-import code. Every early "fix" ran the old code, and narrowing the error down with direct API requests meanwhile placed **7 untracked calls** to the tester. The dev worker now restarts fully; check `docker compose logs worker` after code changes.
+- The start message says `encoding: "base64"`, `CustomField` arrives as a parameter **key**, all numbers in stream messages are strings, and `from`/`to` are national-format numbers.
+- A rejected call is `no-answer`, not `busy`.
+- The quick tunnel has no uptime guarantee and changes URL on restart.
+- Exotel timestamps are IST.
+
+**Decisions made (mine, open to review):**
+- The backend ends calls by closing the stream (the flow's Hangup applet does the rest); no REST hangup.
+- One static stream token in the flow URL; the attempt is matched by `call_sid`.
+- `CallType=trans`, `TimeOut=30`, `TimeLimit=900` on every call.
+- Webhooks always answer 200 after the token check (errors are logged and stored), so Exotel never retries into the same failure.
+- Test calls (`make test-call`) skip the calling window; the API never does.
+- The PoC capture (inbound WAV + sanitized message log) stays switchable by `TELEPHONY_CAPTURE_DIR` for Phase 6 debugging; set it empty outside development.
+
 ## Phase 4 exit report (2026-11-18)
 
 **Implemented:** streaming speech-to-text through Deepgram behind `STTProvider`, one stream per call session, and a local loop that feeds finished utterances to the P2 agent.

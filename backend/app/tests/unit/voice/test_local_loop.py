@@ -132,6 +132,35 @@ async def test_utterances_arriving_while_busy_are_answered_in_order() -> None:
     assert [t.utterance.text for t in loop.turns] == ["Yes, this is Rahul.", "Go ahead."]
 
 
+async def test_drop_stale_discards_what_was_said_while_the_agent_was_busy() -> None:
+    # Live call 2026-11-19: candidates repeat an answer into the agent's thinking pause; the
+    # repeat must not become the answer to the next question.
+    gate = asyncio.Event()
+
+    class SlowLLM(ScriptedLLM):
+        async def structured(self, *a: Any, **kw: Any) -> Any:
+            await gate.wait()
+            return await super().structured(*a, **kw)
+
+    llm = SlowLLM([turn(identity_confirmed=True), turn(permission_granted=True)])
+    stt = FakeSTT()
+    loop = make_loop(llm, stt, drop_stale=True)
+    run = asyncio.create_task(loop.run(no_audio()))
+    await wait_for(lambda: loop.agent_done.is_set())
+    stt.push("final", "Yes, this is Rahul.", endpoint=True)
+    await asyncio.sleep(0.05)  # the agent is now thinking
+    stt.push("final", "Yes, this is Rahul.", endpoint=True)  # repeated into the silence
+    await asyncio.sleep(0.05)
+    gate.set()
+    await wait_for(lambda: len(loop.turns) == 1 and not loop._utterances.qsize())
+    stt.push("final", "Go ahead.", endpoint=True)
+    await wait_for(lambda: len(loop.turns) == 2)
+    loop.hangup()
+    await run
+    assert [t.utterance.text for t in loop.turns] == ["Yes, this is Rahul.", "Go ahead."]
+    assert loop.dropped == ["Yes, this is Rahul."]
+
+
 async def test_stt_error_ends_the_call_without_crashing() -> None:
     stt = FakeSTT()
     loop = make_loop(ScriptedLLM(), stt)

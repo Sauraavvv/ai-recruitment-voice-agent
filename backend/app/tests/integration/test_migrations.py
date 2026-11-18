@@ -21,6 +21,7 @@ TABLES = {
     "jobs",
     "sync_logs",
     "users",
+    "webhook_events",
 }
 
 

@@ -4,6 +4,9 @@ Core settings are required. Provider settings stay optional until the phase that
 `provider_configuration()` reports which providers are set up.
 """
 
+import base64
+import hashlib
+import hmac
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any, Literal
@@ -61,12 +64,34 @@ class Settings(BaseSettings):
     # Comma-separated words to boost on every call; job-specific ones are added per call
     deepgram_stt_keyterms: str = "CTC,LPA,lakhs,notice period"
 
-    # Exotel (Phase 5): names to be re-checked against Exotel docs
+    # Exotel (Phase 5). docs/telephony.md
     exotel_api_key: SecretStr | None = None
     exotel_api_token: SecretStr | None = None
     exotel_account_sid: str | None = None
+    # API host for the account's region: api.exotel.com (Singapore) or api.in.exotel.com (Mumbai)
     exotel_subdomain: str | None = None
-    exotel_caller_id: str | None = None
+    exotel_caller_id: str | None = None  # the ExoPhone, as shown in the dashboard
+    # The flow (app) with the Voicebot applet → Hangup; its id is in the dashboard's App Bazaar
+    exotel_app_id: str | None = None
+    exotel_connect_timeout_s: float = Field(default=5.0, gt=0, le=30)
+    exotel_read_timeout_s: float = Field(default=10.0, gt=0, le=60)
+
+    # Telephony media format on the stream (P5-T9: verified on a real call, docs/telephony.md).
+    # Nothing else may hardcode the phone-side rate or frame size.
+    telephony_encoding: Literal["slin", "mulaw"] = "slin"
+    telephony_sample_rate: int = Field(default=8000)
+    # Outgoing chunk size in bytes: a multiple of 320 (Exotel); 3200 = 200 ms at 8 kHz
+    telephony_frame_bytes: int = Field(default=3200, ge=320, le=100_000)
+    # How far ahead of real time outgoing audio may be sent (keeps `clear`/barge-in fast)
+    telephony_send_ahead_ms: int = Field(default=200, ge=0, le=2000)
+    # PoC capture of inbound audio + stream message log (testers' phones only; empty = off)
+    telephony_capture_dir: str | None = "artifacts/calls"
+    ring_timeout_s: int = Field(default=30, ge=10, le=120)
+    max_call_duration_s: int = Field(default=900, ge=60, le=3600)
+    # Calling window in APP_TIMEZONE (phase-05 §6 decision: Mon-Sat 10:00-19:00)
+    calling_days: str = "mon,tue,wed,thu,fri,sat"
+    calling_hour_start: int = Field(default=10, ge=0, le=23)
+    calling_hour_end: int = Field(default=19, ge=1, le=24)
 
     # Kitten TTS (Phase 3). Empty values use the model baked into the image and the voice the
     # user chose in the Phase 3 listening test.
@@ -124,6 +149,20 @@ class Settings(BaseSettings):
             raise ValueError("must start with redis:// or rediss://")
         return value
 
+    @field_validator("telephony_sample_rate")
+    @classmethod
+    def _telephony_rate(cls, value: int) -> int:
+        if value not in (8000, 16000, 24000):
+            raise ValueError("must be 8000, 16000 or 24000")
+        return value
+
+    @field_validator("telephony_frame_bytes")
+    @classmethod
+    def _frame_multiple(cls, value: int) -> int:
+        if value % 320:
+            raise ValueError("must be a multiple of 320 bytes")
+        return value
+
     @model_validator(mode="after")
     def _production_rules(self) -> "Settings":
         if self.app_env is not AppEnv.PRODUCTION:
@@ -135,18 +174,38 @@ class Settings(BaseSettings):
             raise ValueError("PUBLIC_BACKEND_URL must be an https:// URL in production")
         return self
 
+    @property
+    def exotel_configured(self) -> bool:
+        """Everything needed to place a call and receive its callbacks and stream."""
+        return bool(
+            self.exotel_api_key
+            and self.exotel_api_token
+            and self.exotel_account_sid
+            and self.exotel_subdomain
+            and self.exotel_caller_id
+            and self.exotel_app_id
+            and self.public_backend_url
+        )
+
+    def derived_secret(self, purpose: str, *, hex_only: bool = False) -> str:
+        """A stable per-purpose secret derived from APP_SECRET_KEY (URL-safe, 43 chars).
+
+        Used for the webhook and stream URL tokens, so they need no extra settings and change
+        when APP_SECRET_KEY is rotated.
+        """
+        digest = hmac.new(
+            self.app_secret_key.get_secret_value().encode(), purpose.encode(), hashlib.sha256
+        ).digest()
+        if hex_only:
+            return digest.hex()[:48]
+        return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
     def provider_configuration(self) -> dict[str, bool]:
         """Which external providers have their settings filled in (not whether they work)."""
         return {
             "openai": bool(self.openai_api_key and self.openai_model),
             "deepgram": bool(self.deepgram_api_key),
-            "exotel": bool(
-                self.exotel_api_key
-                and self.exotel_api_token
-                and self.exotel_account_sid
-                and self.exotel_subdomain
-                and self.exotel_caller_id
-            ),
+            "exotel": self.exotel_configured,
             "kitten_tts": True,  # local model with defaults; whether it loaded is in TTS status
             "google_sheets": bool(self.google_service_account_json and self.google_sheet_id),
         }

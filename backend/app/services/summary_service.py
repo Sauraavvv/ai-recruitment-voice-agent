@@ -35,7 +35,12 @@ You write a short, neutral summary of a phone screening for a recruiter.
 - Don't judge the candidate: never say suitable, unsuitable, strong, weak, good fit, recommend, \
 reject or similar. Just report what they said.
 - CTC values are in lakhs per annum (LPA); experience in years.
+- Refer to the candidate by name or as "the candidate". Never use gendered pronouns (he, she, \
+his, her): the candidate's gender is unknown.
 """
+
+# The name says nothing reliable about gender; a summary that assumes one is rewritten.
+GENDERED = re.compile(r"\b(he|she|him|his|her|hers|himself|herself)\b", re.IGNORECASE)
 
 
 class ScreeningSummary(BaseModel):
@@ -173,16 +178,20 @@ async def generate_summary(
                 log.warning("summary_llm_failed", error=type(exc).__name__)
                 break
             candidate_text = " ".join(out.value.split())
-            if not JUDGMENT.search(candidate_text):
+            judged, gendered = JUDGMENT.search(candidate_text), GENDERED.search(candidate_text)
+            if not judged and not gendered:
                 narrative = candidate_text
                 break
-            log.warning("summary_judgment_rejected", attempt=attempt)
-            messages.append(
-                Message(
-                    "developer",
-                    "Your summary judged the candidate. Rewrite it with facts only.",
-                )
+            log.warning(
+                "summary_rejected", attempt=attempt, judged=bool(judged), gendered=bool(gendered)
             )
+            fix = (
+                "Your summary judged the candidate. Rewrite it with facts only."
+                if judged
+                else "Your summary used a gendered pronoun. Rewrite it using the candidate's "
+                "name or 'the candidate' instead."
+            )
+            messages.append(Message("developer", fix))
     body = narrative or _facts_text(sections)
     return ScreeningSummary(
         **sections,

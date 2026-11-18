@@ -1,0 +1,17 @@
+{
+  "CallSid": "b6cfaf0e5d8a4f1fb5b1docs0001",
+  "EventType": "terminal",
+  "DateCreated": "2026-11-18 15:00:00",
+  "DateUpdated": "2026-11-18 15:05:30",
+  "Status": "completed",
+  "To": null,
+  "From": "+919000009001",
+  "PhoneNumberSid": "08000000000",
+  "StartTime": "2026-11-18 15:00:05",
+  "EndTime": "2026-11-18 15:05:25",
+  "ConversationDuration": 320,
+  "Direction": "outbound-api",
+  "CustomField": "",
+  "RecordingUrl": null,
+  "Legs": [{"OnCallDuration": 320, "Status": "completed", "AnsweredBy": "NA"}]
+}

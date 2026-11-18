@@ -208,3 +208,35 @@ Exotel API key, token, account SID and subdomain; ExoPhone; a flow/app with the 
 ## 12. Exit
 
 [Phase exit report](README.md#phase-exit-report) plus the go/no-go decision, recorded with the user.
+
+## 13. As built (2026-11-19)
+
+Deviations from the plan above, each found on a real call or a deliberate simplification:
+
+| Plan | As built | Why |
+|---|---|---|
+| Status callbacks for `answered` and `terminal` (`StatusCallbackEvents`) | Default callback only; "answered" comes from the stream's `start` | Exotel's connect-to-flow rejects `StatusCallbackEvents` (HTTP 400) |
+| Callback content type JSON | Form-encoded (default); JSON still parsed | Default callback; fewer parameters |
+| Callback URL `/api/v1/webhooks/exotel/status/{token}` | `/cb/{token}` (the old path still works) with a hex token | Shorter URL while narrowing down the 400; kept |
+| Per-attempt stream token in custom parameters | One secret path token in the flow's static Voicebot URL; the attempt is matched by `start.call_sid`, then by CustomField (which arrives as a `custom_parameters` key) | The Voicebot URL is fixed in the flow; a per-call dynamic URL is undocumented for Voicebot |
+| `end_reason=invalid_number` for unassigned numbers | On the trial, unverified numbers → HTTP 403 KYC → `provider_failed` | Can only be observed after KYC (Phase 10) |
+| Reject → `busy` | Exotel reports a reject as `no-answer` | Provider behaviour |
+| Duration from the callback | Our own start/end times when the callback has none | The default callback has no duration |
+| Dev worker reload with `arq --watch` | `watchfiles` restarts the whole process | `arq --watch` re-creates the worker in the same process, so edited modules weren't re-imported |
+| Echo test measures round-trip latency | Tester confirmed the echo; Exotel's mark round trip measured (0.47 s) | The phone side has no timestamp we can read |
+| Voice-provider health in eligibility | Not enforced yet | Phase 6, as planned |
+
+Extra, not in the plan: the stream capture (`TELEPHONY_CAPTURE_DIR`: inbound WAV + sanitized message log), `make tunnel`, `make exotel-urls`, `scripts/exotel_urls.py`, and a `now` argument on the reconciler for tests.
+
+### Acceptance criteria
+
+| ID | Result | Evidence |
+|---|---|---|
+| P5-AC1 | ✅ | `make test-call` → phone rang; attempt f84b72af has `provider_call_id` |
+| P5-AC2 | ✅ | `in_progress` 12 s after queueing, from the stream's start (the provider event for "answered") |
+| P5-AC3 | ✅ | 15 997 inbound bytes/s = 8 kHz × 16-bit, as documented; inbound WAV shows speech at the times the tester spoke, and the echo of those same bytes was heard |
+| P5-AC4 | ✅ | 192 outbound frames, clip and counting, no protocol errors |
+| P5-AC5 | ✅ | Tester: clip clear 4/5, echo heard, the count stopped at "three" after `clear` |
+| P5-AC6 | ✅ | Backend hangup → phone dropped within 2 s (tester), `agent_completed`; tester hangup → `candidate_hangup`; tasks 3 → 3 both times; no slot keys left |
+| P5-AC7 | ✅ | Four sequential calls, each callback on its own attempt; real callback replayed → `duplicate`, late out-of-order → `ignored` |
+| P5-AC8 | ✅ | docs/telephony.md: verified protocol, test-call log, go/no-go recommendation |
