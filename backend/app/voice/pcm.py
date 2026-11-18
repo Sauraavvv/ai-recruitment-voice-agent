@@ -55,6 +55,21 @@ def normalize_peak(audio: FloatAudio, *, target_dbfs: float = TARGET_PEAK_DBFS) 
     return (audio * (_db_to_amplitude(target_dbfs) / peak)).astype(np.float32)
 
 
+def gain_soft_limited(
+    audio: FloatAudio, gain_db: float, *, ceiling_dbfs: float = -1.0
+) -> FloatAudio:
+    """Raise loudness by `gain_db`, rounding off peaks smoothly below `ceiling_dbfs`.
+
+    c·tanh(g·x/c) is linear for quiet samples and never exceeds the ceiling. It is stateless,
+    so it can run chunk by chunk on a stream.
+    """
+    if gain_db == 0 or audio.size == 0:
+        return audio
+    c = _db_to_amplitude(ceiling_dbfs)
+    out: FloatAudio = (c * np.tanh(audio * _db_to_amplitude(gain_db) / c)).astype(np.float32)
+    return out
+
+
 def float_to_pcm16(audio: FloatAudio) -> bytes:
     """float32 [-1, 1] → signed 16-bit little-endian bytes, clipping anything out of range."""
     clipped = np.clip(audio, -1.0, 1.0)

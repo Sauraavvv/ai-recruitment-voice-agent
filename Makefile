@@ -5,7 +5,7 @@ VENV := $(BACKEND)/.venv/bin
 
 .PHONY: help env up down logs ps test test-docker lint fmt typecheck lock venv check-secrets shell-db \
 	migrate migration create-user types agent-cli agent-eval llm-bench \
-	tts-model tts-say test-tts bench-tts
+	tts-model tts-say test-tts test-deepgram-tts bench-tts
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -94,15 +94,18 @@ llm-bench:  ## Latency benchmark: make llm-bench models=model-a,model-b [args='-
 tts-model:  ## Download the TTS model for the local venv (Docker images already have it)
 	cd "$(BACKEND)" && .venv/bin/python app/scripts/download_tts_model.py --dest models/kitten-tts-2-nano
 
-tts-say:  ## Speak a line and play it: make tts-say TEXT="Hello Priya" [PHONE=1] [VOICE=Iris]
+tts-say:  ## Speak a line and play it: make tts-say TEXT="Hello Priya" [PHONE=1] [VOICE=..] [PROVIDER=kitten]
 	@test -n "$(TEXT)" || (echo 'usage: make tts-say TEXT="Hello, am I speaking with Priya Iyer?" [PHONE=1]'; exit 1)
 	docker compose exec -T backend python -m app.scripts.tts_say --no-play "$(TEXT)" \
-	  $(if $(PHONE),--phone) $(if $(VOICE),--voice "$(VOICE)")
+	  $(if $(PHONE),--phone) $(if $(VOICE),--voice "$(VOICE)") $(if $(PROVIDER),--provider "$(PROVIDER)")
 	@if command -v afplay >/dev/null; then afplay "$(BACKEND)/artifacts/tts/last.wav"; \
 	  if [ -n "$(PHONE)" ]; then afplay "$(BACKEND)/artifacts/tts/last-8k.wav"; fi; fi
 
 test-tts:  ## Real-model TTS tests (about 2 minutes)
 	docker compose exec -T backend pytest -q -p no:cacheprovider -m tts app/tests/integration/test_kitten_provider.py
+
+test-deepgram-tts:  ## Live Deepgram TTS tests (a few cents)
+	docker compose exec -T backend pytest -q -p no:cacheprovider -m deepgram app/tests/integration/test_deepgram_tts.py
 
 bench-tts:  ## TTS latency benchmark: make bench-tts [args='--runs 50 --threads 1,2,4']
 	docker compose exec -T backend python -m app.scripts.bench_tts $(args)

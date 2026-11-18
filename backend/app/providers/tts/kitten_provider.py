@@ -24,6 +24,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from app.providers.tts.base import (
+    TECHNICAL_APOLOGY,
     AudioClip,
     ProviderStatus,
     TTSConfigError,
@@ -49,7 +50,6 @@ MAX_CHUNK_CHARS = 400  # longer text is split by the chunker first
 CHUNK_GAP_MS = 150  # pause between chunks of one long text (Kitten's own value)
 LRU_SIZE = 64
 WARM_UP_TEXT = "Hello, this is a warm up sentence."
-TECHNICAL_APOLOGY = "Sorry, I'm having a technical problem. We'll call you back."
 
 _loads_total = 0
 _loads_lock = threading.Lock()
@@ -291,7 +291,7 @@ class KittenTTSProvider(TTSProvider):
             raise TTSTimeoutError(f"synthesis took over {self.timeout_s} s twice") from last_exc
         raise TTSSynthesisError(f"synthesis failed twice: {type(last_exc).__name__}") from last_exc
 
-    def apology_clip(self) -> AudioClip:
+    def apology_clip(self, *, call_attempt_id: str | None = None) -> AudioClip:
         """Pre-synthesized 'Sorry, I'm having a technical problem…' for a call to end on (P6)."""
         clip = self._pinned.get(self._cache_key(self._normalize(TECHNICAL_APOLOGY)))
         if clip is None:

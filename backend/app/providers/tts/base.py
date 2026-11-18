@@ -7,7 +7,11 @@ can change on its own.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
+
+# Played when speech fails for good; every provider pre-synthesizes it at startup.
+TECHNICAL_APOLOGY = "Sorry, I'm having a technical problem. We'll call you back."
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,8 @@ class ProviderStatus:
     last_error: str | None = None
     last_latency_ms: int | None = None
     model_loads: int = 0
+    # A provider made of others (primary + fallback) lists their statuses here.
+    components: tuple["ProviderStatus", ...] = ()
 
 
 class TTSError(RuntimeError):
@@ -59,6 +65,10 @@ class TTSSynthesisError(TTSError):
     """The model raised or produced unusable audio."""
 
 
+class TTSStreamInterruptedError(TTSSynthesisError):
+    """A stream failed after some audio was already delivered."""
+
+
 class TTSProvider(ABC):
     sample_rate: int
 
@@ -70,6 +80,23 @@ class TTSProvider(ABC):
     async def synthesize(self, text: str, *, call_attempt_id: str | None = None) -> AudioClip:
         """Speak agent text. The provider normalizes it for its model (numbers, acronyms…) and
         splits text that is too long for one pass. Empty text gives an empty clip."""
+
+    async def stream(
+        self, text: str, *, call_attempt_id: str | None = None
+    ) -> AsyncIterator[AudioClip]:
+        """Yield the audio in pieces as soon as each is ready, for playback while the rest is
+        still being generated. The default yields the whole clip at once (local models are fast
+        enough)."""
+        clip = await self.synthesize(text, call_attempt_id=call_attempt_id)
+        if not clip.is_empty:
+            yield clip
+
+    def forget_call(self, call_attempt_id: str) -> None:  # noqa: B027  (optional hook)
+        """The call ended: drop any per-call state (the fallback provider's sticky choice)."""
+
+    @abstractmethod
+    def apology_clip(self, *, call_attempt_id: str | None = None) -> AudioClip:
+        """Pre-synthesized 'Sorry, I'm having a technical problem…' for a call to end on (P6)."""
 
     @abstractmethod
     async def close(self) -> None:

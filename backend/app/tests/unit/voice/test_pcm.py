@@ -82,3 +82,12 @@ def test_audio_clip_duration() -> None:
     assert clip.duration_ms == 1000
     assert not clip.is_empty
     assert AudioClip.from_pcm(b"", SR).is_empty
+
+
+def test_gain_soft_limited_is_linear_when_quiet_and_capped_when_loud() -> None:
+    quiet = np.array([0.01, -0.02], dtype=np.float32)
+    assert np.allclose(pcm.gain_soft_limited(quiet, 6.0), quiet * 10 ** (6 / 20), rtol=1e-3)
+    loud = np.array([0.9, -1.0], dtype=np.float32)
+    out = pcm.gain_soft_limited(loud, 6.0, ceiling_dbfs=-1.0)
+    assert np.all(np.abs(out) <= 10 ** (-1 / 20))
+    assert np.array_equal(pcm.gain_soft_limited(loud, 0.0), loud)

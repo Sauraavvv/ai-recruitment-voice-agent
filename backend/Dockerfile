@@ -24,7 +24,8 @@ RUN python /tmp/download_tts_model.py --dest /opt/models/kitten-tts-2-nano \
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 
-RUN useradd --create-home --uid 1000 appuser
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /app/artifacts && chown appuser:appuser /app/artifacts
 COPY --chown=appuser:appuser . .
 USER appuser
 

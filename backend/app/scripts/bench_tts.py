@@ -116,6 +116,58 @@ async def bench(threads: int, runs: int) -> dict[str, Any]:
     return result
 
 
+async def bench_deepgram(runs: int) -> dict[str, Any]:
+    """Live Deepgram Aura over stream(): time to first audio and to the last byte. Costs money."""
+    from app.config import get_settings
+    from app.providers.tts.deepgram_provider import DEFAULT_VOICE, DeepgramTTSProvider
+
+    settings = get_settings()
+    if not settings.deepgram_api_key:
+        raise SystemExit("DEEPGRAM_API_KEY is not set")
+    provider = DeepgramTTSProvider(
+        api_key=settings.deepgram_api_key.get_secret_value(),
+        voice=settings.deepgram_tts_voice or DEFAULT_VOICE,
+        first_byte_timeout_s=10,
+    )
+    await provider.initialize()
+    result: dict[str, Any] = {"voice": provider.voice}
+    for name, text in SENTENCES.items():
+        first, total, audio_ms = [], [], 0
+        for _ in range(runs):
+            t = time.perf_counter()
+            got: float | None = None
+            size = 0
+            async for clip in provider.stream(text):
+                got = got or time.perf_counter()
+                size += len(clip.pcm)
+            provider._lru.clear()  # every run must reach Deepgram, not the cache
+            first.append(((got or time.perf_counter()) - t) * 1000)
+            total.append((time.perf_counter() - t) * 1000)
+            audio_ms = size // 2 * 1000 // 24000
+        result[name] = {
+            "first_p50_ms": round(statistics.median(first)),
+            "first_p95_ms": round(pct(first, 0.95)),
+            "total_p50_ms": round(statistics.median(total)),
+            "audio_ms": audio_ms,
+        }
+    await provider.close()
+    return result
+
+
+def markdown_deepgram(env: dict[str, Any], r: dict[str, Any]) -> str:
+    rows = "\n".join(
+        f"| {k} | {r[k]['audio_ms']} ms | {r[k]['first_p50_ms']} / {r[k]['first_p95_ms']} ms "
+        f"| {r[k]['total_p50_ms']} ms |"
+        for k in SENTENCES
+    )
+    return (
+        f"**{env['where']}, Deepgram {r['voice']}** ({env['runs']} runs per sentence)\n\n"
+        "| Sentence | Audio | First audio p50 / p95 | Whole clip p50 |\n|---|---|---|---|\n"
+        + rows
+        + "\n"
+    )
+
+
 def markdown(env: dict[str, Any], results: list[dict[str, Any]]) -> str:
     head = (
         f"**{env['where']}**: {env['cpu']}, {env['cores']} cores, {env['system']}, "
@@ -142,6 +194,7 @@ def main() -> None:
     parser.add_argument("--threads", default="2", help="comma-separated, e.g. 1,2,4")
     parser.add_argument("--where", default="Docker" if Path("/.dockerenv").exists() else "Host")
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--provider", choices=["kitten", "deepgram"], default="kitten")
     args = parser.parse_args()
     env = {
         "where": args.where,
@@ -151,6 +204,13 @@ def main() -> None:
         "model": MODEL_NAME,
         "runs": args.runs,
     }
+    if args.provider == "deepgram":
+        dg = asyncio.run(bench_deepgram(args.runs))
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(json.dumps({"env": env, "deepgram": dg}, indent=1) + "\n")
+        print(markdown_deepgram(env, dg))
+        return
     results = [asyncio.run(bench(int(t), args.runs)) for t in args.threads.split(",")]
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)

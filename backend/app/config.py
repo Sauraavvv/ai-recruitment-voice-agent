@@ -6,7 +6,7 @@ Core settings are required. Provider settings stay optional until the phase that
 
 from enum import StrEnum
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     tts_timeout_s: float = Field(default=3.0, gt=0, le=30)
     # Load the voice model at startup. Tests turn this off; nothing can speak without it.
     tts_preload: bool = True
+    # Which TTS speaks: "auto" = Deepgram Aura when DEEPGRAM_API_KEY is set, else Kitten.
+    tts_provider: Literal["auto", "deepgram", "kitten"] = "auto"
+    # With Deepgram as primary, keep Kitten loaded and use it when Deepgram fails.
+    tts_fallback: bool = True
+    deepgram_tts_voice: str | None = None  # e.g. aura-2-asteria-en; empty = aura-2-harmonia-en
+    deepgram_tts_gain_db: float = Field(default=6.0, ge=-12, le=12)  # loudness match with Kitten
+    deepgram_tts_first_byte_timeout_s: float = Field(default=1.5, gt=0, le=10)
+    # Disk cache for fixed phrases from paid providers (survives restarts)
+    tts_cache_dir: str = "artifacts/tts-cache"
 
     # Google Sheets (Phase 7)
     google_service_account_json: str | None = None

@@ -47,5 +47,9 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["app/tests"]
 # Live OpenAI tests cost money and need a key: run them explicitly with `make agent-eval`.
 # Real-model TTS tests take about a minute: `make test-tts`.
-addopts = "-m 'not llm and not tts'"
-markers = ["llm: calls the real OpenAI API", "tts: loads the real Kitten TTS model (slow)"]
+addopts = "-m 'not llm and not tts and not deepgram'"
+markers = [
+  "llm: calls the real OpenAI API",
+  "tts: loads the real Kitten TTS model (slow)",
+  "deepgram: calls the real Deepgram API (costs money)",
+]

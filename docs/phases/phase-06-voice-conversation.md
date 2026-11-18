@@ -129,7 +129,9 @@ Per turn, record:
 
 **Masking the LLM wait (decided in P2, 2026-11-18).** One OpenAI turn takes about 2.3 s at p50 (3.5 s at p95) with `gpt-5.4-mini`. The round trip alone is about 1 s, so neither a smaller model nor a smaller schema reaches 1.2 s (see docs/agent.md). Instead, as soon as STT finalizes an utterance, play a short pre-synthesized acknowledgement from the phrase cache ("Okay.", "Got it.", "Mm-hmm, one second."). Pick it at random and avoid repeating the previous one. Then speak the agent's reply. Skip it when the reply is a fixed template (greeting, introduction, exits) or comes from a low-confidence re-prompt. Strip a leading acknowledgement from the LLM reply when one was already played, so the caller doesn't hear "Got it. Got it." Measure t0 → first acknowledgement frame as its own segment.
 
-Ways to hit the targets: short first chunk, synthesize chunk N+1 while N plays, phrase cache, pre-synthesized greeting, compact prompts. Log each turn with `candidate_id`, `call_attempt_id` and `provider_call_id` (plan.md §12), and monitor event-loop lag.
+Ways to hit the targets: short first chunk, synthesize chunk N+1 while N plays, phrase cache, pre-synthesized greeting, compact prompts.
+
+**TTS from Phase 3 (2026-11-18):** the primary voice is Deepgram Aura (Harmonia), with Kitten as fallback (`FallbackTTSProvider`). Play replies with `tts.stream(text, call_attempt_id=…)`, never `synthesize()`. Deepgram's first audio comes after about 350 ms but the whole clip takes about half its duration (docs/benchmarks/tts.md), so t2 → t3 is about 350 ms with Deepgram and 200–400 ms with Kitten. On barge-in, stop iterating the stream: the provider closes the HTTP request. At call end, call `tts.forget_call(call_attempt_id)`. Use `tts.apology_clip(call_attempt_id=…)` so the apology matches the voice the call is using. Log each turn with `candidate_id`, `call_attempt_id` and `provider_call_id` (plan.md §12), and monitor event-loop lag.
 
 ### 5.9 Resuming with known data
 

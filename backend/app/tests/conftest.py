@@ -34,6 +34,8 @@ def make_settings(**overrides: object) -> Settings:
         "redis_url": TEST_REDIS_URL,
         "frontend_origin": TEST_ORIGIN,
         "tts_preload": False,
+        # never pick up the developer's real key from the environment (Docker passes .env)
+        "deepgram_api_key": None,
         "_env_file": None,
     }
     values.update(overrides)

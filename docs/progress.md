@@ -1,5 +1,41 @@
 # Progress
 
+## Phase 3 amendment: Deepgram Aura primary, Kitten fallback (2026-11-18)
+
+**Asked by the user** after the Kitten build (d02281b): use Deepgram's TTS as the main voice and Kitten when Deepgram isn't available. Voice chosen by ear from 20 Aura-2 voices: **Harmonia** (Asteria runner-up).
+
+**Implemented:**
+- `providers/tts/deepgram_provider.py`: REST `/v1/speak`, linear16 24 kHz streamed. Retries only before the first audio byte, with a 1.5 s first-byte timeout. 401/403/400 → `TTSConfigError`. Fixed phrases fetched 4 at a time and cached on disk (`TTS_CACHE_DIR`). +6 dB soft-limited gain so Harmonia is as loud as Iris.
+- `providers/tts/fallback.py`: `FallbackTTSProvider` with these rules:
+  - A sentence Deepgram can't deliver goes to Kitten.
+  - The call then stays on Kitten (sticky per `call_attempt_id`).
+  - Circuit breaker after 3 consecutive failures, open for 60 s.
+  - Deepgram is retried every 60 s if it was down at startup.
+  - A stream that breaks mid-sentence is repeated on Kitten.
+  - Ready if either provider is ready.
+- `TTSProvider` gained `stream()` (Kitten yields its whole clip), `apology_clip(call_attempt_id=)` and `forget_call()`. `AudioClip`/`ProviderStatus` gained `components`. `pcm.gain_soft_limited`.
+- Settings: `TTS_PROVIDER` (auto/deepgram/kitten; auto = Deepgram when a key is set), `TTS_FALLBACK`, `DEEPGRAM_TTS_VOICE`, `DEEPGRAM_TTS_GAIN_DB`, `DEEPGRAM_TTS_FIRST_BYTE_TIMEOUT_S`, `TTS_CACHE_DIR`. `DEEPGRAM_API_KEY` is in `.env` (not committed).
+- Tools: `tts-say` streams like a call and reports which voice spoke (`PROVIDER=`, `VOICE=`). `bench-tts --provider deepgram`. `make test-deepgram-tts`.
+- Dockerfile creates a writable `/app/artifacts`.
+
+**Tests:**
+- `make test` and `make test-docker` → 342 passed (adds mocked-HTTP Deepgram tests, fallback routing tests and the gain test). The test settings now pin `deepgram_api_key=None`, so the developer's key in Docker's environment can't leak into tests.
+- `make test-deepgram-tts` → 3 passed (live). `make test-tts` → 6 passed (Kitten, Docker).
+- Lint and mypy clean.
+- Live fallback run: outage mid-call → Kitten in 1.76 s for that sentence, then sticky; startup with Deepgram down → ready on Kitten in 4.9 s.
+
+**Numbers** ([benchmarks/tts.md](benchmarks/tts.md#deepgram-aura-primary)):
+- First audio p50 337–353 ms, p95 ≤ 445 ms (Docker), whatever the sentence length.
+- The whole clip takes about half its audio length, so P6 must play `stream()` output as it arrives.
+- Cost about $0.06 per call ($0.030 per 1,000 characters); $200 of free credit on the account.
+
+**Risks:**
+- No Aura voice has an Indian accent.
+- Deepgram's servers are in the US (about 280 ms round trip from here), so re-measure from the production VM in P10.
+- One outage sentence costs about 1.5 s of silence before Kitten speaks; lower `DEEPGRAM_TTS_FIRST_BYTE_TIMEOUT_S` if that's too long. Its p95 is about 450 ms.
+- Deepgram is also the planned STT (P4), so one outage affects both; Kitten covers only TTS.
+- The API key was shared in chat. Rotate it in the Deepgram console if that's a concern.
+
 ## Phase 3 decisions (agreed 2026-11-18)
 
 - Voice: **Iris**, Kitten TTS 2 **nano** (English, 24 kHz), chosen by the user from 18 voices (Kitten 0.8 micro and Kitten 2 nano), listening at phone quality first. Final-pipeline clarity at 8 kHz μ-law scored **4/5** by the user; all 15 test lines fine, no pronunciation fixes needed.

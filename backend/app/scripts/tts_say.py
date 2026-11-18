@@ -18,19 +18,25 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.providers.tts import create_tts_provider
-from app.providers.tts.kitten_provider import KittenTTSProvider
+from app.providers.tts.base import AudioClip
 from app.voice import pcm
 from app.voice.text_normalizer import normalize_for_speech
 
 OUT_DIR = Path("artifacts/tts")
 
 
-async def say(text: str, *, voice: str | None, phone: bool, play: bool) -> None:
+async def say(
+    text: str, *, voice: str | None, provider_name: str | None, phone: bool, play: bool
+) -> None:
     settings = get_settings()
+    updates: dict[str, object] = {}
+    if provider_name:
+        updates["tts_provider"] = provider_name
     if voice:
-        settings = settings.model_copy(update={"kitten_voice": voice})
+        # Deepgram voices look like aura-2-<name>-en; anything else is a Kitten voice
+        updates["deepgram_tts_voice" if voice.startswith("aura") else "kitten_voice"] = voice
+    settings = settings.model_copy(update=updates)
     provider = create_tts_provider(settings)
-    assert isinstance(provider, KittenTTSProvider)
     started = time.perf_counter()
     await provider.initialize()
     load_s = time.perf_counter() - started
@@ -38,8 +44,14 @@ async def say(text: str, *, voice: str | None, phone: bool, play: bool) -> None:
     print(f"text:   {text}")
     print(f"spoken: {normalize_for_speech(text)}")
     started = time.perf_counter()
-    clip = await provider.synthesize(text, cache=False)
+    first_ms: float | None = None
+    pieces = []
+    async for piece in provider.stream(text):  # as a call would play it
+        first_ms = first_ms or (time.perf_counter() - started) * 1000
+        pieces.append(piece.pcm)
     synth_ms = (time.perf_counter() - started) * 1000
+    clip = AudioClip.from_pcm(b"".join(pieces), provider.sample_rate)
+    used = provider.status()
     await provider.close()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -55,8 +67,8 @@ async def say(text: str, *, voice: str | None, phone: bool, play: bool) -> None:
         last.write_bytes(data)
         print(f"wrote:  {path}")
     print(
-        f"voice {provider.voice}, {clip.sample_rate} Hz, {clip.duration_ms} ms of audio, "
-        f"synthesized in {synth_ms:.0f} ms (model load {load_s:.1f} s)"
+        f"{used.detail}\n{clip.sample_rate} Hz, {clip.duration_ms} ms of audio; first audio "
+        f"after {first_ms or 0:.0f} ms, all of it after {synth_ms:.0f} ms (start-up {load_s:.1f} s)"
     )
     if play and (player := shutil.which("afplay")):
         for path in files:
@@ -66,11 +78,20 @@ async def say(text: str, *, voice: str | None, phone: bool, play: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("text")
-    parser.add_argument("--voice", help="override KITTEN_VOICE")
+    parser.add_argument("--voice", help="aura-2-<name>-en for Deepgram, else a Kitten voice")
+    parser.add_argument("--provider", choices=["auto", "deepgram", "kitten"])
     parser.add_argument("--phone", action="store_true", help="also write the 8 kHz μ-law version")
     parser.add_argument("--no-play", action="store_true")
     args = parser.parse_args()
-    asyncio.run(say(args.text, voice=args.voice, phone=args.phone, play=not args.no_play))
+    asyncio.run(
+        say(
+            args.text,
+            voice=args.voice,
+            provider_name=args.provider,
+            phone=args.phone,
+            play=not args.no_play,
+        )
+    )
 
 
 if __name__ == "__main__":

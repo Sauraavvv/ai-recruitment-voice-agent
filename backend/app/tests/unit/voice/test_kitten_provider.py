@@ -13,6 +13,7 @@ import pytest
 
 from app.providers.tts import create_tts_provider, fixed_phrases
 from app.providers.tts.base import (
+    TECHNICAL_APOLOGY,
     TTSConfigError,
     TTSNotReadyError,
     TTSSynthesisError,
@@ -20,7 +21,6 @@ from app.providers.tts.base import (
 )
 from app.providers.tts.kitten_provider import (
     EXPECTED_SAMPLE_RATE,
-    TECHNICAL_APOLOGY,
     KittenTTSProvider,
     model_loads_total,
 )
@@ -228,7 +228,9 @@ async def test_failed_warm_up_leaves_provider_not_ready(model_dir: Path) -> None
 
 
 def test_factory_uses_settings_and_defaults() -> None:
-    provider = create_tts_provider(make_settings(tts_threads=3, kitten_model_path="/x/y"))
+    provider = create_tts_provider(
+        make_settings(tts_threads=3, kitten_model_path="/x/y", tts_provider="kitten")
+    )
     assert isinstance(provider, KittenTTSProvider)
     assert provider.voice == "Iris"
     assert provider.threads == 3

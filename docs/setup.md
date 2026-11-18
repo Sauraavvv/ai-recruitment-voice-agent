@@ -80,6 +80,13 @@ Set `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5.4-mini` and `OPENAI_REASONING_EFFORT=n
 
 These call the real API; `make test` never does. See [agent.md](agent.md).
 
+### Voice: Deepgram Aura with Kitten fallback (Phase 3 onwards)
+
+With `DEEPGRAM_API_KEY` set, the agent speaks with **Deepgram Aura-2 Harmonia**. Kitten TTS (voice Iris) stays loaded as the fallback, used when Deepgram errors or sends no audio within 1.5 s. Once a call falls back, it stays on Kitten until it ends. After 3 failures in a row, Deepgram is skipped for 60 s. Without a key, Kitten speaks alone. Settings and rules: `.env.example` (`TTS_PROVIDER`, `DEEPGRAM_TTS_*`) and `backend/app/providers/tts/fallback.py`. Cost: $0.030 per 1,000 characters, about $0.06 per call. New accounts get $200 of free credit.
+
+- `make tts-say TEXT="…" PROVIDER=kitten` hears the fallback voice. `VOICE=aura-2-asteria-en` tries another Deepgram voice.
+- `make test-deepgram-tts`: live Deepgram tests (a few cents). `make bench-tts args='--provider deepgram --runs 10'`: its latency.
+
 ### Kitten TTS (Phase 3 onwards)
 
 Nothing to configure. The Docker image contains the model (Kitten TTS 2 nano, English, at a pinned revision), and the backend loads it in the background at startup (log line `tts_ready`). Defaults: voice `Iris`, 2 ONNX threads per synthesis, 3 s timeout. Override them with `KITTEN_VOICE`, `TTS_THREADS` and `TTS_TIMEOUT_S`. Leave `KITTEN_MODEL_PATH` empty to use the bundled model.
@@ -100,6 +107,8 @@ Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) be
 | `/health/ready` shows `worker: error` | Worker not running or just started; check `docker compose logs worker` (heartbeat every 30 s) |
 | Agent or eval: `LLMConfigError: OPENAI_API_KEY and OPENAI_MODEL must be set` | Fill them in `.env`, then `make up` (containers read `.env` only when created) |
 | OpenAI `400 Unsupported value: 'minimal'` | 5.x/6.x models accept `OPENAI_REASONING_EFFORT=none`, not `minimal`; non-reasoning models (e.g. gpt-4.1-mini) need it empty |
+| Log shows `tts_component_unavailable component=primary` | Deepgram was unreachable or rejected the key at startup; Kitten speaks, and Deepgram is retried every 60 s. Check `DEEPGRAM_API_KEY` |
+| Log shows `tts_fallback_used` | A sentence went to Kitten (Deepgram error or > 1.5 s to first audio); see the `error=` field |
 | Log shows `tts_load_failed … no Kitten model` | The backend runs outside the image without the model: `make tts-model`, or set `KITTEN_MODEL_PATH` |
 | `tts_load_failed … unknown KITTEN_VOICE` | Use an English voice name from the error message (default `Iris`) |
 | Port already in use | Stop the other service or change the host port in `docker-compose.yml` |

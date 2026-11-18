@@ -1,7 +1,11 @@
 # TTS benchmarks and voice choice (Phase 3)
 
-**Chosen:** Kitten TTS 2 **nano**, English, voice **Iris** ("hushed museum guide", female).
-The user chose it in the listening test on 2026-11-18.
+**Primary:** Deepgram **Aura-2 Harmonia** (`aura-2-harmonia-en`, American female, calm/empathetic),
+streamed. **Fallback:** Kitten TTS 2 **nano**, voice **Iris**, local. The user chose both by ear on
+2026-11-18: Iris first, then Deepgram as primary with Kitten as fallback, then Harmonia (Asteria
+was the runner-up). See [Deepgram Aura (primary)](#deepgram-aura-primary).
+
+The Kitten sections below describe the fallback (and the only voice when no Deepgram key is set).
 
 | | |
 |---|---|
@@ -98,6 +102,47 @@ through the production path (normalizer → ONNX G2P → model → trim → norm
 | Voice | Clarity (8 kHz) | Naturalness | Names | Notes |
 |---|---|---|---|---|
 | Iris (2-nano) | **4/5** | not scored separately | all 15 lines fine | Scored by the user, 2026-11-18. No pronunciation fixes needed. |
+
+## Deepgram Aura (primary)
+
+| | |
+|---|---|
+| API | `POST https://api.deepgram.com/v1/speak?model=aura-2-harmonia-en&encoding=linear16&sample_rate=24000&container=none`, streamed response |
+| Output | 24 kHz int16 mono, the same as Kitten, so the fallback switch needs no conversion |
+| Cost | $0.030 per 1,000 characters (pay as you go, 2026-11-18); about 2,000 characters per call ≈ **$0.06/call**. New accounts get $200 of free credit. |
+| Voices | 40+ English Aura-2 voices, all American, British, Australian, Irish or Filipino. **No Indian-accent voice** (checked via `/v1/models`, 2026-11-18). |
+| Loudness | Harmonia's average level is about 7 dB below Iris (RMS −25 vs −18 dBFS). +6 dB through a soft limiter (`DEEPGRAM_TTS_GAIN_DB`) brings it to −21 dBFS, peak −1.9. |
+| Server | `api.deepgram.com` (US). About 280 ms network round trip from the development machine. |
+
+Listening test: 20 shortlisted Aura-2 voices × 3 call sentences, phone band first. The user shortlisted Harmonia and Asteria and chose **Harmonia**.
+
+**Latency** (`make bench-tts args='--provider deepgram --runs 10'`, via `stream()`):
+
+| Where | Sentence | Audio | First audio p50 / p95 | Whole clip p50 |
+|---|---|---|---|---|
+| Docker (M2) | short | 1.2 s | 337 / 388 ms | 871 ms |
+| Docker (M2) | medium | 4.8 s | 353 / 445 ms | 2680 ms |
+| Docker (M2) | long | 10.0 s | 348 / 405 ms | 4900 ms |
+| Host (M2), Asteria | short / medium / long | 1.2 / 4.4 / 11.1 s | 341–346 / 362–441 ms | 863 / 2202 / 5800 ms |
+
+Deepgram sends the first audio in about 350 ms whatever the length, then the rest at about twice
+real time. So **live replies must be played while streaming** (`TTSProvider.stream()`): waiting
+for the whole clip would add 2–5 s per reply. Kitten produces a whole medium sentence in about
+400 ms; Deepgram's first audio is a little later than Kitten's short sentence (215 ms p95).
+
+**Fallback behaviour, measured live** (simulated outage: unroutable URL):
+
+| Situation | Result |
+|---|---|
+| Deepgram healthy | first audio 341 ms, Deepgram |
+| Deepgram down mid-call | that sentence: 1.76 s (1.5 s first-byte timeout + Kitten), Kitten |
+| Same call after Deepgram recovers | 190 ms, Kitten (sticky per call, so the voice doesn't flip) |
+| New call | 353 ms, Deepgram |
+| Startup with Deepgram down | ready in 4.9 s on Kitten alone; Deepgram is retried every 60 s |
+
+Startup: Deepgram's 17 fixed phrases are fetched 4 at a time, then cached on disk
+(`TTS_CACHE_DIR`), so later restarts only send a one-word warm-up. Both providers load in
+parallel. In Docker the backend was ready in about 9.6 s (first start).
 
 ## Reproducing
 
