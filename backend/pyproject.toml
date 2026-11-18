@@ -20,6 +20,11 @@ ignore = [
 # Interactive/offline tools: blocking file reads and input() are fine there.
 "app/agent/cli.py" = ["ASYNC240", "ASYNC250"]
 "app/tests/agent_eval/**" = ["ASYNC240", "ASYNC250", "S311"]
+# Speech text handling: curly quotes, dashes, × and IPA symbols are the point, not typos.
+"app/voice/**" = ["RUF001", "RUF002", "RUF003"]
+"app/providers/tts/**" = ["RUF001", "RUF002", "RUF003"]
+"app/scripts/bench_tts.py" = ["RUF001"]
+"app/scripts/tts_say.py" = ["ASYNC221", "ASYNC240"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -28,13 +33,19 @@ plugins = ["pydantic.mypy"]
 packages = ["app"]
 
 [[tool.mypy.overrides]]
-module = ["arq.*", "openpyxl.*"]
+module = ["arq.*", "openpyxl.*", "num2words.*", "soxr.*", "onnxruntime.*", "kittenml.*", "torch.*",
+          "transformers.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.scripts.export_g2p_onnx"]  # runs in a separate torch environment
+disallow_subclassing_any = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["app/tests"]
 # Live OpenAI tests cost money and need a key: run them explicitly with `make agent-eval`.
-addopts = "-m 'not llm'"
-markers = ["llm: calls the real OpenAI API"]
+# Real-model TTS tests take about a minute: `make test-tts`.
+addopts = "-m 'not llm and not tts'"
+markers = ["llm: calls the real OpenAI API", "tts: loads the real Kitten TTS model (slow)"]

@@ -3,6 +3,8 @@
 Run with: uvicorn app.main:create_app --factory
 """
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,10 +17,19 @@ from app.api.responses import register_error_handlers
 from app.api.v1 import api_router
 from app.config import AppEnv, Settings, get_settings
 from app.database.connection import dispose_engine, init_engine
+from app.providers.tts import create_tts_provider
+from app.providers.tts.base import TTSError, TTSProvider
 from app.utils.log import configure_logging, get_logger
 from app.utils.redis import close_redis, init_redis
 
 logger = get_logger(__name__)
+
+
+async def _load_tts(tts: TTSProvider) -> None:
+    """Load the voice in the background: the API is usable meanwhile, and a failure is reported
+    by tts.status() (calls are refused without a voice, Phase 5) instead of crashing the app."""
+    with contextlib.suppress(TTSError):
+        await tts.initialize()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -29,6 +40,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         init_engine(settings.database_url.get_secret_value())
         init_redis(settings.redis_url.get_secret_value())
+        tts: TTSProvider | None = None
+        tts_task: asyncio.Task[None] | None = None
+        if settings.tts_preload:
+            tts = create_tts_provider(settings)
+            tts_task = asyncio.create_task(_load_tts(tts), name="tts-load")
+        _app.state.tts = tts
         logger.info(
             "startup",
             env=settings.app_env.value,
@@ -38,6 +55,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if tts_task is not None:
+                tts_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await tts_task
+            if tts is not None:
+                await tts.close()
             await close_redis()
             await dispose_engine()
             logger.info("shutdown")

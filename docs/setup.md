@@ -12,7 +12,7 @@
 
 Recorded on the development machine (Phase 0, 2026-11-18): macOS 26.6.2, Apple Silicon (`arm64`), Python 3.12.16, Node 26.7.0, npm 11.19.0, git 2.54.0, uv 0.13.9.
 
-Apple Silicon note: Docker builds `linux/arm64` images locally. A production server is likely `linux/amd64`; build and test the backend image for that architecture before Phase 3 adds ONNX-based TTS.
+Apple Silicon note: Docker builds `linux/arm64` images locally. A production server is likely `linux/amd64`: check that the backend image builds for it with `docker buildx build --platform linux/amd64 backend` (done in Phase 3; see [benchmarks/tts.md](benchmarks/tts.md)).
 
 The project folder name contains a space (`project 2`). Quote paths in shell commands and scripts.
 
@@ -63,6 +63,7 @@ Integration tests use a separate database, `recruitment_ai_test`, created and mi
 ## Dependencies
 
 - Backend: edit `backend/requirements.in` or `requirements-dev.in`, then `make lock` (pins exact versions with hashes in `requirements.txt`).
+- `backend/requirements-nodeps.txt` holds packages installed with `--no-deps` (currently `kittenml`, whose declared dependencies include PyTorch, which we don't use). Update its version and hash by hand.
 - Frontend: `npm install <pkg>` inside `frontend/`.
 
 ## Configuration
@@ -79,6 +80,16 @@ Set `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5.4-mini` and `OPENAI_REASONING_EFFORT=n
 
 These call the real API; `make test` never does. See [agent.md](agent.md).
 
+### Kitten TTS (Phase 3 onwards)
+
+Nothing to configure. The Docker image contains the model (Kitten TTS 2 nano, English, at a pinned revision), and the backend loads it in the background at startup (log line `tts_ready`). Defaults: voice `Iris`, 2 ONNX threads per synthesis, 3 s timeout. Override them with `KITTEN_VOICE`, `TTS_THREADS` and `TTS_TIMEOUT_S`. Leave `KITTEN_MODEL_PATH` empty to use the bundled model.
+
+- `make tts-say TEXT="Hello, am I speaking with Priya Iyer?" PHONE=1`: speak a line, save it to `backend/artifacts/tts/` and play it, plus the 8 kHz phone version with `PHONE=1`. It also prints the text exactly as the model reads it.
+- Mispronounced name or company: add a respelling to `backend/app/voice/pronunciations.yaml`, then try `make tts-say` again. `tts-say` always reads the current file; the backend reads it once at startup (`docker compose restart backend`).
+- `make test-tts`: tests against the real model (about 2 minutes). `make test` skips them.
+- `make bench-tts args='--threads 1,2,4'`: the latency benchmark in [benchmarks/tts.md](benchmarks/tts.md).
+- Without Docker: `make tts-model` downloads the model to `backend/models/` (gitignored) for the local venv.
+
 Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) before committing.
 
 ## Common problems
@@ -89,6 +100,8 @@ Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) be
 | `/health/ready` shows `worker: error` | Worker not running or just started; check `docker compose logs worker` (heartbeat every 30 s) |
 | Agent or eval: `LLMConfigError: OPENAI_API_KEY and OPENAI_MODEL must be set` | Fill them in `.env`, then `make up` (containers read `.env` only when created) |
 | OpenAI `400 Unsupported value: 'minimal'` | 5.x/6.x models accept `OPENAI_REASONING_EFFORT=none`, not `minimal`; non-reasoning models (e.g. gpt-4.1-mini) need it empty |
+| Log shows `tts_load_failed … no Kitten model` | The backend runs outside the image without the model: `make tts-model`, or set `KITTEN_MODEL_PATH` |
+| `tts_load_failed … unknown KITTEN_VOICE` | Use an English voice name from the error message (default `Iris`) |
 | Port already in use | Stop the other service or change the host port in `docker-compose.yml` |
 | Frontend shows "Backend unreachable" | Backend container not up; `docker compose logs backend` |
 | Every change in the UI fails with "Request origin not allowed" | `FRONTEND_ORIGIN` in `.env` doesn't match the URL in the browser (e.g. port 3010 vs 3000); fix it and restart the backend |

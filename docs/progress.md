@@ -1,5 +1,79 @@
 # Progress
 
+## Phase 3 decisions (agreed 2026-11-18)
+
+- Voice: **Iris**, Kitten TTS 2 **nano** (English, 24 kHz), chosen by the user from 18 voices (Kitten 0.8 micro and Kitten 2 nano), listening at phone quality first. Final-pipeline clarity at 8 kHz μ-law scored **4/5** by the user; all 15 test lines fine, no pronunciation fixes needed.
+
+## Phase 3 exit report (2026-11-18)
+
+**Implemented:** Kitten TTS behind `TTSProvider`, loaded once per backend process.
+- The model loads in a background task in the FastAPI lifespan, warms up, and pre-synthesizes 17 fixed phrases: the acknowledgements for P6 masking, name-free closings, and the technical apology.
+- Inference runs on a thread pool sized to `MAX_CONCURRENT_CALLS`, with 2 ONNX threads each. The text front end runs under a lock.
+- A 3 s timeout with one retry, then `TTSTimeoutError` / `TTSSynthesisError`. P6 then plays `apology_clip()`.
+- An LRU cache for repeated lines, and per-synthesis latency logging with `call_attempt_id`.
+- Output: mono int16 at 24 kHz, silence-trimmed (50 ms padding), peak −3 dBFS.
+- A text normalizer with Indian conventions (lakh/crore, LPA, ₹, CTC → "C T C", times, dates, phone numbers) plus `pronunciations.yaml`.
+- A sentence chunker (batch and streaming).
+- Tools: `make tts-say` (with an 8 kHz μ-law version), `make bench-tts`, `make test-tts`, `make tts-model`.
+- Details: [benchmarks/tts.md](benchmarks/tts.md); deviations from the plan: [phase-03 §12](phases/phase-03-kitten-tts.md#12-as-built-2026-11-18).
+
+**Files created / changed:**
+- Backend, new: `providers/tts/` (`base.py`, `kitten_provider.py`, `g2p_onnx.py`, factory and fixed phrases in `__init__.py`); `voice/` (`chunker.py`, `text_normalizer.py`, `pronunciations.yaml`, `pcm.py`, `g2p/g2p_bart_en_us.onnx` + `.json`, 3 MB, committed); `scripts/` (`tts_say.py`, `bench_tts.py`, `download_tts_model.py`, `export_g2p_onnx.py`); tests `unit/voice/` (chunker, normalizer, pcm, provider with a fake engine), `integration/test_kitten_provider.py` (marker `tts`), `fixtures/tts_sentences.txt`, `fixtures/tts_corpus.py`.
+- Backend, changed:
+  - `config.py`: adds `TTS_THREADS`, `TTS_TIMEOUT_S`, `TTS_PRELOAD`; the Kitten settings default to the bundled model and Iris.
+  - `main.py`: TTS in the lifespan; `app.state.tts`.
+  - `conftest.py`: `tts_preload=False`.
+  - `pyproject.toml`: `tts` marker excluded by default, mypy ignores for untyped packages, ruff Unicode ignores for the speech code.
+- Infra:
+  - Dockerfile: installs `requirements-nodeps.txt` (`kittenml` 0.9.8 `--no-deps`, hash-pinned); downloads the model at build time into `/opt/models/kitten-tts-2-nano` (pinned revision `54526b8d8e45`); sets `HF_HUB_OFFLINE=1`. No system packages.
+  - New runtime dependencies (additions only, nothing upgraded): `numpy`, `soxr`, `num2words`, `onnxruntime`, `huggingface-hub`, `misaki`, `spacy`, `en-core-web-sm` 3.8.0, plus their dependencies. No torch, transformers or CUDA.
+  - `.dockerignore` excludes `models`; `.gitignore` allows `backend/app/voice/g2p/*.onnx`; the dev compose mounts `backend/artifacts`; Makefile `venv` also installs the no-deps file; `.env.example` gets the TTS settings.
+- Docs: `benchmarks/tts.md` (new), `setup.md` (Kitten section, dependencies, troubleshooting, amd64 note), `phases/phase-03` (§12 As built).
+
+**Tests run:**
+- `make test` and `make test-docker` → 310 passed, 7 deselected (live LLM eval and the real-model TTS tests).
+- `make test-tts` → 6 passed, on the host (103 s) and in Docker (123 s).
+- `make lint`, `make typecheck` → clean.
+- `make bench-tts --runs 50 --threads 1,2,4` on the host and in Docker (tables in benchmarks/tts.md).
+- The `linux/amd64` image (1.07 GB without dev tools) built, loaded the model and synthesized under emulation.
+- ONNX vs PyTorch G2P: 4229/4229 words identical, and full sentences identical end to end.
+
+**Acceptance criteria:**
+- P3-AC1 ✅ All 210 unique agent replies synthesize: 46 from the P2 eval transcripts plus the P2 templates rendered over names, companies and values (`test_every_agent_reply_synthesizes`).
+- P3-AC2 ✅ The load counter is unchanged over 100 syntheses (`test_model_loads_once_over_100_syntheses`), and the backend log shows `model_loads_total=1`.
+- P3-AC3 ✅ `make tts-say TEXT=… PHONE=1` writes and plays the clips; checked in Docker.
+- P3-AC4 ✅ 24 000 Hz, recorded in benchmarks/tts.md, asserted at load (`TTSConfigError` otherwise) and in tests.
+- P3-AC5 ✅ Benchmark tables for the host and Docker. Docker at 2 threads: short sentence p95 215 ms (≤ 300), medium p95 421 ms (≤ 600), RTF 0.087 (≤ 0.3), 2 concurrent 1.38× (≤ 1.5×), loop lag max 2.2 ms (≤ 20).
+- P3-AC6 ✅ Iris scored 4/5 for clarity at 8 kHz μ-law by the user; all lines fine.
+
+**Deferred or not done:**
+- Benchmark on the target VM (P10, `make bench-tts args='--threads 1,2,4'`); set `TTS_THREADS` from it.
+- Telephony codec and framing (P5 `audio_converter.py`). `voice/pcm.py` has resampling (soxr) and a μ-law round trip for listening only.
+- TTS status isn't exposed over HTTP yet (P8 settings page). Call eligibility should check `app.state.tts.status().ready` (P5).
+- Playback cancellation and streaming into calls are P6. `StreamingChunker` is ready if LLM streaming is added.
+
+**Needs credentials or manual provider configuration:** none. The model is public and downloaded at build time.
+
+**Risks or surprises discovered:**
+- The PyPI `kittentts` package is stale (0.1.3). The current package is `kittenml`, and its declared dependencies pull in PyTorch, transformers and diffusers, hence `--no-deps`.
+- We rely on two `kittenml` internals, pinned by version: `frontend.english.Fallback` (replaced) and `KittenTTS2Tiny._chunk`. Re-run `make test-tts` and the G2P verification when upgrading.
+- Kitten 2 tiny models try to `pip install` spaCy's `en_core_web_sm` at runtime if it's missing; it's pinned in requirements instead.
+- espeak's macOS data path is broken in `espeakng-loader` (it only mattered for the 0.8 models, which we don't use).
+- Kitten 2 mini is too slow on CPU (RTF 0.36), and the 1.7B flagship needs about 6 GB of RAM and uses a non-Apache weight licence.
+- The model is fast, so the image size (1.07 GB) and spaCy's load time (about 7 s at startup) are the main costs. With `--reload` in dev, every code change reloads the voice.
+- The developer Mac's Homebrew `ffmpeg` is broken (missing libx265). Not needed by the project; `brew reinstall ffmpeg` should fix it.
+
+**Decisions made:**
+- Agreed with the user: the voice (Iris, Kitten 2 nano), and the phone-band score.
+- Mine, open to review:
+  - G2P fallback on ONNX instead of PyTorch (verified identical); the graph is committed (3 MB).
+  - The model is baked into the image rather than a volume.
+  - Normalization happens inside `synthesize()`; Kitten's own normalizer stays on as a safety net.
+  - 2 ONNX threads by default.
+  - Background load at startup; the backend doesn't crash on TTS failure.
+  - Fixed phrases come from `agent/prompts.py`, so they can't drift.
+  - Real-model tests use the `tts` marker, outside `make test`.
+
 ## Phase 2 decisions (agreed 2026-11-18)
 
 - Model: `gpt-5.4-mini` with `OPENAI_REASONING_EFFORT=none` (benchmarked against gpt-5.4-nano, gpt-5.6-luna, gpt-6-luna and gpt-4.1-mini).

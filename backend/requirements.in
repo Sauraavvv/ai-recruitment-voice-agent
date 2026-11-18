@@ -19,3 +19,15 @@ argon2-cffi
 # Phase 2
 openai
 pyyaml
+# Phase 3 (TTS)
+numpy
+soxr
+num2words
+# Kitten TTS 2 nano, English. kittenml itself is installed with --no-deps from
+# requirements-nodeps.txt (its full dependency list pulls PyTorch); these are what the ONNX path
+# actually imports. Our English G2P fallback runs on ONNX (app/providers/tts/g2p_onnx.py).
+onnxruntime
+huggingface-hub
+misaki
+spacy
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

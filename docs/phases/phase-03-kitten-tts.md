@@ -173,3 +173,15 @@ None beyond installing the package and model. Listening sessions with the user.
 ## 11. Exit
 
 [Phase exit report](README.md#phase-exit-report) with the benchmark table and the chosen voice.
+
+## 12. As built (2026-11-18)
+
+Details and numbers: [benchmarks/tts.md](../benchmarks/tts.md). Where the build departs from the plan:
+
+- **Package and model:** `kittenml` 0.9.8 from PyPI (the `kittentts` package is stale), with **Kitten TTS 2 nano**, English, voice **Iris**, chosen by the user. Output is 24 kHz.
+- **No espeak, no PyTorch:** Kitten 2's English front end doesn't use espeak, so the Dockerfile needs no system packages. Its BART pronunciation fallback was exported to ONNX (`app/scripts/export_g2p_onnx.py`, verified identical on 4229 words) and replaces upstream's PyTorch version (`app/providers/tts/g2p_onnx.py`). `kittenml` is installed `--no-deps` from `requirements-nodeps.txt`.
+- **Model files:** downloaded at image build time at a pinned revision (`app/scripts/download_tts_model.py`) into `/opt/models/kitten-tts-2-nano`. `HF_HUB_OFFLINE=1`. `KITTEN_MODEL_PATH` stays empty unless overridden.
+- **Extra files:** `voice/pcm.py` (int16, trim, normalize, 8 kHz μ-law listening aid), `voice/g2p/` (the ONNX graph), `providers/tts/g2p_onnx.py`, `scripts/download_tts_model.py`, `scripts/export_g2p_onnx.py`, `tests/fixtures/tts_corpus.py`, `tests/unit/voice/test_pcm.py`, `test_kitten_provider.py` (unit, fake engine).
+- **Startup:** the model loads in a background task in the FastAPI lifespan. The API is usable meanwhile, and `app.state.tts.status()` reports `loading` / ready / the error. `TTS_PRELOAD=false` turns this off (tests).
+- **Normalization lives in the provider:** `synthesize()` takes raw agent text and normalizes it. Kitten's own normalizer still runs afterwards, as a safety net.
+- **Tests:** the real-model tests are marked `tts` (excluded from `make test`, run with `make test-tts`) instead of `slow`.

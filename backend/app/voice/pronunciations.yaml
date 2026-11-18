@@ -1,0 +1,15 @@
+# Pronunciation fixes for the TTS voice, applied before synthesis. Edit freely: no code changes.
+#
+# words: whole-word respellings, matched case-insensitively. Spell a word the way it should
+#        sound ("Gurgaon: Gurgaaon"). Spaced capitals are read as letters ("H C L").
+# acronyms_as_words: all-caps words to read as a word instead of letter by letter.
+#
+# Check a change with: make tts-say TEXT="..." (add PHONE=1 to hear it at phone quality).
+
+words:
+  HCLTech: H C L Tech
+  OK: okay
+
+acronyms_as_words:
+  - NASA
+  - COVID

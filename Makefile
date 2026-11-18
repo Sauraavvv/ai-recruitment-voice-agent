@@ -4,7 +4,8 @@ BACKEND := backend
 VENV := $(BACKEND)/.venv/bin
 
 .PHONY: help env up down logs ps test test-docker lint fmt typecheck lock venv check-secrets shell-db \
-	migrate migration create-user types agent-cli agent-eval llm-bench
+	migrate migration create-user types agent-cli agent-eval llm-bench \
+	tts-model tts-say test-tts bench-tts
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -27,7 +28,7 @@ ps:
 	docker compose ps
 
 venv:
-	cd "$(BACKEND)" && uv venv -p python3.12 .venv -q && uv pip install -q -p .venv -r requirements.txt -r requirements-dev.txt
+	cd "$(BACKEND)" && uv venv -p python3.12 .venv -q && uv pip install -q -p .venv -r requirements.txt -r requirements-dev.txt && uv pip install -q -p .venv --no-deps -r requirements-nodeps.txt
 
 lock:
 	cd "$(BACKEND)" && uv pip compile requirements.in --python-version 3.12 --generate-hashes -o requirements.txt -q \
@@ -87,3 +88,21 @@ agent-eval:  ## Live scenario evaluation: make agent-eval [args='-s s07 --runs 1
 llm-bench:  ## Latency benchmark: make llm-bench models=model-a,model-b [args='--effort none']
 	@test -n "$(models)" || (echo 'usage: make llm-bench models=model-a,model-b'; exit 1)
 	docker compose exec -T backend python -m app.tests.agent_eval.bench --models "$(models)" $(args)
+
+# --- Phase 3: Kitten TTS (the model is baked into the Docker image) ---
+
+tts-model:  ## Download the TTS model for the local venv (Docker images already have it)
+	cd "$(BACKEND)" && .venv/bin/python app/scripts/download_tts_model.py --dest models/kitten-tts-2-nano
+
+tts-say:  ## Speak a line and play it: make tts-say TEXT="Hello Priya" [PHONE=1] [VOICE=Iris]
+	@test -n "$(TEXT)" || (echo 'usage: make tts-say TEXT="Hello, am I speaking with Priya Iyer?" [PHONE=1]'; exit 1)
+	docker compose exec -T backend python -m app.scripts.tts_say --no-play "$(TEXT)" \
+	  $(if $(PHONE),--phone) $(if $(VOICE),--voice "$(VOICE)")
+	@if command -v afplay >/dev/null; then afplay "$(BACKEND)/artifacts/tts/last.wav"; \
+	  if [ -n "$(PHONE)" ]; then afplay "$(BACKEND)/artifacts/tts/last-8k.wav"; fi; fi
+
+test-tts:  ## Real-model TTS tests (about 2 minutes)
+	docker compose exec -T backend pytest -q -p no:cacheprovider -m tts app/tests/integration/test_kitten_provider.py
+
+bench-tts:  ## TTS latency benchmark: make bench-tts [args='--runs 50 --threads 1,2,4']
+	docker compose exec -T backend python -m app.scripts.bench_tts $(args)

@@ -1,0 +1,6 @@
+# Installed with `pip install --no-deps --require-hashes -r requirements-nodeps.txt`.
+# kittenml's own dependency list includes PyTorch, transformers and diffusers, which the Kitten 2
+# nano ONNX path doesn't use; requirements.in lists what it does use.
+# Wheel: https://pypi.org/project/kittenml/0.9.8/ (Apache-2.0)
+kittenml==0.9.8 \
+    --hash=sha256:6b2403384987627ea700fc795711df6797d775c60d796fd3114425f55c1b8676

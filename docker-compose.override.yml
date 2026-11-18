@@ -14,6 +14,8 @@ services:
       ]
     volumes:
       - ./backend/app:/app/app
+      # `make tts-say` writes WAVs here so they can be played on the host
+      - ./backend/artifacts:/app/artifacts
 
   worker:
     build:

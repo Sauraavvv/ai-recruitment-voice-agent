@@ -58,9 +58,14 @@ class Settings(BaseSettings):
     exotel_subdomain: str | None = None
     exotel_caller_id: str | None = None
 
-    # Kitten TTS (Phase 3)
+    # Kitten TTS (Phase 3). Empty values use the model baked into the image and the voice the
+    # user chose in the Phase 3 listening test.
     kitten_model_path: str | None = None
     kitten_voice: str | None = None
+    tts_threads: int = Field(default=2, ge=1, le=16)  # ONNX Runtime threads per synthesis
+    tts_timeout_s: float = Field(default=3.0, gt=0, le=30)
+    # Load the voice model at startup. Tests turn this off; nothing can speak without it.
+    tts_preload: bool = True
 
     # Google Sheets (Phase 7)
     google_service_account_json: str | None = None
@@ -123,7 +128,7 @@ class Settings(BaseSettings):
                 and self.exotel_subdomain
                 and self.exotel_caller_id
             ),
-            "kitten_tts": bool(self.kitten_model_path or self.kitten_voice),
+            "kitten_tts": True,  # local model with defaults; whether it loaded is in TTS status
             "google_sheets": bool(self.google_service_account_json and self.google_sheet_id),
         }
 

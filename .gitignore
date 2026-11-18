@@ -24,6 +24,8 @@ next-env.d.ts
 # Runtime output (recordings, generated audio, model files)
 artifacts/
 *.onnx
+# Kitten's English G2P fallback, exported to ONNX (app/scripts/export_g2p_onnx.py): small and committed
+!backend/app/voice/g2p/*.onnx
 models/
 *.wav
 !backend/app/tests/fixtures/**/*.wav

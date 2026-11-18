@@ -1,0 +1,22 @@
+# Listening-test and benchmark sentences (phase-03 plan, P3-T6). One per line; # starts a comment.
+# Greetings with Indian names
+Hello, am I speaking with Rahul Sharma?
+Hello, am I speaking with Priya Iyer?
+Hi Venkatesh, I'm an AI recruitment assistant calling on behalf of HCLTech about a Backend Developer role. Is this a good time for a quick five-minute conversation?
+# Cities and companies
+Great, thank you. It's a QA Engineer position with Infosys based in Bengaluru.
+Are you currently working at TCS, Wipro or HCLTech?
+Would you be open to relocating to Gurgaon, Noida or Hyderabad?
+# Numbers
+Got it. Just to confirm, your current CTC is 12.5 lakhs per annum, is that right?
+And your notice period is 60 days?
+Thanks. Just to confirm, you have 5.5 years of experience, a current CTC of 12.5 lakhs, an expected CTC of 18 lakhs and a notice period of 60 days. Is that correct?
+# Times
+Sure, we'll call you back tomorrow at 5 PM. Thank you, goodbye!
+Sure, we'll call you back on Thursday, 19 November at 5:30 PM. Thank you, goodbye!
+# A long question
+Could you tell me a little about your current role, the main technologies you work with day to day, and what kind of team you would like to join next?
+# Short acknowledgements
+Okay.
+Got it.
+Thanks, Rahul.

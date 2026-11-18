@@ -33,6 +33,7 @@ def make_settings(**overrides: object) -> Settings:
         "database_url": TEST_DATABASE_URL,
         "redis_url": TEST_REDIS_URL,
         "frontend_origin": TEST_ORIGIN,
+        "tts_preload": False,
         "_env_file": None,
     }
     values.update(overrides)
