@@ -13,7 +13,7 @@ Prove the MVP works end to end with real calls, harden the failure paths, deploy
 
 ## 2. Entry criteria
 
-P0–P9 accepted. A host for production. Production Exotel caller ID approved. Testers available on different mobile networks.
+P0–P9 accepted. A host for production. **Exotel KYC completed** (until then the account can only call verified numbers) and production caller ID approved. Testers available on different mobile networks.
 
 ## 3. Scope
 

@@ -17,7 +17,7 @@ plan.md: "Do not fake any part of this integration." Nothing in this phase is ma
 
 - Exotel enablement track (P0-T13) complete: account active, ExoPhone approved, streaming confirmed in writing for **this** account.
 - A public HTTPS + WSS URL for the backend (P5-T3).
-- One or two people who agreed to receive test calls on their own phones. During the PoC, only they are called.
+- One or two people who agreed to receive test calls on their own phones, with their numbers **verified in the Exotel dashboard** (the trial account without KYC can only call verified numbers). During the PoC, only they are called.
 - P1 authentication in place, because the backend becomes publicly reachable.
 
 ## 3. Scope
