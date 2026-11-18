@@ -1,0 +1,425 @@
+{
+ "meta": {
+  "file": "c09_recall_pause.wav",
+  "rate": 8000,
+  "model": "nova-3",
+  "language": "en-IN",
+  "endpointing_ms": 500
+ },
+ "messages": [
+  {
+   "_t": 0.633,
+   "type": "SpeechStarted",
+   "channel": [
+    0,
+    1
+   ],
+   "timestamp": 0.35
+  },
+  {
+   "_t": 1.554,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0199375,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "My current seat",
+      "confidence": 0.9667969,
+      "words": [
+       {
+        "word": "my",
+        "start": 0.24,
+        "end": 0.48,
+        "confidence": 0.9970703,
+        "punctuated_word": "My"
+       },
+       {
+        "word": "current",
+        "start": 0.48,
+        "end": 0.79999995,
+        "confidence": 0.9667969,
+        "punctuated_word": "current"
+       },
+       {
+        "word": "seat",
+        "start": 0.79999995,
+        "end": 1.04,
+        "confidence": 0.453125,
+        "punctuated_word": "seat"
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 2.751,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.36,
+   "start": 0.0,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "My current CTC is",
+      "confidence": 0.99902344,
+      "words": [
+       {
+        "word": "my",
+        "start": 0.0,
+        "end": 0.56,
+        "confidence": 0.9921875,
+        "punctuated_word": "My"
+       },
+       {
+        "word": "current",
+        "start": 0.56,
+        "end": 0.88,
+        "confidence": 1.0,
+        "punctuated_word": "current"
+       },
+       {
+        "word": "ctc",
+        "start": 0.88,
+        "end": 1.36,
+        "confidence": 0.99902344,
+        "punctuated_word": "CTC"
+       },
+       {
+        "word": "is",
+        "start": 1.36,
+        "end": 1.68,
+        "confidence": 0.9980469,
+        "punctuated_word": "is"
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.752,
+   "type": "SpeechStarted",
+   "channel": [
+    0,
+    1
+   ],
+   "timestamp": 3.48
+  },
+  {
+   "_t": 3.875,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0199375,
+   "start": 2.36,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.881,
+   "type": "UtteranceEnd",
+   "channel": [
+    0,
+    1
+   ],
+   "last_word_end": 1.68
+  },
+  {
+   "_t": 4.765,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.0199378,
+   "start": 2.36,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "I think it is nine",
+      "confidence": 0.99902344,
+      "words": [
+       {
+        "word": "i",
+        "start": 3.32,
+        "end": 3.56,
+        "confidence": 1.0,
+        "punctuated_word": "I"
+       },
+       {
+        "word": "think",
+        "start": 3.56,
+        "end": 3.7999997,
+        "confidence": 1.0,
+        "punctuated_word": "think"
+       },
+       {
+        "word": "it",
+        "start": 3.7999997,
+        "end": 3.9599998,
+        "confidence": 0.9941406,
+        "punctuated_word": "it"
+       },
+       {
+        "word": "is",
+        "start": 3.9599998,
+        "end": 4.12,
+        "confidence": 0.99902344,
+        "punctuated_word": "is"
+       },
+       {
+        "word": "nine",
+        "start": 4.12,
+        "end": 4.2799997,
+        "confidence": 0.99902344,
+        "punctuated_word": "nine"
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 6.237,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.4600003,
+   "start": 2.36,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "I think it is 9.2 lakhs.",
+      "confidence": 1.0,
+      "words": [
+       {
+        "word": "i",
+        "start": 3.3999999,
+        "end": 3.56,
+        "confidence": 1.0,
+        "punctuated_word": "I"
+       },
+       {
+        "word": "think",
+        "start": 3.56,
+        "end": 3.7999997,
+        "confidence": 1.0,
+        "punctuated_word": "think"
+       },
+       {
+        "word": "it",
+        "start": 3.7999997,
+        "end": 3.9599998,
+        "confidence": 0.99609375,
+        "punctuated_word": "it"
+       },
+       {
+        "word": "is",
+        "start": 3.9599998,
+        "end": 4.12,
+        "confidence": 0.99609375,
+        "punctuated_word": "is"
+       },
+       {
+        "word": "9.2",
+        "start": 4.12,
+        "end": 4.84,
+        "confidence": 1.0,
+        "punctuated_word": "9.2"
+       },
+       {
+        "word": "lakhs",
+        "start": 4.84,
+        "end": 5.24,
+        "confidence": 0.9046224,
+        "punctuated_word": "lakhs."
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 7.151,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0069375,
+   "start": 5.82,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 7.152,
+   "type": "UtteranceEnd",
+   "channel": [
+    0,
+    1
+   ],
+   "last_word_end": 5.24
+  },
+  {
+   "_t": 8.127,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.8869371,
+   "start": 5.82,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 8.169,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 0.0,
+   "start": 7.7069373,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 8.169,
+   "type": "Metadata",
+   "duration": 7.7069373,
+   "channels": 1,
+   "models": [
+    "40bd3654-e622-47c4-a111-63a61b23bfe8"
+   ],
+   "model_info": {
+    "40bd3654-e622-47c4-a111-63a61b23bfe8": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   }
+  }
+ ]
+}

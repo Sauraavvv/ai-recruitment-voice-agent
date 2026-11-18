@@ -97,6 +97,19 @@ Nothing to configure. The Docker image contains the model (Kitten TTS 2 nano, En
 - `make bench-tts args='--threads 1,2,4'`: the latency benchmark in [benchmarks/tts.md](benchmarks/tts.md).
 - Without Docker: `make tts-model` downloads the model to `backend/models/` (gitignored) for the local venv.
 
+### Speech-to-text: Deepgram streaming (Phase 4 onwards)
+
+Uses the same `DEEPGRAM_API_KEY`. One WebSocket stream per call (`backend/app/providers/stt/`); finished utterances come from `voice/utterance.py`. Defaults (`DEEPGRAM_STT_*` in `.env.example`) come from [benchmarks/stt.md](benchmarks/stt.md). Cost: Nova-3 English streaming is $0.0048 per minute of audio sent (Deepgram's pay-as-you-go price on 2026-11-18), about $0.03 for a 5-minute call. The stream is billed while it's open, so it's closed as soon as a call ends.
+
+The microphone, `say` and recording tools run **on the Mac host** (Docker can't reach the microphone), using `backend/.venv` (`make venv` installs `sounddevice`). They read the root `.env` themselves.
+
+- `make stt-clips`: generate the synthetic test set (macOS voices Rishi, Tara and Aman, with pauses and fan/TV/traffic noise) into `backend/artifacts/stt-audio/synthetic/`. Not committed.
+- `make stt-file FILE=artifacts/stt-audio/synthetic/rishi/c07_multi_answer.wav RATE=8000`: stream one file like a live call and watch partials, finals and latency (in Docker). `args='--dump-events out.json'` saves Deepgram's raw messages, sanitized, as a test fixture.
+- `make stt-mic [RATE=8000]`: talk and watch the live transcript.
+- `make voice-loop`: talk to the screening agent through STT (headphones; `SPEAK=1` speaks its replies). `make voice-loop SCRIPT=s14_happy_path RATE=8000` plays a scenario's lines with `say`, turn by turn, with no microphone needed.
+- `make stt-record SPEAKER=name`: record real test clips line by line (only with the speaker's consent; they stay in `backend/artifacts/stt-audio/real/`). Then `make bench-stt args='--sets real'`.
+- `make test-stt`: live STT tests (about 1.5 minutes, a few cents; needs `make stt-clips` first). `make bench-stt`: the full benchmark (about 10 minutes, about $0.50).
+
 Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) before committing.
 
 ## Common problems
@@ -111,6 +124,10 @@ Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) be
 | Log shows `tts_fallback_used` | A sentence went to Kitten (Deepgram error or > 1.5 s to first audio); see the `error=` field |
 | Log shows `tts_load_failed … no Kitten model` | The backend runs outside the image without the model: `make tts-model`, or set `KITTEN_MODEL_PATH` |
 | `tts_load_failed … unknown KITTEN_VOICE` | Use an English voice name from the error message (default `Iris`) |
+| `STTConfigError: Deepgram rejected the API key` | `DEEPGRAM_API_KEY` is wrong or revoked; STT fails at session start, never mid-call |
+| Log shows `stt_disconnected` then `stt_connected` | The stream dropped and reconnected; up to 2 s of audio was buffered meanwhile (`stt_audio_dropped` if more) |
+| `make stt-mic` / `voice-loop`: `PortAudioError` or no audio | Allow the terminal app microphone access (System Settings → Privacy & Security → Microphone), then restart the terminal |
+| `make test-stt` skips everything | Generate the clips first: `make stt-clips` (on the host) |
 | Port already in use | Stop the other service or change the host port in `docker-compose.yml` |
 | Frontend shows "Backend unreachable" | Backend container not up; `docker compose logs backend` |
 | Every change in the UI fails with "Request origin not allowed" | `FRONTEND_ORIGIN` in `.env` doesn't match the URL in the browser (e.g. port 3010 vs 3000); fix it and restart the backend |

@@ -5,3 +5,5 @@ pytest-asyncio
 ruff
 mypy
 types-PyYAML
+# Phase 4: microphone tools (host only; PortAudio is bundled in the macOS wheel)
+sounddevice

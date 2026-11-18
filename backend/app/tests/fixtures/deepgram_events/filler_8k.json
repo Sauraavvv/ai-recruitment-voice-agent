@@ -1,0 +1,152 @@
+{
+ "meta": {
+  "file": "c19_filler.wav",
+  "rate": 8000,
+  "model": "nova-3",
+  "language": "en-IN",
+  "endpointing_ms": 500
+ },
+ "messages": [
+  {
+   "_t": 0.74,
+   "type": "SpeechStarted",
+   "channel": [
+    0,
+    1
+   ],
+   "timestamp": 0.4
+  },
+  {
+   "_t": 1.647,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.31,
+   "start": 0.0,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 2.645,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0176876,
+   "start": 1.31,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.54,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.8776875,
+   "start": 1.31,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.54,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 0.0,
+   "start": 3.1876874,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.541,
+   "type": "Metadata",
+   "duration": 3.1876874,
+   "channels": 1,
+   "models": [
+    "40bd3654-e622-47c4-a111-63a61b23bfe8"
+   ],
+   "model_info": {
+    "40bd3654-e622-47c4-a111-63a61b23bfe8": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   }
+  }
+ ]
+}

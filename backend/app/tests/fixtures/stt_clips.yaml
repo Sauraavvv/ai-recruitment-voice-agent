@@ -1,0 +1,86 @@
+# STT test lines (plan P4-T8). One candidate answer per clip.
+#
+# - say: what macOS `say` speaks for the synthetic set; [[slnc N]] is N ms of silence.
+#   Real recordings (app/scripts/stt_record.py) read `text` aloud, pausing where `say` pauses.
+# - entities: key facts the transcript must contain. Each entity lists acceptable spellings of
+#   the same value (notation only, e.g. "12 lakh" / "twelve lakh"), never misrecognitions.
+# - utterances: how many finished utterances the clip should give (1 = one answer; 0 = nothing
+#   to transcribe). More than that is a false endpoint (the candidate was cut off).
+# - pause: the speaker pauses mid-answer, so these clips test endpointing.
+# - noise: background noise variants generated for this line (fan, tv, traffic).
+#
+# Audio files are not committed (plan P4 §10): `make stt-clips` regenerates the synthetic set
+# into backend/artifacts/stt-audio/.
+
+clips:
+  - id: c01_experience
+    text: I have six point five years of total experience.
+    entities: [["6.5 years", "six point five years"]]
+  - id: c02_company_city
+    text: Currently I am working with Infosys in Pune.
+    entities: [["infosys"], ["pune"]]
+    noise: [fan]
+  - id: c03_ctc
+    text: My current CTC is twelve lakhs per annum.
+    entities: [["ctc"], ["12 lakh", "twelve lakh", "1200000", "12,00,000"]]
+    noise: [tv]
+  - id: c04_expected_lpa
+    text: I'm expecting around eighteen LPA.
+    entities: [["18 lpa", "eighteen lpa", "18 l p a"]]
+  - id: c05_notice
+    text: My notice period is sixty days, but it is negotiable.
+    entities: [["60 days", "sixty days"], ["negotiable"]]
+  - id: c06_interested
+    text: Yes, I am interested in this role.
+    entities: [["yes"], ["interested"]]
+  - id: c07_multi_answer
+    text: I am at Tata Consultancy Services, Hyderabad office, and my notice period is thirty days.
+    entities: [["tata consultancy services", "tcs"], ["hyderabad"], ["30 days", "thirty days"]]
+    noise: [traffic]
+  - id: c08_two_numbers
+    text: Total experience is four years, relevant experience in Java is around three years.
+    entities: [["4 years", "four years"], ["java"], ["3 years", "three years"]]
+  - id: c09_recall_pause
+    text: My current CTC is... I think it is nine point two lakhs.
+    say: My current CTC is [[slnc 1600]] I think it is nine point two lakhs.
+    entities: [["ctc"], ["9.2 lakh", "nine point two lakh", "920000", "9,20,000"]]
+    pause: true
+  - id: c10_relocate
+    text: I'm based in Bengaluru, but I can relocate to Chennai.
+    entities: [["bengaluru", "bangalore"], ["chennai"]]
+  - id: c11_immediate
+    text: I can join immediately, I am currently serving notice.
+    entities: [["immediately"], ["serving notice"]]
+  - id: c12_wipro
+    text: Right now I am at Wipro, Noida.
+    entities: [["wipro"], ["noida"]]
+  - id: c13_ctc_pair
+    text: Expected is twenty two lakhs, current is fifteen point five.
+    entities: [["22 lakh", "twenty two lakh", "2200000", "22,00,000"], ["15.5", "fifteen point five"]]
+    noise: [fan, tv]
+  - id: c14_history
+    text: I worked at HCL for two years and then moved to Accenture in Gurgaon.
+    entities: [["hcl"], ["2 years", "two years"], ["accenture"], ["gurgaon", "gurugram"]]
+  - id: c15_split_pause
+    text: Seven years. Out of that, five years in Python.
+    say: Seven years. [[slnc 1300]] Out of that, five years in Python.
+    entities: [["7 years", "seven years"], ["5 years", "five years"], ["python"]]
+    pause: true
+  - id: c16_not_looking
+    text: No, I'm not looking for a change right now.
+    entities: [["no"], ["not looking"]]
+  - id: c17_callback
+    text: Can you call me back tomorrow at four PM?
+    entities: [["tomorrow"], ["4 pm", "four pm", "4pm", "4:00 pm", "4 p.m", "four p.m"]]
+    noise: [traffic]
+  - id: c18_ninety_days
+    text: My notice period is ninety days.
+    entities: [["90 days", "ninety days"]]
+  - id: c19_filler
+    text: Hmm.
+    entities: []
+    utterances: 0
+  - id: c20_silence
+    text: ""
+    entities: []
+    utterances: 0

@@ -1,0 +1,447 @@
+{
+ "meta": {
+  "file": "c01_experience.wav",
+  "rate": 16000,
+  "model": "nova-2",
+  "language": "en-IN",
+  "endpointing_ms": 300
+ },
+ "messages": [
+  {
+   "_t": 0.806,
+   "type": "SpeechStarted",
+   "channel": [
+    0,
+    1
+   ],
+   "timestamp": 0.35
+  },
+  {
+   "_t": 1.393,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "I have six",
+      "confidence": 0.99902344,
+      "words": [
+       {
+        "word": "i",
+        "start": 0.25,
+        "end": 0.5,
+        "confidence": 0.98535156,
+        "punctuated_word": "I"
+       },
+       {
+        "word": "have",
+        "start": 0.5,
+        "end": 0.75,
+        "confidence": 1.0,
+        "punctuated_word": "have"
+       },
+       {
+        "word": "six",
+        "start": 0.75,
+        "end": 1.0,
+        "confidence": 0.99902344,
+        "punctuated_word": "six"
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 2.427,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.0,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "I have six point five years",
+      "confidence": 1.0,
+      "words": [
+       {
+        "word": "i",
+        "start": 0.08,
+        "end": 0.48,
+        "confidence": 0.9941406,
+        "punctuated_word": "I"
+       },
+       {
+        "word": "have",
+        "start": 0.48,
+        "end": 0.71999997,
+        "confidence": 1.0,
+        "punctuated_word": "have"
+       },
+       {
+        "word": "six",
+        "start": 0.71999997,
+        "end": 0.96,
+        "confidence": 1.0,
+        "punctuated_word": "six"
+       },
+       {
+        "word": "point",
+        "start": 0.96,
+        "end": 1.28,
+        "confidence": 1.0,
+        "punctuated_word": "point"
+       },
+       {
+        "word": "five",
+        "start": 1.28,
+        "end": 1.68,
+        "confidence": 1.0,
+        "punctuated_word": "five"
+       },
+       {
+        "word": "years",
+        "start": 1.68,
+        "end": 2.0,
+        "confidence": 0.9892578,
+        "punctuated_word": "years"
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.356,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.0,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "I have six point five years of total XP",
+      "confidence": 1.0,
+      "words": [
+       {
+        "word": "i",
+        "start": 0.16,
+        "end": 0.48,
+        "confidence": 0.98828125,
+        "punctuated_word": "I"
+       },
+       {
+        "word": "have",
+        "start": 0.48,
+        "end": 0.71999997,
+        "confidence": 1.0,
+        "punctuated_word": "have"
+       },
+       {
+        "word": "six",
+        "start": 0.71999997,
+        "end": 0.96,
+        "confidence": 1.0,
+        "punctuated_word": "six"
+       },
+       {
+        "word": "point",
+        "start": 0.96,
+        "end": 1.28,
+        "confidence": 1.0,
+        "punctuated_word": "point"
+       },
+       {
+        "word": "five",
+        "start": 1.28,
+        "end": 1.52,
+        "confidence": 1.0,
+        "punctuated_word": "five"
+       },
+       {
+        "word": "years",
+        "start": 1.52,
+        "end": 1.92,
+        "confidence": 1.0,
+        "punctuated_word": "years"
+       },
+       {
+        "word": "of",
+        "start": 1.92,
+        "end": 2.1599998,
+        "confidence": 1.0,
+        "punctuated_word": "of"
+       },
+       {
+        "word": "total",
+        "start": 2.1599998,
+        "end": 2.56,
+        "confidence": 0.99902344,
+        "punctuated_word": "total"
+       },
+       {
+        "word": "xp",
+        "start": 2.56,
+        "end": 3.0,
+        "confidence": 0.4970703,
+        "punctuated_word": "XP"
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 4.403,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.91,
+   "start": 0.0,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "I have six point five years of total experience.",
+      "confidence": 1.0,
+      "words": [
+       {
+        "word": "i",
+        "start": 0.16,
+        "end": 0.39999998,
+        "confidence": 0.9970703,
+        "punctuated_word": "I"
+       },
+       {
+        "word": "have",
+        "start": 0.39999998,
+        "end": 0.71999997,
+        "confidence": 1.0,
+        "punctuated_word": "have"
+       },
+       {
+        "word": "six",
+        "start": 0.71999997,
+        "end": 1.04,
+        "confidence": 1.0,
+        "punctuated_word": "six"
+       },
+       {
+        "word": "point",
+        "start": 1.04,
+        "end": 1.28,
+        "confidence": 1.0,
+        "punctuated_word": "point"
+       },
+       {
+        "word": "five",
+        "start": 1.28,
+        "end": 1.52,
+        "confidence": 1.0,
+        "punctuated_word": "five"
+       },
+       {
+        "word": "years",
+        "start": 1.52,
+        "end": 2.0,
+        "confidence": 1.0,
+        "punctuated_word": "years"
+       },
+       {
+        "word": "of",
+        "start": 2.0,
+        "end": 2.24,
+        "confidence": 1.0,
+        "punctuated_word": "of"
+       },
+       {
+        "word": "total",
+        "start": 2.24,
+        "end": 2.56,
+        "confidence": 1.0,
+        "punctuated_word": "total"
+       },
+       {
+        "word": "experience",
+        "start": 2.56,
+        "end": 3.06,
+        "confidence": 0.98657227,
+        "punctuated_word": "experience."
+       }
+      ]
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 5.362,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0076873,
+   "start": 3.91,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 5.452,
+   "type": "UtteranceEnd",
+   "channel": [
+    0,
+    1
+   ],
+   "last_word_end": 3.06
+  },
+  {
+   "_t": 6.582,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.0076873,
+   "start": 3.91,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 6.624,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.1076872,
+   "start": 3.91,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 6.624,
+   "type": "Metadata",
+   "duration": 6.0176873,
+   "channels": 1,
+   "models": [
+    "1dbdfb4d-85b2-4659-9831-16b3c76229aa",
+    "824ec1be-4ade-4293-b728-9c7c5faf1976"
+   ],
+   "model_info": {
+    "824ec1be-4ade-4293-b728-9c7c5faf1976": {
+     "name": "phoneme",
+     "version": "2022-05-18.0",
+     "arch": "base"
+    },
+    "1dbdfb4d-85b2-4659-9831-16b3c76229aa": {
+     "name": "2-general-nova",
+     "version": "2024-01-11.36317",
+     "arch": "nova-2"
+    }
+   }
+  }
+ ]
+}

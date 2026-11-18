@@ -182,3 +182,17 @@ Deepgram API key; consent from the people recording test clips.
 ## 12. Exit
 
 [Phase exit report](README.md#phase-exit-report) with the benchmark table and the chosen Deepgram settings.
+
+## 13. As built (2026-11-18)
+
+Numbers and the chosen settings: [benchmarks/stt.md](../benchmarks/stt.md). Where the build departs from the plan:
+
+- **Interface:** as in §5.1, plus `keyterms` on `start_stream()` (per-call boosting, e.g. the job's company), `sent_at(audio_s)` (wall-clock time at which a point of the audio was sent; used for end-of-speech latency) and `stats`. `TranscriptEvent.start_s`/`end_s` are word timings in session audio time, continuous across reconnects. `DeepgramSTTProvider` also has `finalize()` (send `Finalize`; the result counts as an endpoint) and `on_message` (raw messages, for recording fixtures).
+- **Client:** plain `websockets` 17.4 (already pinned through `uvicorn[standard]`), no SDK. Protocol checked against the live API.
+- **Defaults chosen from the benchmark:** `nova-3`, `language=en-IN`, `endpointing=300`, `utterance_end_ms=1000`, **`smart_format=false`** (with it on, Deepgram holds back answers that end in a number for up to 4.5 s), keyterms `CTC, LPA, lakhs, notice period` plus per-call terms.
+- **Reconnect window:** a connection that dies without delivering anything doesn't reset the 5 s "no working stream" clock, so a flapping stream still ends in an `error` event.
+- **Fillers:** Deepgram doesn't transcribe "hmm"/"uh" at all unless `filler_words=true`, so the assembler's filler rule is a second line of defence. "mm-hmm"/"uh-huh" count as answers.
+- **Test audio (P4-T8):** no human recordings yet. A synthetic set from the three macOS Indian-English voices (Rishi, Tara, Aman), 20 lines × 3 voices + 18 noise variants (fan, TV, traffic), from `tests/fixtures/stt_clips.yaml` (`make stt-clips`). `make stt-record SPEAKER=…` records real speakers for the same lines; `make bench-stt args='--sets real'` benchmarks them. macOS `say` is flaky (the same line sometimes renders truncated or as garbage), so every line is rendered until two renders match.
+- **Fixtures:** 6 recorded, sanitized Deepgram event sequences in `tests/fixtures/deepgram_events/` (pause, multi-segment, filler, silence, TV noise, nova-2). Provider tests run against a local fake Deepgram server (`tests/unit/voice/fake_deepgram.py`).
+- **Extra tools:** `scripts/stt_tools.py` (clip manifest, real-time streaming, entity matching), `scripts/make_stt_clips.py`, `scripts/stt_record.py`, `scripts/bench_stt.py` (also runs **Flux**, `/v2/listen`, for comparison). `voice/local_loop.py` has a scripted mode (`SCRIPT=s14_happy_path`) that speaks a scenario's lines with `say`, turn by turn, so the STT → agent loop can be checked without a microphone.
+- **Not built here:** a local VAD. The benchmark shows Deepgram's own endpointing is slow on a realistic line (p50 about 1.6–2.3 s), while a local end-of-speech detector plus `finalize()` gets about 0.8 s. Phase 6 needs a VAD for barge-in anyway; see the recommendation in benchmarks/stt.md.

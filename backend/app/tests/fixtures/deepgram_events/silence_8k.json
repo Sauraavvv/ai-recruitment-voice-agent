@@ -1,0 +1,549 @@
+{
+ "meta": {
+  "file": "c20_silence.wav",
+  "rate": 8000,
+  "model": "nova-3",
+  "language": "en-IN",
+  "endpointing_ms": 500
+ },
+ "messages": [
+  {
+   "_t": 1.359,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.0199375,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 2.442,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.0199375,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 3.41,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.0199375,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 4.294,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 4.0199375,
+   "start": 0.0,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 5.324,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.71,
+   "start": 0.0,
+   "is_final": true,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 5.325,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.3099375,
+   "start": 3.71,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 6.396,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.3099375,
+   "start": 3.71,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 7.334,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.3099375,
+   "start": 3.71,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 8.38,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 4.3099375,
+   "start": 3.71,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 9.065,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.62,
+   "start": 3.71,
+   "is_final": true,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 9.094,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.3899374,
+   "start": 7.33,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 10.117,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.4099379,
+   "start": 7.33,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 11.088,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.4099379,
+   "start": 7.33,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 12.086,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 4.409938,
+   "start": 7.33,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 12.69,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 3.0200005,
+   "start": 7.33,
+   "is_final": true,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 12.69,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 1.9899368,
+   "start": 10.35,
+   "is_final": false,
+   "speech_final": false,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 12.921,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 2.1499367,
+   "start": 10.35,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 12.921,
+   "type": "Results",
+   "channel_index": [
+    0,
+    1
+   ],
+   "duration": 0.0,
+   "start": 12.499937,
+   "is_final": true,
+   "speech_final": true,
+   "channel": {
+    "alternatives": [
+     {
+      "transcript": "",
+      "confidence": 0.0,
+      "words": []
+     }
+    ]
+   },
+   "metadata": {
+    "model_info": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   },
+   "from_finalize": false
+  },
+  {
+   "_t": 12.921,
+   "type": "Metadata",
+   "duration": 12.499937,
+   "channels": 1,
+   "models": [
+    "40bd3654-e622-47c4-a111-63a61b23bfe8"
+   ],
+   "model_info": {
+    "40bd3654-e622-47c4-a111-63a61b23bfe8": {
+     "name": "general-nova-3",
+     "version": "2025-04-17.21547",
+     "arch": "nova-3"
+    }
+   }
+  }
+ ]
+}

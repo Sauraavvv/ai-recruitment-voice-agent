@@ -5,7 +5,8 @@ VENV := $(BACKEND)/.venv/bin
 
 .PHONY: help env up down logs ps test test-docker lint fmt typecheck lock venv check-secrets shell-db \
 	migrate migration create-user types agent-cli agent-eval llm-bench \
-	tts-model tts-say test-tts test-deepgram-tts bench-tts
+	tts-model tts-say test-tts test-deepgram-tts bench-tts \
+	stt-clips stt-file stt-mic stt-record voice-loop test-stt bench-stt
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -109,3 +110,30 @@ test-deepgram-tts:  ## Live Deepgram TTS tests (a few cents)
 
 bench-tts:  ## TTS latency benchmark: make bench-tts [args='--runs 50 --threads 1,2,4']
 	docker compose exec -T backend python -m app.scripts.bench_tts $(args)
+
+# --- Phase 4: Deepgram STT. Microphone, `say` and recording tools run on the Mac host. ---
+# Host tools read the root .env themselves (the backend's settings look for .env in backend/).
+HOST_RUN := set -a && . ./.env && set +a && cd "$(BACKEND)" && .venv/bin/python -m
+
+stt-clips:  ## Generate the synthetic STT test clips with macOS `say` (host)
+	cd "$(BACKEND)" && .venv/bin/python -m app.scripts.make_stt_clips
+
+stt-file:  ## Stream a WAV like a call: make stt-file FILE=artifacts/stt-audio/synthetic/rishi/c07_multi_answer.wav [RATE=8000]
+	@test -n "$(FILE)" || (echo 'usage: make stt-file FILE=artifacts/stt-audio/synthetic/rishi/c07_multi_answer.wav [RATE=8000]'; exit 1)
+	docker compose exec -T backend python -m app.scripts.stt_file "$(FILE)" $(if $(RATE),--rate $(RATE)) $(args)
+
+stt-mic:  ## Live microphone transcription (host): make stt-mic [RATE=8000]
+	$(HOST_RUN) app.scripts.stt_mic $(if $(RATE),--rate $(RATE)) $(args)
+
+stt-record:  ## Record real test clips (host, with consent): make stt-record SPEAKER=name [ONLY=c09]
+	@test -n "$(SPEAKER)" || (echo 'usage: make stt-record SPEAKER=name [ONLY=c01,c09]'; exit 1)
+	cd "$(BACKEND)" && .venv/bin/python -m app.scripts.stt_record --speaker "$(SPEAKER)" $(if $(ONLY),--only "$(ONLY)")
+
+voice-loop:  ## Talk to the agent through STT (host): make voice-loop [SPEAK=1] [SCRIPT=s14_happy_path] [RATE=8000]
+	$(HOST_RUN) app.voice.local_loop $(if $(SPEAK),--speak) $(if $(SCRIPT),--script "$(SCRIPT)") $(if $(RATE),--rate $(RATE)) $(args)
+
+test-stt:  ## Live Deepgram STT tests (about 1.5 minutes, a few cents; needs `make stt-clips`)
+	docker compose exec -T backend pytest -q -p no:cacheprovider -m stt app/tests/integration/test_deepgram.py
+
+bench-stt:  ## STT benchmark (about 10 minutes, ~$0.50): make bench-stt [args='--configs n3-in-8k-500 --sets synthetic,real --misses']
+	docker compose exec -T backend python -m app.scripts.bench_stt $(args)

@@ -25,6 +25,10 @@ ignore = [
 "app/providers/tts/**" = ["RUF001", "RUF002", "RUF003"]
 "app/scripts/bench_tts.py" = ["RUF001"]
 "app/scripts/tts_say.py" = ["ASYNC221", "ASYNC240"]
+# STT tools and the local voice loop: offline/interactive, blocking file reads are fine there.
+"app/scripts/stt_*.py" = ["ASYNC230", "ASYNC240"]
+"app/scripts/bench_stt.py" = ["ASYNC230", "ASYNC240", "RUF001", "RUF002"]
+"app/voice/local_loop.py" = ["ASYNC110", "ASYNC240"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -34,7 +38,7 @@ packages = ["app"]
 
 [[tool.mypy.overrides]]
 module = ["arq.*", "openpyxl.*", "num2words.*", "soxr.*", "onnxruntime.*", "kittenml.*", "torch.*",
-          "transformers.*"]
+          "transformers.*", "sounddevice.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -46,10 +50,11 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["app/tests"]
 # Live OpenAI tests cost money and need a key: run them explicitly with `make agent-eval`.
-# Real-model TTS tests take about a minute: `make test-tts`.
-addopts = "-m 'not llm and not tts and not deepgram'"
+# Real-model TTS tests take about a minute: `make test-tts`. Live STT: `make test-stt`.
+addopts = "-m 'not llm and not tts and not deepgram and not stt'"
 markers = [
   "llm: calls the real OpenAI API",
   "tts: loads the real Kitten TTS model (slow)",
   "deepgram: calls the real Deepgram API (costs money)",
+  "stt: streams audio to the real Deepgram STT API (costs money)",
 ]

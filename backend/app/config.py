@@ -48,8 +48,18 @@ class Settings(BaseSettings):
     openai_reasoning_effort: str | None = None
     openai_timeout_s: float = Field(default=8.0, gt=0, le=60)
 
-    # Deepgram (Phase 4)
+    # Deepgram (TTS from Phase 3, STT from Phase 4). STT defaults: docs/benchmarks/stt.md
     deepgram_api_key: SecretStr | None = None
+    deepgram_stt_model: str = "nova-3"
+    deepgram_stt_language: str = "en-IN"
+    # Silence (ms) after which Deepgram marks the end of speech (speech_final)
+    deepgram_stt_endpointing_ms: int = Field(default=300, ge=10, le=5000)
+    # Backstop: gap between words (ms) that ends an utterance even without speech_final
+    deepgram_stt_utterance_end_ms: int = Field(default=1000, ge=1000, le=5000)
+    # Digits/currency formatting. Off: it holds back answers that end in a number (4 s+)
+    deepgram_stt_smart_format: bool = False
+    # Comma-separated words to boost on every call; job-specific ones are added per call
+    deepgram_stt_keyterms: str = "CTC,LPA,lakhs,notice period"
 
     # Exotel (Phase 5): names to be re-checked against Exotel docs
     exotel_api_key: SecretStr | None = None

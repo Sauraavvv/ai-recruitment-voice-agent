@@ -69,6 +69,7 @@ States: `LISTENING`, `THINKING`, `SPEAKING`, `ENDING`.
 ### 5.3 Voice activity detection (`voice/vad.py`)
 
 - End of utterance comes from Deepgram endpointing and UtteranceEnd (P4).
+- **Measured in P4 (2026-11-18, docs/benchmarks/stt.md):** on a realistic line (a faint noise floor rather than digital silence) Deepgram's own endpointing takes about 1.6–2.3 s at p50 from the last word, far over the 600 ms budget below. When a local end-of-speech detector calls `DeepgramSTTProvider.finalize()` 400 ms after speech stops, the final arrives about 0.85 s after the last word (p50; p95 1.35 s). So use the local VAD for end of turn too: VAD silence ≥ 400 ms after speech → `finalize()`; Deepgram's endpointing (300 ms) and UtteranceEnd stay as backstops. Merge an utterance that follows within about 1 s (the candidate was only pausing) before the agent replies. Alternative to evaluate here: Deepgram Flux (`/v2/listen`, model-based end of turn, p50 about 1.1 s, but missed turns under continuous background noise and Deepgram refused many connections with HTTP 503 during P4).
 - Barge-in needs a faster local signal. Run a lightweight VAD on inbound frames: start with `webrtcvad` (20 ms frames, aggressiveness 2–3); try Silero VAD (ONNX, more robust to noise) if false triggers show up.
 - Minimum 300 ms of speech before barge-in. Short backchannels ("yes", "okay", "hmm", under about 600 ms) while the agent speaks don't interrupt.
 - Raise the threshold during SPEAKING if the agent's own voice leaks back as echo; measure on real calls.

@@ -2,6 +2,10 @@
 #    uv pip compile requirements-dev.in --python-version 3.12 -o requirements-dev.txt
 ast-serialize==0.13.1
     # via mypy
+cffi==2.1.1
+    # via
+    #   -c requirements.txt
+    #   sounddevice
 iniconfig==2.3.1
     # via pytest
 librt==0.16.0
@@ -18,6 +22,10 @@ pathspec==1.1.1
     # via mypy
 pluggy==1.7.0
     # via pytest
+pycparser==3.12
+    # via
+    #   -c requirements.txt
+    #   cffi
 pygments==2.21.0
     # via
     #   -c requirements.txt
@@ -29,6 +37,8 @@ pytest==9.2.0
 pytest-asyncio==1.5.0
     # via -r requirements-dev.in
 ruff==0.17.5
+    # via -r requirements-dev.in
+sounddevice==0.5.6
     # via -r requirements-dev.in
 types-pyyaml==6.0.12.20261113
     # via -r requirements-dev.in

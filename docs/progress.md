@@ -1,5 +1,111 @@
 # Progress
 
+## Phase 4 exit report (2026-11-18)
+
+**Implemented:** streaming speech-to-text through Deepgram behind `STTProvider`, one stream per call session, and a local loop that feeds finished utterances to the P2 agent.
+- `providers/stt/deepgram_provider.py`, a plain `websockets` client (no SDK), with the protocol checked against the live API:
+  - Connect: 3 s timeout, 3 attempts with backoff. 401/403/400 → `STTConfigError` at once.
+  - Keepalive during silence. `close()` sends `CloseStream` and waits up to 2 s for the last results.
+  - Mid-stream drop → reconnect and resume. 2 s of audio is buffered meanwhile (oldest dropped, logged), and timestamps stay continuous.
+  - No working stream for over 5 s → `error` event, then `closed`.
+  - `finalize()`, `sent_at()` for latency measurement, and per-call keyterms.
+- `voice/utterance.py`, `UtteranceAssembler`:
+  - Finals accumulate; partials only update the preview.
+  - The utterance completes on `speech_final` or `UtteranceEnd`, whichever comes first; the second signal is ignored.
+  - Confidence is the minimum across segments. Empty finals are ignored. Fillers are dropped unless a yes/no answer is expected ("mm-hmm" counts as an answer).
+  - Speech timing for P6's silence timeouts.
+- `voice/local_loop.py`, `VoiceLoop`: STT → assembler → `ConversationManager`, exactly one reply per utterance. Every log line carries `session_id`. Inputs: the microphone, or a scripted scenario spoken by macOS `say` turn by turn. Optional spoken replies (Deepgram Aura).
+- Tools:
+  - `make stt-file` (stream a WAV like a call; `--dump-events` records fixtures)
+  - `make stt-mic`
+  - `make voice-loop` (`SCRIPT=`, `SPEAK=1`)
+  - `make stt-clips` (synthetic test set)
+  - `make stt-record` (real speakers)
+  - `make bench-stt`
+  - `make test-stt`
+- Details and numbers: [benchmarks/stt.md](benchmarks/stt.md); deviations from the plan: [phase-04 §13](phases/phase-04-deepgram-stt.md#13-as-built-2026-11-18).
+
+**Chosen Deepgram settings** (from the benchmark; `DEEPGRAM_STT_*`):
+
+| Setting | Value |
+|---|---|
+| Model | `nova-3` |
+| Language | `en-IN` |
+| Audio | 8 kHz linear16 |
+| `endpointing` | 300 ms |
+| `utterance_end_ms` | 1000 |
+| `smart_format` | off |
+| Keyterms | `CTC, LPA, lakhs, notice period`, plus per-call terms |
+
+**Benchmark** (78 synthetic clips, 3 Indian-English voices, phone band, realistic line noise after each answer):
+
+| Config | Key entities | Latency p50 / p95 | Pause splits |
+|---|---|---|---|
+| nova-3 en-IN, 300 ms, smart_format off (**chosen**) | 90.8% | 1620 / 2577 ms | 6/6 |
+| same + local `Finalize` 400 ms after speech | 88.9% | **851 / 1346 ms** | 6/6 |
+| nova-3 en-IN, 500 / 800 ms | 88.2% | 2022 / 2255 ms p50 | 6/6 |
+| nova-2 en-IN | 87.6% | 1979 ms p50 | 6/6 |
+| Flux | 84.6% | 1144 / 2091 ms | 6/6 |
+
+Flux: Deepgram refused many connections with HTTP 503.
+
+**Files created / changed:**
+- Backend, new:
+  - `providers/stt/base.py`, `deepgram_provider.py`, factory in `__init__.py`
+  - `voice/utterance.py`, `voice/local_loop.py`
+  - `scripts/stt_tools.py`, `stt_file.py`, `stt_mic.py`, `stt_record.py`, `make_stt_clips.py`, `bench_stt.py`
+  - tests: `unit/voice/test_utterance.py`, `test_deepgram_stt.py` (against `fake_deepgram.py`, a local fake server), `test_local_loop.py`; `integration/test_deepgram.py` (marker `stt`)
+  - fixtures: `fixtures/stt_clips.yaml` (20 lines with key entities), `fixtures/deepgram_events/*.json` (6 recorded, sanitized sequences)
+- Backend, changed:
+  - `config.py`: `DEEPGRAM_STT_MODEL`, `_LANGUAGE`, `_ENDPOINTING_MS`, `_UTTERANCE_END_MS`, `_SMART_FORMAT`, `_KEYTERMS`
+  - `pyproject.toml`: `stt` marker excluded by default; ruff ignores for the tools; mypy ignore for `sounddevice`
+  - `requirements-dev.in/.txt`: `sounddevice` 0.5.6 (host microphone tools). An addition only; nothing upgraded. `websockets` 17.4 was already pinned.
+- Infra: Makefile adds the P4 targets; `.env.example` gets the STT settings. Audio stays in `backend/artifacts/stt-audio/` (gitignored, plan §10).
+- Docs: `benchmarks/stt.md` (new); `setup.md` (STT section, troubleshooting); `phases/phase-04` (§13 As built); `phases/phase-06` (§5.3: VAD + `finalize()` for end of turn, measured numbers).
+
+**Tests run:**
+- `make test` → 385 passed, 1 skipped (the P3 Deepgram TTS test without a key on the host), 14 deselected.
+- Docker suite → 385 passed. `make lint`, `make typecheck` → clean.
+- `make test-stt` (live, Docker) → 7 passed: clips with key entities (94.7% on clean clips), silence with keepalive held over 30 s, socket killed → reconnect, invalid key, two concurrent sessions.
+- Live voice loop, `s14_happy_path` at 8 kHz, twice (Rishi; Tara with the final settings).
+- `make bench-stt`: 3 full runs plus a Flux re-run. The first 2 runs were discarded because of broken `say` renders and digital-silence tails.
+
+**Acceptance criteria:**
+- P4-AC1 ✅ with a caveat. Entity accuracy is recorded (90.8% on the synthetic set, 95% on clean clips) and live transcription works. It hasn't been measured on human speakers yet, and the live microphone demo needs you (`make stt-mic`).
+- P4-AC2 ✅ Live loop: 12 utterances → 12 replies, call completed, all 10 fields correct. `test_local_loop.py` checks one reply per utterance, ordering while the agent is busy, and STT errors. The `voice_turn` log lines pair each utterance with its reply.
+- P4-AC3 ✅ Silence, disconnect and bad-key tests pass live; flapping-connection, buffer-overflow and stream-loss cases pass against the fake server. Empty finals and fillers are ignored.
+- P4-AC4 ✅ Concurrent two-session test passes, live and against the fake server; the assembler rejects events from another session.
+- P4-AC5 ✅ End of speech → utterance complete at 8 kHz: p50 1620 ms, p95 2577 ms with the chosen settings; p50 851 ms with local `Finalize`.
+
+**Deferred or not done:**
+- **Real recordings (P4-T8):** 3+ consenting speakers with Indian-English accents. The tool is ready: `make stt-record SPEAKER=name`, then `make bench-stt args='--sets real'`. Re-check endpointing (300 ms) against hesitant real speech then.
+- Live microphone demo: run `make stt-mic` and `make voice-loop` yourself (it needs a person and headphones).
+- End of turn by local VAD + `finalize()`, and merging utterances after a long pause: Phase 6 (written into its plan).
+- The backend image rebuild (needed for the new `pytest` marker and `sounddevice` inside Docker) was still downloading at the end of the session, because PyPI was very slow. Run `make up` once. Until then the old image's `make test-docker` also runs the live `stt` tests.
+
+**Needs credentials or manual provider configuration:** none new (`DEEPGRAM_API_KEY` is already in `.env`). Recording real clips needs the speakers' consent.
+
+**Risks or surprises discovered:**
+- Deepgram's own endpointing is slow on a realistic line: about 1.6–2.3 s p50 with a faint noise floor, against about 1.0 s with digital silence. A local VAD + `Finalize` gives about 0.85 s. This matters for P6's latency budget (t0 → t1 ≤ 600 ms is not reachable with Deepgram's endpointing alone).
+- `smart_format` holds back answers that end in a number for up to 4.5 s, hence it's off.
+- "four PM" was heard as "four AM" on 2 of 3 voices, every time. A callback time must be read back to the candidate (P2 callback flow / P6).
+- Cities: Noida → "Moida", Gurgaon → "Google". Add the job's city as a per-call keyterm; the read-back catches the rest.
+- `nova-2` sometimes loops one word dozens of times ("Infosys Infosys…").
+- Flux (`/v2/listen`) returned HTTP 503 on many connections on 2026-11-18. Not ready to depend on.
+- Every pause over about 1.3 s mid-answer splits the utterance at any endpointing value. P6 must merge.
+- Connecting takes about 0.8–1.5 s from India (US servers): open the stream while the call rings.
+- macOS `say` renders the same line differently at random (truncated or garbage); fixed by rendering until two renders agree.
+- Deepgram doesn't transcribe "hmm"/"uh" by default, so the filler rule rarely triggers.
+
+**Decisions made:**
+- Mine, from the benchmark, open to review: the settings above (especially `smart_format` off and 300 ms endpointing).
+- Also mine:
+  - A synthetic test set until real recordings exist.
+  - Local VAD + `finalize()` recommended for P6.
+  - Flux not adopted.
+  - The plain `websockets` client.
+  - Recorded fixtures kept in the repo (event JSON only, no audio).
+
 ## Phase 3 amendment: Deepgram Aura primary, Kitten fallback (2026-11-18)
 
 **Asked by the user** after the Kitten build (d02281b): use Deepgram's TTS as the main voice and Kitten when Deepgram isn't available. Voice chosen by ear from 20 Aura-2 voices: **Harmonia** (Asteria runner-up).
