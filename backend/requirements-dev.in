@@ -1,0 +1,6 @@
+# Development and test dependencies. Run `make lock` after editing.
+-c requirements.txt
+pytest
+pytest-asyncio
+ruff
+mypy

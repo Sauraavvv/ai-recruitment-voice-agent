@@ -1,0 +1,12 @@
+# Runtime dependencies. Edit this file, then run `make lock` to regenerate requirements.txt.
+fastapi
+uvicorn[standard]
+pydantic>=2
+pydantic-settings
+sqlalchemy[asyncio]>=2
+asyncpg
+alembic
+redis[hiredis]
+arq
+structlog
+httpx

@@ -1,0 +1,246 @@
+# Phase 1: Database and candidate management
+
+| | |
+|---|---|
+| Source | plan.md §10 Phase 1, Module A, Module B, §5, §6, §7 pages 2–4 |
+| Depends on | P0 |
+| Unlocks | P2 (jobs, candidates), P5 (`call_attempts`) |
+| Size / risk | M / Low |
+
+## 1. Goal
+
+All tables exist with migrations. Recruiters can log in, configure the job, import candidates from CSV/Excel through a preview-and-confirm flow, and view, search and edit candidates. Data survives restarts.
+
+Keep this phase's UI functional and plain. plan.md §17 says the first milestone is a real call, not a polished dashboard; styling and call features come in P8.
+
+## 2. Entry criteria
+
+- P0 accepted.
+- Open decisions in §10 answered, or defaults accepted.
+
+## 3. Scope
+
+- **In:** models and migrations for all plan.md §5 tables; candidate and job CRUD; the import pipeline; recruiter authentication; pages for login, candidate list, upload, candidate detail and job settings.
+- **Out:** anything about calls beyond the `call_attempts` table definition. Sheets sync hooks are added to the same service methods in P7.
+
+## 4. Deliverables
+
+```text
+backend/app/
+  database/models/   base.py candidate.py job.py call_attempt.py conversation.py sync_log.py user.py import_batch.py
+  database/migrations/  env.py  versions/0001_initial.py
+  repositories/      candidate_repo.py job_repo.py import_repo.py user_repo.py
+  services/          candidate_service.py import_service.py job_service.py auth_service.py
+  schemas/           candidate.py job.py imports.py auth.py common.py
+  api/v1/            candidates.py imports.py jobs.py auth.py
+  utils/             phone.py file_parsing.py
+  scripts/           create_user.py
+  tests/             unit/  integration/  fixtures/imports/
+frontend/
+  app/login/  app/candidates/  app/candidates/upload/  app/candidates/[id]/  app/settings/job/
+  types/api.ts (generated)  services/*.ts
+```
+
+## 5. Data model
+
+### 5.1 Tables from plan.md §5 (create all of them now)
+
+`candidates`, `jobs`, `call_attempts`, `conversations`, `sync_logs` with the columns in plan.md §5, plus:
+
+- UUID primary keys with a server default (`gen_random_uuid()`); `created_at`/`updated_at` as `timestamptz`, default `now()`, `updated_at` maintained on update.
+- Status columns as `VARCHAR` + Python `StrEnum` + a DB `CHECK` constraint (easier to extend through Alembic than native Postgres enums).
+- Indexes (plan.md §5): `candidates(phone)` **unique**, `candidates(job_id)`, `candidates(screening_status)`, `call_attempts(candidate_id)`, `call_attempts(call_status)`, `call_attempts(next_retry_at)`, `call_attempts(provider, provider_call_id)` unique where not null, `sync_logs(candidate_id, created_at)`.
+- Foreign keys: `candidates.job_id → jobs.id` (RESTRICT); `call_attempts.candidate_id → candidates.id` (RESTRICT); `conversations.call_attempt_id → call_attempts.id` (unique, one conversation per attempt); `sync_logs.candidate_id → candidates.id`.
+
+### 5.2 Additions in this phase [Proposed]
+
+| Table / column | Type | Purpose |
+|---|---|---|
+| `candidates.applied_role` | VARCHAR | The "Job role" import column as written; the row links to a job through `job_id` |
+| `candidates.recruiter_notes` | TEXT | "Recruiter notes" import column has no column in §5 |
+| `candidates.consent_source` | VARCHAR NULL | How consent to be called was obtained, e.g. `recruiter_attested_import`, `manual` |
+| `candidates.consent_at` | timestamptz NULL | When consent was recorded; calls require it (plan.md §15 "configured consent") |
+| `candidates.deleted_at` | timestamptz NULL | Soft delete; candidates with call history can't be hard-deleted |
+| `candidates.screening_field_meta` | JSONB, default `{}` | Per-field status (answered, confirmed, declined…) written in P2/P7 |
+| `users` | id, email (unique), name, password_hash, is_active, created_at, last_login_at | Recruiter login |
+| `import_batches` | id, uploaded_by, job_id, filename, status (`preview`/`confirmed`/`expired`), column_mapping JSONB, rows JSONB, report JSONB, created_at, confirmed_at | Backs `GET /candidates/import/{id}` and the preview → confirm flow |
+
+### 5.3 Enumerations
+
+- `screening_status`: `not_started`, `in_progress`, `partially_completed`, `completed`, `declined`, `opted_out`, `callback_requested`, `wrong_person`.
+- `call_status`: the 13 values in plan.md Module F.
+
+## 6. Tasks
+
+### P1-T1 SQLAlchemy models
+
+- SQLAlchemy 2.x declarative style (`Mapped[...]`, `mapped_column`), one module per table, a shared `Base` with a constraint naming convention so Alembic produces stable names.
+- Models hold no business logic.
+
+### P1-T2 Configure Alembic
+
+- `alembic init` inside `database/migrations`; async `env.py` reading `DATABASE_URL`; `compare_type=True`.
+- `make migrate` (upgrade head) and `make migration m="…"`. In dev, the backend container runs `alembic upgrade head` before starting.
+
+### P1-T3 Initial migration
+
+- One reviewed migration, `0001_initial`, creating every table, index and constraint above. Read the autogenerated file by hand; partial unique indexes and CHECK constraints often need manual edits.
+- Check: upgrade → downgrade base → upgrade on an empty database.
+
+### P1-T4 Candidate CRUD
+
+| Endpoint | Behaviour |
+|---|---|
+| `POST /api/v1/candidates` | Validate and normalize phone; 409 `duplicate_phone` with the existing id if the phone exists; requires consent checkbox |
+| `GET /api/v1/candidates` | `q` (name/phone/email, case-insensitive), `screening_status`, `job_id`, `interested`, `page`, `page_size ≤ 100`, `sort` (`created_at`, `name`, `updated_at`); excludes soft-deleted |
+| `GET /api/v1/candidates/{id}` | Profile + screening fields + field meta (call history added in P5/P8) |
+| `PATCH /api/v1/candidates/{id}` | Partial update; a changed phone is re-normalized and re-checked for duplicates; `opted_out` can't be set back to false (409) |
+| `DELETE /api/v1/candidates/{id}` | Soft delete; future calls blocked |
+
+- Layering: route → service (rules, transactions) → repository (queries). No SQL in route handlers (plan.md §15).
+- Every candidate write goes through `candidate_service`; that's where P7 adds the Sheets outbox row.
+
+### P1-T5 Job CRUD [Proposed endpoints]
+
+- `GET/POST /api/v1/jobs`, `GET/PATCH /api/v1/jobs/{id}`, `POST /api/v1/jobs/{id}/activate`.
+- One active job (plan.md Module B): partial unique index on `jobs(is_active) WHERE is_active`; `activate` deactivates the others in one transaction.
+- `screening_questions` JSONB shape:
+
+  ```json
+  [
+    {"key": "current_location", "prompt": "Where are you currently located?", "required": true, "type": "string"},
+    {"key": "current_ctc", "prompt": "What is your current CTC?", "required": true, "type": "number", "unit": "LPA"}
+  ]
+  ```
+
+  Keys for the ten standard fields (plan.md Module C) are fixed. Extra custom keys are allowed and stored as free-text answers (P2). Array order is the question order.
+- New jobs are pre-filled with the ten standard questions, so recruiters edit rather than type.
+- Limit `job_description` and `agent_instructions` to 4,000 characters each to keep prompts small.
+- No job description is hardcoded in Python (plan.md Module B).
+
+### P1-T6 Excel/CSV parsing (`utils/file_parsing.py`)
+
+- Accept `.csv` and `.xlsx` only; reject anything else with a clear message ("save as .xlsx"). `.xls` and `.xlsm` are excluded.
+- Check the extension **and** the content (xlsx must start with the zip `PK` signature); max 5 MB; max 1,000 data rows.
+- xlsx: `openpyxl.load_workbook(read_only=True, data_only=True)`, first sheet, first non-empty row is the header.
+- CSV: decode `utf-8-sig`, fall back to `cp1252`; detect the delimiter with `csv.Sniffer`.
+- Read every cell as text. Excel stores phone numbers as numbers: convert `9876543210.0` → `"9876543210"`. Scientific notation (`9.87654E+09`) has lost digits, so mark the row invalid with "format the phone column as text".
+- Trim whitespace, skip fully empty rows, strip a leading `'`.
+- Parsing runs in a thread (`asyncio.to_thread`) so it doesn't block the event loop.
+
+### P1-T7 Column mapping and validation
+
+Auto-map headers by normalized synonym (lowercase, letters and digits only):
+
+| Field | Header synonyms |
+|---|---|
+| name | name, candidatename, fullname |
+| phone | phone, phonenumber, mobile, mobileno, mobilenumber, contact, contactnumber |
+| applied_role | jobrole, role, position, appliedfor, designation |
+| email | email, emailid, mail |
+| total_experience | totalexperience, experience, exp, totalexp, yearsofexperience |
+| current_company | currentcompany, company, employer, currentemployer |
+| current_location | currentlocation, location, city |
+| resume_url | resume, resumeurl, cv, cvlink |
+| source | source, candidatesource |
+| recruiter_notes | notes, recruiternotes, remarks, comments |
+
+- Unmapped columns are ignored and listed in the preview. The recruiter can change the mapping in the UI.
+- Row rules: name required (≤ 200 chars); phone required and valid (P1-T8); applied_role required (plan.md); email valid if present (`email-validator`); total_experience between 0 and 60, accepting "5", "5.5", "5 years", "5 yrs"; resume_url must be http(s); other text ≤ 500 chars.
+- Each row gets a status: `valid`, `invalid` (with `{field, code, message}` list), `duplicate_in_file`, or `duplicate_existing` (with the existing candidate id).
+
+### P1-T8 Phone normalization and duplicate detection (`utils/phone.py`)
+
+- `normalize_phone(raw, default_region="IN") -> E.164 | error_code` using `phonenumbers`. Handles `+91 98765 43210`, `09876543210`, `919876543210`, `98765-43210`, `(+91)9876543210`.
+- Reject unparseable, invalid, too-short or too-long numbers. Warn (don't reject) when the number isn't a mobile.
+- Duplicates by normalized phone (plan.md Module A): within the file (first occurrence wins) and against existing non-deleted candidates. Import never modifies existing candidates (plan.md: don't overwrite screening information).
+- Confirm uses `INSERT … ON CONFLICT (phone) DO NOTHING` and counts the rows actually inserted, so a concurrent import can't create a duplicate.
+
+### P1-T9 Import flow and preview
+
+| Step | Endpoint | Result |
+|---|---|---|
+| Upload | `POST /api/v1/candidates/import` (multipart: `file`, `job_id`) | Parse, auto-map, validate; save an `import_batches` row (status `preview`); return `import_id`, headers, mapping, per-row preview, counts |
+| Remap | `PUT /api/v1/candidates/import/{id}/mapping` [Proposed] | Re-validate stored rows with the new mapping |
+| Confirm | `POST /api/v1/candidates/import/{id}/confirm` [Proposed], body `{"consent_attested": true}` | Insert valid rows in one transaction; status `confirmed`; return the report |
+| Result | `GET /api/v1/candidates/import/{id}` | Status, report, row errors |
+
+- The report uses plan.md Module A's shape (`total_rows`, `valid_candidates`, `duplicate_candidates`, `invalid_candidates`, `imported_candidates`) plus `errors: [{row, field, message}]`.
+- Confirm requires `consent_attested: true`, from a checkbox reading "These candidates have agreed to be contacted by phone about this role". It sets `consent_source=recruiter_attested_import` and `consent_at=now()` **[Decision]**.
+- Preview batches expire after 24 hours (ARQ cron deletes their stored rows).
+
+### P1-T10 Recruiter authentication [Proposed, brought forward from plan.md §12]
+
+- `users` table and `scripts/create_user.py`; no public sign-up.
+- Passwords hashed with Argon2 (`argon2-cffi`).
+- `POST /api/v1/auth/login` creates a session in Redis (`rcai:session:{id}`, 12 h sliding TTL) and sets an `HttpOnly; SameSite=Lax` cookie (`Secure` in production). Plus `POST /auth/logout`, `GET /auth/me`.
+- Router-level `require_user` dependency on every `/api/v1` route except `/auth/login`. `/api/v1/webhooks/*` will use provider verification instead (P5).
+- CSRF guard: mutating requests must carry an `Origin` matching `FRONTEND_ORIGIN`. Login rate limit: 5 attempts per minute per IP + email.
+- Why now: P5 puts the backend on a public URL, and candidate PII must already be behind login.
+
+### P1-T11 Frontend pages (functional, minimal styling)
+
+- Generate TypeScript types from `/openapi.json` with `openapi-typescript` (`npm run gen:types`); services in `frontend/services/` use them.
+- `/login`; any 401 redirects here.
+- `/candidates`: table (name, phone, applied role, experience, screening status, interest, created date), debounced search, status filter, pagination, link to detail. Call columns arrive in P8.
+- `/candidates/upload`: format instructions with a downloadable template CSV; job selector (defaults to the active job); mapping dropdowns; preview table with row status and error messages; counts; consent checkbox; Confirm; result report.
+- `/candidates/[id]`: profile with an edit form; screening fields displayed read-only; delete with confirmation.
+- `/settings/job`: edit the active job (title, company, description, location, experience, skills, screening questions with reordering, agent instructions).
+
+## 7. Tests
+
+**Unit**
+- `normalize_phone`: at least 15 cases, including float, scientific notation, spaces, landline, foreign number.
+- Header auto-mapping, row validation, experience parsing.
+- Duplicate detection in-file and against existing records; report counts.
+
+**Integration** (real Postgres test database, rolled back per test)
+- Migrations up/down/up.
+- CRUD endpoints, including 409 duplicate, soft delete, and `opted_out` that can't be cleared.
+- Import end to end with fixtures:
+  - `valid_5.csv` → 5 imported (plan.md §1: "upload at least 5 candidates").
+  - `mixed_10.xlsx` → total 10, valid 8, duplicate 1, invalid 1, imported 8 (plan.md's example report).
+  - `numeric_phones.xlsx`, `scientific_phone.xlsx`, `cp1252.csv`, `semicolon.csv`, `wrong_type.pdf`.
+- Auth: every `/api/v1` route except login returns 401 without a session. Parametrize over the OpenAPI route list so new routes are covered automatically.
+- Only one job can be active.
+
+Fixtures use clearly fictitious names and test numbers. They're test data only and never appear on dashboards.
+
+## 8. Acceptance criteria
+
+| ID | Criterion | How to verify |
+|---|---|---|
+| P1-AC1 | Recruiter can import candidates | Upload `mixed_10.xlsx` in the UI → preview → confirm → 8 new candidates listed |
+| P1-AC2 | Invalid rows are reported | Preview and report show row number, field and reason |
+| P1-AC3 | Duplicate records are identified | In-file and existing-phone duplicates flagged; existing record unchanged (`updated_at` the same) |
+| P1-AC4 | Candidate data persists after restart | `docker compose down && make up` (no `-v`) → same candidates |
+| P1-AC5 | Recruiter can view and update candidates | Edit on the detail page persists; search and filter return the expected rows |
+| P1-AC6 (added) | APIs require login | Parametrized 401 test passes |
+| P1-AC7 (added) | Migrations are reversible | Up/down/up test passes |
+
+## 9. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Excel quirks (numbers, dates, merged cells) | Read as text; explicit row errors; template file |
+| Phone numbers from outside India | `default_region` configurable; non-Indian numbers flagged |
+| PII in logs | Log IDs only; mask phones |
+| Large uploads blocking the server | Size and row limits; parse in a thread |
+
+## 10. Open decisions
+
+| Decision | Recommendation |
+|---|---|
+| Phone unique globally or per job | Globally for the MVP (one active job); revisit with multiple jobs |
+| Delete behaviour | Soft delete |
+| Consent model | Recruiter attests per import; manual creation needs the same checkbox |
+| Accept `.xls` | No; ask users to save as `.xlsx` |
+| Full phone numbers in the UI | Yes for logged-in recruiters; masked in logs |
+
+## 11. Manual setup
+
+No external services. Create the first recruiter account with `python -m app.scripts.create_user`.
+
+## 12. Exit
+
+Write the [phase exit report](README.md#phase-exit-report); user review before P2.

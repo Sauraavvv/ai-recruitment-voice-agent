@@ -1,0 +1,34 @@
+# Secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Runtime output (recordings, generated audio, model files)
+artifacts/
+*.onnx
+models/
+*.wav
+!backend/app/tests/fixtures/**/*.wav
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

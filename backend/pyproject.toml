@@ -1,0 +1,33 @@
+[project]
+name = "recruitment-voice-agent-backend"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "RUF"]
+ignore = [
+  "S101",      # assert is fine in tests
+  "ASYNC109",  # health checks take an explicit per-check timeout on purpose
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/tests/**" = ["S105", "S106"]  # fake secrets in tests
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["app"]
+
+[[tool.mypy.overrides]]
+module = ["arq.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["app/tests"]
