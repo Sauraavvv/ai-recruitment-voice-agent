@@ -31,7 +31,11 @@ Error:
 
 | HTTP | `code` | When |
 |---|---|---|
-| 401 | `unauthorized` | Not logged in (from Phase 1) |
+| 401 | `not_authenticated` | No valid session cookie |
+| 401 | `invalid_credentials` | Wrong email or password at login |
+| 403 | `csrf_failed` | State-changing request whose `Origin` (or `Referer`) isn't `FRONTEND_ORIGIN` |
+| 410 | `import_expired` | Import preview older than 24 hours |
+| 429 | `too_many_attempts` | More than 5 login attempts per minute for one IP + email |
 | 404 | `not_found` | Unknown route or resource |
 | 409 | e.g. `duplicate_phone` | Conflicts with existing data |
 | 422 | `validation_error` | Request body or parameters invalid; `details` lists fields |
@@ -42,9 +46,72 @@ Error:
 
 Every HTTP response has an `X-Request-ID` header. Send your own (letters, digits, `.`, `_`, `-`, max 64 chars) to correlate logs; otherwise one is generated.
 
-## Pagination (from Phase 1)
+## Pagination
 
 Query parameters `page` (1-based) and `page_size` (max 100). Totals in `meta.total`.
+
+## Authentication
+
+Every `/api/v1` route needs a logged-in recruiter except `POST /api/v1/auth/login`. Login sets an `HttpOnly; SameSite=Lax` cookie `rcai_session` (`Secure` in production) backed by a Redis session with a 12-hour sliding expiry. There is no public sign-up; accounts are created with `make create-user`.
+
+`POST`, `PUT`, `PATCH` and `DELETE` requests must carry an `Origin` header (or, failing that, a `Referer`) equal to `FRONTEND_ORIGIN`. Browsers do this automatically through the Next.js proxy; scripts using curl must add `-H "Origin: http://localhost:3000"`.
+
+## Endpoints (Phase 1)
+
+The full schema is at `/docs` and `/openapi.json`; the frontend's types are generated from it with `make types`.
+
+### Auth
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/v1/auth/login` | `{email, password}` → user; sets the session cookie |
+| POST | `/api/v1/auth/logout` | Ends the session |
+| GET | `/api/v1/auth/me` | Current user |
+
+### Candidates
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/v1/candidates` | Requires `consent_attested: true`. Phone normalized to E.164. `job_id` defaults to the active job. 409 `duplicate_phone` with `details.existing_candidate_id` |
+| GET | `/api/v1/candidates` | `q` (name/phone/email), `screening_status`, `job_id`, `interested`, `sort` (`created_at`, `name`, `updated_at`, prefix `-` for descending; default `-created_at`), `page`, `page_size` |
+| GET | `/api/v1/candidates/{id}` | Profile and screening fields |
+| PATCH | `/api/v1/candidates/{id}` | Partial update; `null` clears an optional field. Changing the phone re-checks duplicates. `opted_out` can't go back to `false` (409 `opt_out_irreversible`) |
+| DELETE | `/api/v1/candidates/{id}` | Soft delete. The phone stays reserved, so re-adding it returns 409 with `details.deleted: true` |
+
+### Candidate import
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/v1/candidates/import` | Multipart `file` (.csv/.xlsx, ≤ 5 MB, ≤ 1,000 rows) and optional `job_id`. Returns the preview: headers, auto-mapping, per-row status and the report. Nothing is saved yet |
+| GET | `/api/v1/candidates/import/{id}` | Preview (re-validated) or, once confirmed, the final report |
+| PUT | `/api/v1/candidates/import/{id}/mapping` | `{column_mapping: {field: column_index or null}}`; re-validates |
+| POST | `/api/v1/candidates/import/{id}/confirm` | `{consent_attested: true}`; inserts the valid rows |
+
+Row status: `valid`, `invalid`, `duplicate_in_file` (the first row with a phone wins) or `duplicate_existing` (with `existing_candidate_id`; the existing record is never changed). Report:
+
+```json
+{
+  "total_rows": 10, "valid_candidates": 8, "duplicate_candidates": 1,
+  "duplicates_in_file": 1, "duplicates_existing": 0,
+  "invalid_candidates": 1, "imported_candidates": 8,
+  "errors": [{"row": 11, "field": "phone", "message": "Phone number is too short"}]
+}
+```
+
+`row` is the spreadsheet row number (the header is row 1). Previews expire after 24 hours; the worker then deletes their stored rows.
+
+### Jobs
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/jobs` | All jobs, active first |
+| GET | `/api/v1/jobs/active` | The active job, or `null` |
+| GET | `/api/v1/jobs/default-screening-questions` | The ten standard questions |
+| POST | `/api/v1/jobs` | Questions default to the standard ten. The first job becomes active |
+| GET / PATCH | `/api/v1/jobs/{id}` | `job_description` and `agent_instructions` are limited to 4,000 characters |
+| POST | `/api/v1/jobs/{id}/activate` | Makes this the only active job |
+
+`screening_questions` is an ordered list of `{key, prompt, required, type: string|number|boolean, unit}`. The ten standard keys (`current_location` … `interview_availability`) keep their fixed types; other keys are custom questions.
 
 ## Health
 

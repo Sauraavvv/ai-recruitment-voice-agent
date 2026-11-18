@@ -1,0 +1,39 @@
+import { apiFetch, send } from "@/lib/api";
+import type { Candidate, CandidateCreate, CandidateUpdate, PageMeta } from "@/types";
+
+export type CandidateQuery = {
+  q?: string;
+  screening_status?: string;
+  interested?: string;
+  job_id?: string;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export async function listCandidates(query: CandidateQuery) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const { data, meta } = await apiFetch<Candidate[]>(`/api/v1/candidates?${params}`, {
+    cache: "no-store",
+  });
+  return { items: data, meta: meta as PageMeta };
+}
+
+export async function getCandidate(id: string) {
+  return (await apiFetch<Candidate>(`/api/v1/candidates/${id}`, { cache: "no-store" })).data;
+}
+
+export async function createCandidate(body: CandidateCreate) {
+  return (await send<Candidate>("POST", "/api/v1/candidates", body)).data;
+}
+
+export async function updateCandidate(id: string, body: CandidateUpdate) {
+  return (await send<Candidate>("PATCH", `/api/v1/candidates/${id}`, body)).data;
+}
+
+export async function deleteCandidate(id: string) {
+  await send<null>("DELETE", `/api/v1/candidates/${id}`);
+}

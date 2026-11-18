@@ -10,3 +10,9 @@ redis[hiredis]
 arq
 structlog
 httpx
+# Phase 1
+python-multipart
+openpyxl
+phonenumbers
+email-validator
+argon2-cffi

@@ -41,6 +41,12 @@ def get_engine() -> AsyncEngine:
     return _engine
 
 
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    if _sessionmaker is None:
+        raise RuntimeError("Database engine not initialized")
+    return _sessionmaker
+
+
 async def get_session() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency yielding one session per request."""
     if _sessionmaker is None:

@@ -22,11 +22,14 @@ The project folder name contains a space (`project 2`). Quote paths in shell com
 make env          # creates .env with a random APP_SECRET_KEY (doesn't overwrite an existing .env)
 make up           # builds and starts postgres, redis, backend, worker, frontend
 make ps           # all services should be "running" / "healthy"
+make create-user email=you@example.com name="Your Name"   # prompts for a password (10+ chars)
 ```
+
+The backend applies database migrations (`alembic upgrade head`) every time its container starts. Then log in at http://localhost:3000/login, create the job under **Job settings**, and upload candidates.
 
 | URL | What |
 |---|---|
-| http://localhost:3000 | Frontend: system status page |
+| http://localhost:3000 | Frontend: system status page; recruiter pages at `/candidates` (log in first) |
 | http://localhost:8000/health | Backend liveness |
 | http://localhost:8000/health/ready | Database, Redis and worker readiness |
 | http://localhost:8000/docs | API reference (development only) |
@@ -41,6 +44,21 @@ make test         # pytest (the real-services test is skipped unless postgres/re
 make lint         # ruff + eslint
 make typecheck    # mypy + tsc
 ```
+
+## Database migrations
+
+```bash
+make migrate                      # apply pending migrations (also runs on backend start)
+make migration m="add something"  # autogenerate a new revision from model changes; review it by hand
+```
+
+Migrations live in `backend/app/database/migrations/versions/`. Autogenerate misses some things (partial indexes, CHECK constraints, triggers), so always read the generated file.
+
+Integration tests use a separate database, `recruitment_ai_test`, created and migrated automatically, with every test rolled back.
+
+## Frontend API types
+
+`frontend/types/api.ts` is generated from the backend's OpenAPI schema. After changing an API schema, run `make types` (needs the stack running) and commit the result.
 
 ## Dependencies
 
@@ -61,3 +79,5 @@ Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) be
 | `/health/ready` shows `worker: error` | Worker not running or just started; check `docker compose logs worker` (heartbeat every 30 s) |
 | Port already in use | Stop the other service or change the host port in `docker-compose.yml` |
 | Frontend shows "Backend unreachable" | Backend container not up; `docker compose logs backend` |
+| Every change in the UI fails with "Request origin not allowed" | `FRONTEND_ORIGIN` in `.env` doesn't match the URL in the browser (e.g. port 3010 vs 3000); fix it and restart the backend |
+| Can't log in / no account | `make create-user email=… name=…` (running it again resets the password) |

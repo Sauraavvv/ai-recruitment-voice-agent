@@ -33,6 +33,13 @@ services:
 
   backend:
     build: ./backend
+    # Apply database migrations, then start the API.
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 1",
+      ]
     env_file: .env
     environment:
       # Inside Docker, services reach each other by name on their internal ports.
