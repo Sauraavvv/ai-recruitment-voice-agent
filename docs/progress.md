@@ -1,5 +1,73 @@
 # Progress
 
+## Phase 2 decisions (agreed 2026-11-18)
+
+- Model: `gpt-5.4-mini` with `OPENAI_REASONING_EFFORT=none` (benchmarked against gpt-5.4-nano, gpt-5.6-luna, gpt-6-luna and gpt-4.1-mini).
+- Latency: P2-AC7 is revised from p50 ≤ 1.2 s / p95 ≤ 2.5 s to **p50 ≤ 2.5 s / p95 ≤ 3.5 s**. Phase 6 masks the wait with an instant pre-synthesized acknowledgement ("Okay.", "Got it."). The OpenAI round trip alone is about 1 s, so 1.2 s wasn't reachable. Details: docs/agent.md, phase-06 plan §5.8.
+- Phase plan defaults accepted: CTC stored as LPA float plus the candidate's raw words; interest asked first; ranges clarified once, then the lower bound is stored; custom job questions kept as free text; target call length about 5 minutes.
+
+## Phase 2 exit report (2026-11-18)
+
+**Implemented:** a text-only screening agent running against the real OpenAI API.
+- A Python state machine owns field status, question order and completion. The LLM extracts values and phrases replies.
+- Phases: identity, permission, screening, read-back confirmation and close, with exits for callback, decline, opt-out, wrong person and escalation.
+- Values need an evidence quote from the candidate's own words, plus range and unit checks. Clarification (max 2 per field, then unknown), range handling, corrections with history, and consistency confirmations.
+- A next-question guardrail (re-prompt once, then template).
+- Silence, low STT confidence, interruption and LLM-failure handling.
+- A neutral summary with a judgment guard, a text CLI, a live eval harness and a latency benchmark.
+- Design and results: [agent.md](agent.md).
+
+**Files created / changed:**
+- Backend:
+  - `providers/llm/` (`base.py`, `openai_provider.py`, factory in `__init__.py`)
+  - `agent/` (`schemas.py`, `state.py`, `extraction.py`, `prompts.py`, `screening_agent.py`, `conversation_manager.py`, `cli.py`)
+  - `services/summary_service.py`
+  - `tests/unit/agent/` (scripted stub LLM; state, extraction, schema snapshot, manager, summary, adapter and scenario-file tests)
+  - `tests/agent_eval/` (`job.yaml`, 16 `scenarios/*.yaml`, `runner.py`, `bench.py`, `test_agent_eval.py`, `results/`)
+- Changed: `config.py` adds `OPENAI_REASONING_EFFORT` and `OPENAI_TIMEOUT_S`. The default question order in `schemas/job.py` now asks about interest first; this affects new jobs only, and the Phase 1 test was updated. `pyproject.toml` adds the `llm` marker, excluded by default, plus ruff ignores for the CLI and eval tools.
+- Infra: new dependencies `openai` 3.55.0 and `pyyaml` (runtime; pyyaml was already present through uvicorn) and `types-PyYAML` (dev). These are additions only, nothing upgraded. Makefile adds `agent-cli`, `agent-eval` and `llm-bench`. `.env.example` has the OpenAI defaults.
+- Docs: `agent.md` (new), `setup.md` (OpenAI section, troubleshooting), `phases/phase-02` (AC7 revised), `phases/phase-06` (latency budget and acknowledgement masking).
+
+**Tests run:**
+- `make test` and `make test-docker` → 228 passed, 1 deselected (the live eval).
+- `make lint`, `make typecheck` → clean.
+- `make agent-eval` (live, `gpt-5.4-mini`, 16 scenarios × 3) → **48/48 passed**. Safety 100%, other checks 100%, 195 LLM calls with 0 retries, $0.39.
+- `make llm-bench` across 5 models; CLI replay of the happy path.
+
+**Acceptance criteria:**
+- P2-AC1 ✅ Scenario 14 passes 3/3; the CLI transcript is in agent.md.
+- P2-AC2 ✅ Scenario 2 passes 3/3 (location and company from one answer; company never asked).
+- P2-AC3 ✅ 0 repeated questions across all 48 runs. This is checked automatically from turn labels and phrase matching on every reply.
+- P2-AC4 ✅ Scenarios 3 and 10 pass 3/3.
+- P2-AC5 ✅ 100% of turns validated on the first try; retry rate 0%.
+- P2-AC6 ✅ Scenarios 4, 5, 11 (and 13) pass 3/3. The evidence check drops unsupported values, and the unit tests cover it.
+- P2-AC7 ✅ against the **revised** target: p50 2.26 s, p95 3.53 s in the eval (benchmark p50 2.63 s). ❌ against the original 1.2 s target. The user chose to revise it and mask the wait in P6.
+
+**Deferred or not done:**
+- §7.3 simulated-candidate run (optional): not built. Worth adding before or during P6 to track field accuracy across prompt changes.
+- Persisting conversations, the post-call extraction pass and Sheets sync are P6/P7, as planned. `ScreeningResult` and `snapshot()` are ready for them.
+- The output-schema trim (saves about 0.3 s per turn) was offered and not chosen. Revisit if P6 latency is tight.
+
+**Needs credentials or manual provider configuration:** none new. `OPENAI_API_KEY` is set in `.env`; please make sure a monthly spend limit is set in the OpenAI dashboard.
+
+**Risks or surprises discovered:**
+- OpenAI latency is dominated by a fixed round trip (about 1 s, even for "Say ok."). The model, output size and the priority tier barely change it. Server location in P10 will matter.
+- Reasoning models here reject `effort=minimal`; only `none` works.
+- The SDK (openai 3.x) uses `httpx2`, not `httpx`.
+- Prompt caching is inconsistent: 51% of input was cached in the eval, 0% in a sequential CLI run. The static prefix is barely over the 1,024-token minimum.
+- The first live run caught 2 state bugs the stub tests missed (same-turn "confirmation" of a correction; a read-back "yes" confirming fields that weren't read back). Both are fixed and have unit tests. Live evals are worth re-running after every prompt or logic change.
+
+**Decisions made:**
+- Agreed with the user: the model, the revised latency target and P6 masking, and the plan defaults (see above).
+- Mine, open to review:
+  - The LLM sees unit-suffixed keys (`total_experience_years`, `current_ctc_lpa`); Python maps them to the DB column names. Field names in lists are free strings and normalized in Python, so a near-miss name isn't lost.
+  - Message order is system → job → history → state → utterance (the plan had state before history), for better prefix caching.
+  - The greeting, introduction, role line, read-back, closing and all exit lines are templates with no LLM wording. The permission answer leads straight into the role line plus the first question.
+  - A correction during the read-back is stored as confirmed and the call closes (no second read-back).
+  - "Not now" with no time asks once for a time. If the answer is vague, the call ends with `needs_recruiter=true` and no automatic callback.
+  - `store=False` on every OpenAI request; `prompt_cache_key=screening-<job id>`.
+  - Summaries use the structured answers only, not the raw transcript. P7's post-call pass can add transcript context.
+
 ## Phase 1 decisions (agreed 2026-11-18)
 
 - Phone numbers are unique across all jobs: one record per person; re-imports are flagged as duplicates.

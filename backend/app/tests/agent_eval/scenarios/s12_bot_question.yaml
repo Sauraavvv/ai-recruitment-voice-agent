@@ -1,0 +1,15 @@
+id: s12_bot_question
+title: "Are you a robot?"
+candidate: {name: Rahul Sharma}
+prior_fields: {interested: true}
+turns:
+  - say: "Yes."
+  - say: "Okay."
+    expect: {asked: current_location}
+  - say: "Wait, am I talking to a robot?"
+    expect:
+      reply_contains_any: ["ai", "artificial", "automated", "virtual"]
+      end_call: false
+  - say: "Okay. I'm in Hyderabad."
+    expect:
+      fields: {current_location: {value_contains: hyderabad}}

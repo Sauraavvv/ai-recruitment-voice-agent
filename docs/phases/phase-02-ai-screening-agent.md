@@ -281,7 +281,7 @@ A second LLM plays a candidate with a hidden profile and varied Indian-English p
 | P2-AC4 | Handles unclear answers | Scenarios 3 and 10 pass |
 | P2-AC5 | Returns valid structured JSON | 100% of turns validate after ≤ 1 retry; retry rate reported |
 | P2-AC6 | Doesn't invent missing information | Scenarios 4, 5, 11 pass 3/3; the evidence check drops unsupported values |
-| P2-AC7 (added) | Latency suits live voice | p50 LLM turn ≤ 1.2 s, p95 ≤ 2.5 s with the chosen model |
+| P2-AC7 (added, revised 2026-11-18) | Latency suits live voice | p50 LLM turn ≤ 2.5 s, p95 ≤ 3.5 s with the chosen model; the wait is masked in P6 by a pre-synthesized acknowledgement. The original 1.2 s / 2.5 s target was unreachable: the OpenAI round trip alone is about 1 s, and five models measured 2.6 to 3.1 s p50 (docs/agent.md) |
 
 ## 9. Risks
 

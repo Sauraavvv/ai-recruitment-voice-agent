@@ -69,6 +69,16 @@ Integration tests use a separate database, `recruitment_ai_test`, created and mi
 
 All settings come from `.env` (see `.env.example`). The backend refuses to start if a required variable is missing or invalid and prints the variable names. Provider keys (OpenAI, Deepgram, Exotel, Google) can stay empty until their phase.
 
+### OpenAI (Phase 2 onwards)
+
+Set `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5.4-mini` and `OPENAI_REASONING_EFFORT=none`, then run `make up` so the containers reload `.env`. Set a monthly spend limit in the OpenAI dashboard. Then:
+
+- `make agent-cli`: chat with the agent as a candidate, using the active job.
+- `make agent-eval`: the live scenario suite (about $0.40 for 3 runs).
+- `make llm-bench models=a,b args='--effort none'`: compare model latency.
+
+These call the real API; `make test` never does. See [agent.md](agent.md).
+
 Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) before committing.
 
 ## Common problems
@@ -77,6 +87,8 @@ Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) be
 |---|---|
 | `Invalid configuration… APP_SECRET_KEY: is required` | Run `make env`, or set a 32+ character value in `.env` |
 | `/health/ready` shows `worker: error` | Worker not running or just started; check `docker compose logs worker` (heartbeat every 30 s) |
+| Agent or eval: `LLMConfigError: OPENAI_API_KEY and OPENAI_MODEL must be set` | Fill them in `.env`, then `make up` (containers read `.env` only when created) |
+| OpenAI `400 Unsupported value: 'minimal'` | 5.x/6.x models accept `OPENAI_REASONING_EFFORT=none`, not `minimal`; non-reasoning models (e.g. gpt-4.1-mini) need it empty |
 | Port already in use | Stop the other service or change the host port in `docker-compose.yml` |
 | Frontend shows "Backend unreachable" | Backend container not up; `docker compose logs backend` |
 | Every change in the UI fails with "Request origin not allowed" | `FRONTEND_ORIGIN` in `.env` doesn't match the URL in the browser (e.g. port 3010 vs 3000); fix it and restart the backend |

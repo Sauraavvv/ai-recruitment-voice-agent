@@ -1,0 +1,34 @@
+id: s14_happy_path
+title: Happy path, all fields
+candidate: {name: Priya Nair}
+turns:
+  - say: "Yes, this is Priya."
+  - say: "Yes, sure, I have a few minutes."
+    expect: {asked: interested}
+  - say: "Yes, I'm interested."
+  - say: "I'm in Bangalore, currently working at Wipro."
+  - say: "Six years in total."
+  - say: "Four years of that is backend development with Python."
+  - say: "My notice period is 60 days."
+  - say: "My current CTC is 14 lakhs."
+  - say: "I'm expecting 20 lakhs."
+  - say: "I want more ownership, and I'd like to work at a product company."
+  - say: "Any weekday after 4 pm works for an interview."
+    expect: {phase: confirmation}
+  - say: "Yes, that's all correct."
+    expect: {end_call: true}
+final:
+  end_reason: completed
+  status: completed
+  summary: true
+  fields:
+    interested: {value: true}
+    current_location: {value_contains: bang}
+    current_company: {value_contains: wipro}
+    total_experience: {value: 6}
+    relevant_experience: {value: 4}
+    notice_period: {value_contains: "60"}
+    current_ctc: {value: 14}
+    expected_ctc: {value: 20}
+    reason_for_change: {status: answered_or_confirmed}
+    interview_availability: {value_contains: "4"}

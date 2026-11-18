@@ -1,0 +1,11 @@
+# Fictional job used by every eval scenario. Note: no salary information on purpose
+# (scenario 5 checks the agent doesn't invent it).
+id: eval-job
+job_title: Backend Developer
+company_name: Northwind Labs
+location: Bengaluru
+required_experience: 3 to 6 years
+skills: [Python, FastAPI, PostgreSQL]
+job_description: >-
+  Build and run APIs for Northwind's logistics platform. Hybrid: three days a week in the
+  Bengaluru office. The interview process is two technical rounds followed by an HR round.

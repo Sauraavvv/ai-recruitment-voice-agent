@@ -4,7 +4,7 @@ BACKEND := backend
 VENV := $(BACKEND)/.venv/bin
 
 .PHONY: help env up down logs ps test test-docker lint fmt typecheck lock venv check-secrets shell-db \
-	migrate migration create-user types
+	migrate migration create-user types agent-cli agent-eval llm-bench
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -75,3 +75,15 @@ create-user:  ## Create or reset a recruiter login: make create-user email=a@b.c
 types:  ## Regenerate frontend/types/api.ts from the backend's OpenAPI schema
 	docker compose exec -T backend python -m app.scripts.export_openapi > frontend/types/openapi.json
 	cd frontend && npm run gen:types
+
+# --- Phase 2: screening agent (these call the real OpenAI API and cost money) ---
+
+agent-cli:  ## Chat with the agent: make agent-cli [args='--replay app/tests/agent_eval/scenarios/s14_happy_path.yaml']
+	docker compose exec backend python -m app.agent.cli $(args)
+
+agent-eval:  ## Live scenario evaluation: make agent-eval [args='-s s07 --runs 1']
+	docker compose exec -T backend python -m app.tests.agent_eval.runner $(args)
+
+llm-bench:  ## Latency benchmark: make llm-bench models=model-a,model-b [args='--effort none']
+	@test -n "$(models)" || (echo 'usage: make llm-bench models=model-a,model-b'; exit 1)
+	docker compose exec -T backend python -m app.tests.agent_eval.bench --models "$(models)" $(args)

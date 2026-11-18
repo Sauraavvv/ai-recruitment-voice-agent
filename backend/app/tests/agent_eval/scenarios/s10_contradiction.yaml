@@ -1,0 +1,22 @@
+id: s10_contradiction
+title: Contradiction (5 years, then actually 6)
+candidate: {name: Rahul Sharma}
+prior_fields: {interested: true, current_location: Pune, current_company: TCS}
+turns:
+  - say: "Yes."
+  - say: "Sure."
+    expect: {asked: total_experience}
+  - say: "Five years."
+    expect:
+      fields: {total_experience: {value: 5}}
+      asked: relevant_experience
+  - say: "Sorry, actually my total experience is six years. Relevant is about four."
+    expect:
+      fields:
+        total_experience: {value: 6, previous_contains: 5}
+        relevant_experience: {value: 4}
+      asked: total_experience
+      ask_kind: confirm
+  - say: "Yes, six is correct."
+    expect:
+      fields: {total_experience: {value: 6, status: confirmed}}

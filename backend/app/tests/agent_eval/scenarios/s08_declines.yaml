@@ -1,0 +1,14 @@
+id: s08_declines
+title: Declines the opportunity
+candidate: {name: Rahul Sharma}
+turns:
+  - say: "Yes."
+  - say: "Okay, go on."
+    expect: {asked: interested}
+  - say: "No, I'm not interested in changing jobs right now."
+    expect: {end_call: true}
+final:
+  end_reason: declined
+  status: declined
+  fields: {interested: {value: false}}
+  never_asked: [current_ctc, expected_ctc]

@@ -1,0 +1,16 @@
+id: s06_busy
+title: Busy; callback offered, no screening questions
+candidate: {name: Rahul Sharma}
+turns:
+  - say: "Yes, speaking."
+  - say: "I'm in a meeting right now, I can't talk."
+    expect:
+      end_call: false
+      reply_contains_any: ["call you back", "good time", "convenient"]
+  - say: "Call me after 7 in the evening today."
+    expect: {end_call: true}
+final:
+  end_reason: callback
+  callback_iso_prefix: "2026-11-18T19:00"
+  never_asked_any: true
+  no_collected: true

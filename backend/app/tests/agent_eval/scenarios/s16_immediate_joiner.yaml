@@ -1,0 +1,17 @@
+id: s16_immediate_joiner
+title: Immediate joiner
+candidate: {name: Rahul Sharma}
+prior_fields:
+  interested: true
+  current_location: Pune
+  current_company: TCS
+  total_experience: 3
+  relevant_experience: 2
+turns:
+  - say: "Yes."
+  - say: "Sure."
+    expect: {asked: notice_period}
+  - say: "I'm an immediate joiner, my last day was last week."
+    expect:
+      fields: {notice_period: {status: answered_or_confirmed, meta_days: 0}}
+      asked: current_ctc

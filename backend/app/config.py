@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # OpenAI (Phase 2)
     openai_api_key: SecretStr | None = None
     openai_model: str | None = None
+    # Only sent for reasoning models (e.g. "none", "minimal", "low"); lower effort = lower latency.
+    openai_reasoning_effort: str | None = None
+    openai_timeout_s: float = Field(default=8.0, gt=0, le=60)
 
     # Deepgram (Phase 4)
     deepgram_api_key: SecretStr | None = None

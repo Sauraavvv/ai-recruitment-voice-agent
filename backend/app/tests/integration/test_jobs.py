@@ -8,15 +8,15 @@ async def test_first_job_is_active_with_standard_questions(
 ) -> None:
     keys = [q["key"] for q in active_job["screening_questions"]]
     assert keys == [
+        "interested",
         "current_location",
         "current_company",
         "total_experience",
         "relevant_experience",
+        "notice_period",
         "current_ctc",
         "expected_ctc",
-        "notice_period",
         "reason_for_change",
-        "interested",
         "interview_availability",
     ]
     active = await authed.get("/api/v1/jobs/active")

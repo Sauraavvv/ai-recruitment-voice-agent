@@ -16,3 +16,6 @@ openpyxl
 phonenumbers
 email-validator
 argon2-cffi
+# Phase 2
+openai
+pyyaml

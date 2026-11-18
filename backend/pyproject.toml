@@ -17,6 +17,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "app/tests/**" = ["S105", "S106"]  # fake secrets in tests
 "app/database/migrations/versions/**" = ["E501"]  # long CHECK constraint strings
+# Interactive/offline tools: blocking file reads and input() are fine there.
+"app/agent/cli.py" = ["ASYNC240", "ASYNC250"]
+"app/tests/agent_eval/**" = ["ASYNC240", "ASYNC250", "S311"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -32,3 +35,6 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["app/tests"]
+# Live OpenAI tests cost money and need a key: run them explicitly with `make agent-eval`.
+addopts = "-m 'not llm'"
+markers = ["llm: calls the real OpenAI API"]

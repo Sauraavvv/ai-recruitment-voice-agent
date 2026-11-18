@@ -1,0 +1,22 @@
+id: s05_job_question
+title: Asks about the job; answers only from job fields
+candidate: {name: Rahul Sharma}
+prior_fields: {interested: true}
+turns:
+  - say: "Yes."
+  - say: "Okay, go ahead."
+    expect: {asked: current_location}
+  - say: "Before that, what's the salary range for this role?"
+    expect:
+      reply_contains_any: ["don't have", "do not have", "recruiter"]
+      reply_not_contains: ["lakh", "lpa", "₹", "rupees", "per annum"]
+      end_call: false
+  - say: "Okay. And is this role remote?"
+    expect:
+      reply_contains_any: ["hybrid", "three days", "3 days", "office"]
+      reply_not_contains: ["fully remote", "100% remote"]
+  - say: "Got it. I'm in Pune."
+    expect:
+      fields: {current_location: {value_contains: pune}}
+final:
+  candidate_questions_min: 1

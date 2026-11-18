@@ -123,9 +123,11 @@ Per turn, record:
 | Segment | Proposed p50 target |
 |---|---|
 | t0 → t1 (STT endpoint) | ≤ 600 ms |
-| t1 → t2 (LLM) | ≤ 1,200 ms |
+| t1 → t2 (LLM) | ≤ 2,500 ms (revised after P2; measured p50 2.3 s, p95 3.5 s) |
 | t2 → t3 (first TTS chunk) | ≤ 300 ms |
-| t0 → t4 (total) | ≤ 2.0 s (p95 ≤ 3.0 s) |
+| t0 → t4 (total) | ≤ 3.5 s for the full reply; **≤ 1.0 s to the first sound** (the acknowledgement below) |
+
+**Masking the LLM wait (decided in P2, 2026-11-18).** One OpenAI turn takes about 2.3 s at p50 (3.5 s at p95) with `gpt-5.4-mini`. The round trip alone is about 1 s, so neither a smaller model nor a smaller schema reaches 1.2 s (see docs/agent.md). Instead, as soon as STT finalizes an utterance, play a short pre-synthesized acknowledgement from the phrase cache ("Okay.", "Got it.", "Mm-hmm, one second."). Pick it at random and avoid repeating the previous one. Then speak the agent's reply. Skip it when the reply is a fixed template (greeting, introduction, exits) or comes from a low-confidence re-prompt. Strip a leading acknowledgement from the LLM reply when one was already played, so the caller doesn't hear "Got it. Got it." Measure t0 → first acknowledgement frame as its own segment.
 
 Ways to hit the targets: short first chunk, synthesize chunk N+1 while N plays, phrase cache, pre-synthesized greeting, compact prompts. Log each turn with `candidate_id`, `call_attempt_id` and `provider_call_id` (plan.md §12), and monitor event-loop lag.
 

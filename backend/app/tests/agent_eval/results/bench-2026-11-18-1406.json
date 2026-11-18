@@ -1,0 +1,16 @@
+[
+ {
+  "model": "gpt-4.1-mini",
+  "reasoning_effort": null,
+  "calls": 33,
+  "p50_ms": 3107,
+  "p95_ms": 3798,
+  "max_ms": 5512,
+  "avg_input_tokens": 2767,
+  "avg_cached_tokens": 1761,
+  "avg_output_tokens": 212,
+  "retries": 2,
+  "conversations": 6,
+  "conversations_passed": 4
+ }
+]

@@ -1,0 +1,12 @@
+id: s09_opt_out
+title: "Don't call me again"
+candidate: {name: Rahul Sharma}
+turns:
+  - say: "Yes."
+  - say: "Okay."
+  - say: "Actually, please don't call me again. Remove my number."
+    expect: {end_call: true}
+final:
+  opted_out: true
+  end_reason: opted_out
+  ended_by_turn: 3

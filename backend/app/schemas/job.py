@@ -20,7 +20,14 @@ class ScreeningQuestion(BaseModel):
 
 
 # The ten standard fields (plan.md Module C). Keys and types are fixed; prompts are editable.
+# Interest comes first so nobody is asked about salary after saying they aren't interested
+# (Phase 2 plan 5.4). The order is the order the agent asks in.
 STANDARD_QUESTIONS: list[ScreeningQuestion] = [
+    ScreeningQuestion(
+        key="interested",
+        prompt="Are you interested in this opportunity?",
+        type="boolean",
+    ),
     ScreeningQuestion(key="current_location", prompt="Where are you currently located?"),
     ScreeningQuestion(key="current_company", prompt="Which company are you working with now?"),
     ScreeningQuestion(
@@ -35,20 +42,15 @@ STANDARD_QUESTIONS: list[ScreeningQuestion] = [
         type="number",
         unit="years",
     ),
+    ScreeningQuestion(key="notice_period", prompt="What is your notice period?"),
     ScreeningQuestion(
         key="current_ctc", prompt="What is your current CTC?", type="number", unit="LPA"
     ),
     ScreeningQuestion(
         key="expected_ctc", prompt="What CTC are you expecting?", type="number", unit="LPA"
     ),
-    ScreeningQuestion(key="notice_period", prompt="What is your notice period?"),
     ScreeningQuestion(
         key="reason_for_change", prompt="Why are you looking for a change right now?"
-    ),
-    ScreeningQuestion(
-        key="interested",
-        prompt="Are you interested in this opportunity?",
-        type="boolean",
     ),
     ScreeningQuestion(
         key="interview_availability", prompt="When would you be available for an interview?"

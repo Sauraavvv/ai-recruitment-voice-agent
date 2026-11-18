@@ -1,0 +1,58 @@
+[
+ {
+  "model": "gpt-5.4-mini",
+  "reasoning_effort": "none",
+  "calls": 34,
+  "p50_ms": 2630,
+  "p95_ms": 3825,
+  "max_ms": 6292,
+  "avg_input_tokens": 2760,
+  "avg_cached_tokens": 520,
+  "avg_output_tokens": 208,
+  "retries": 0,
+  "conversations": 6,
+  "conversations_passed": 5
+ },
+ {
+  "model": "gpt-5.4-nano",
+  "reasoning_effort": "none",
+  "calls": 34,
+  "p50_ms": 2808,
+  "p95_ms": 3775,
+  "max_ms": 3843,
+  "avg_input_tokens": 2762,
+  "avg_cached_tokens": 1634,
+  "avg_output_tokens": 219,
+  "retries": 0,
+  "conversations": 6,
+  "conversations_passed": 6
+ },
+ {
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "none",
+  "calls": 35,
+  "p50_ms": 3062,
+  "p95_ms": 3993,
+  "max_ms": 4225,
+  "avg_input_tokens": 2763,
+  "avg_cached_tokens": 2350,
+  "avg_output_tokens": 206,
+  "retries": 0,
+  "conversations": 6,
+  "conversations_passed": 6
+ },
+ {
+  "model": "gpt-6-luna",
+  "reasoning_effort": "none",
+  "calls": 34,
+  "p50_ms": 2944,
+  "p95_ms": 4144,
+  "max_ms": 4870,
+  "avg_input_tokens": 2759,
+  "avg_cached_tokens": 2336,
+  "avg_output_tokens": 206,
+  "retries": 0,
+  "conversations": 6,
+  "conversations_passed": 6
+ }
+]

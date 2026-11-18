@@ -1,0 +1,26 @@
+id: s04_refuses_salary
+title: Refuses to share current salary
+candidate: {name: Rahul Sharma}
+prior_fields:
+  interested: true
+  current_location: Pune
+  current_company: TCS
+  total_experience: 6
+  relevant_experience: 4
+  notice_period: 30 days
+turns:
+  - say: "Yes, it's me."
+  - say: "Sure."
+    expect: {asked: current_ctc}
+  - say: "I'd rather not share my current salary."
+    expect:
+      fields: {current_ctc: {status: declined}}
+      asked: expected_ctc
+      end_call: false
+  - say: "I'm expecting 18 lakhs."
+    expect:
+      fields: {expected_ctc: {value: 18}}
+      not_asked: [current_ctc]
+final:
+  never_asked_after: {current_ctc: 3}
+  fields: {current_ctc: {status: declined}}

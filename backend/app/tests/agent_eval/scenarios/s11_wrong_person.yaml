@@ -1,0 +1,10 @@
+id: s11_wrong_person
+title: Wrong person
+candidate: {name: Rahul Sharma}
+turns:
+  - say: "No, this is his father. Rahul isn't here. I live in Delhi and work at SBI."
+    expect: {end_call: true}
+final:
+  end_reason: wrong_person
+  status: wrong_person
+  no_collected: true

@@ -1,0 +1,20 @@
+id: s15_ctc_normalization
+title: CTC said as monthly and as rupees
+candidate: {name: Rahul Sharma}
+prior_fields:
+  interested: true
+  current_location: Pune
+  current_company: TCS
+  total_experience: 3
+  relevant_experience: 2
+  notice_period: 30 days
+turns:
+  - say: "Yes."
+  - say: "Sure."
+    expect: {asked: current_ctc}
+  - say: "Around 80 thousand per month."
+    expect:
+      fields: {current_ctc: {value_between: [9.5, 9.7]}}
+  - say: "I'm expecting 12,00,000 per annum."
+    expect:
+      fields: {expected_ctc: {value: 12}}

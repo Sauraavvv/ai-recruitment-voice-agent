@@ -1,0 +1,17 @@
+id: s03_unclear_answer
+title: Unclear answer, clarified, then stored
+candidate: {name: Rahul Sharma}
+prior_fields: {interested: true, current_location: Pune, current_company: TCS}
+turns:
+  - say: "Yes."
+  - say: "Go ahead."
+    expect: {asked: total_experience}
+  - say: "Around five-six years."
+    expect:
+      asked: total_experience
+      ask_kind: clarify
+      fields: {total_experience: {status: missing}}
+  - say: "Five and a half years."
+    expect:
+      fields: {total_experience: {value: 5.5}}
+      asked: relevant_experience

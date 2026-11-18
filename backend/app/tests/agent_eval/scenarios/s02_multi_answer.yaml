@@ -1,0 +1,20 @@
+id: s02_multi_answer
+title: Two answers at once
+candidate: {name: Rahul Sharma}
+prior_fields: {interested: true}
+turns:
+  - say: "Yes, speaking."
+  - say: "Yes, that's fine."
+    expect: {asked: current_location}
+  - say: "I'm living in Gurgaon and currently working at Infosys."
+    expect:
+      fields:
+        current_location: {value_contains: gurgaon}
+        current_company: {value_contains: infosys}
+      asked: total_experience
+  - say: "About seven years in total."
+    expect:
+      fields: {total_experience: {value: 7}}
+      not_asked: [current_company, current_location]
+final:
+  never_asked: [current_company]

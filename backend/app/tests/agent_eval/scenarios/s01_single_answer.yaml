@@ -1,0 +1,16 @@
+id: s01_single_answer
+title: Answers one question normally
+candidate: {name: Rahul Sharma}
+turns:
+  - say: "Yes, this is Rahul."
+    expect: {phase: permission}
+  - say: "Sure, go ahead."
+    expect: {phase: screening, asked: interested}
+  - say: "Yes, I'm interested."
+    expect:
+      fields: {interested: {value: true}}
+      asked: current_location
+  - say: "I'm based in Pune."
+    expect:
+      fields: {current_location: {value_contains: pune}}
+      asked: current_company

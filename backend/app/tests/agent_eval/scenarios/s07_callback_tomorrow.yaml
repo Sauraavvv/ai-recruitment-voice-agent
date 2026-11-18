@@ -1,0 +1,11 @@
+id: s07_callback_tomorrow
+title: Callback tomorrow at 5 pm
+candidate: {name: Rahul Sharma}
+turns:
+  - say: "Yes, this is Rahul."
+  - say: "I'm driving right now. Can you call me tomorrow at 5 pm?"
+    expect: {end_call: true}
+final:
+  end_reason: callback
+  callback_iso_prefix: "2026-11-19T17:00"
+  never_asked_any: true

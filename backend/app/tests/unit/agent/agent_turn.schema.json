@@ -1,0 +1,419 @@
+{
+  "$defs": {
+    "CustomAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "title": "Answer",
+          "type": "string"
+        },
+        "key": {
+          "description": "Key of a custom question listed in the job context",
+          "title": "Key",
+          "type": "string"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "answer",
+        "quote"
+      ],
+      "title": "CustomAnswer",
+      "type": "object"
+    },
+    "ExtractedFields": {
+      "additionalProperties": false,
+      "description": "Values stated in the candidate's latest message only. null = not stated in this message.",
+      "properties": {
+        "current_company": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Employer's name as stated",
+          "title": "Current Company"
+        },
+        "current_ctc_lpa": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Current annual CTC in lakhs per annum. '12 lakhs' -> 12; '1.2 crore' -> 120; '80k per month' -> 9.6; '12,00,000' -> 12",
+          "title": "Current Ctc Lpa"
+        },
+        "current_location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "City or town where the candidate lives now",
+          "title": "Current Location"
+        },
+        "expected_ctc_lpa": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Expected annual CTC in lakhs per annum",
+          "title": "Expected Ctc Lpa"
+        },
+        "interested": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "true/false only when clearly stated; 'maybe, depends' -> null",
+          "title": "Interested"
+        },
+        "interview_availability": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When they can interview, in their words",
+          "title": "Interview Availability"
+        },
+        "notice_period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Notice period in the candidate's words, e.g. '30 days', 'serving notice'",
+          "title": "Notice Period"
+        },
+        "notice_period_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Notice period in days when derivable; immediate joiner -> 0",
+          "title": "Notice Period Days"
+        },
+        "reason_for_change": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why they want to change jobs, briefly",
+          "title": "Reason For Change"
+        },
+        "relevant_experience_years": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Experience relevant to this role, in years",
+          "title": "Relevant Experience Years"
+        },
+        "total_experience_years": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Total work experience in years. '5 years 6 months' -> 5.5; fresher -> 0",
+          "title": "Total Experience Years"
+        }
+      },
+      "required": [
+        "current_location",
+        "current_company",
+        "total_experience_years",
+        "relevant_experience_years",
+        "current_ctc_lpa",
+        "expected_ctc_lpa",
+        "notice_period",
+        "notice_period_days",
+        "reason_for_change",
+        "interested",
+        "interview_availability"
+      ],
+      "title": "ExtractedFields",
+      "type": "object"
+    },
+    "FieldEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "description": "Key of an extracted field or custom question",
+          "title": "Field",
+          "type": "string"
+        },
+        "quote": {
+          "description": "The candidate's exact words from the latest message",
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "quote"
+      ],
+      "title": "FieldEvidence",
+      "type": "object"
+    },
+    "NextAction": {
+      "enum": [
+        "ask_question",
+        "clarify",
+        "answer_candidate",
+        "schedule_callback",
+        "end_call",
+        "escalate"
+      ],
+      "title": "NextAction",
+      "type": "string"
+    },
+    "RangeAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "description": "Numeric field key answered with a range",
+          "title": "Field",
+          "type": "string"
+        },
+        "high": {
+          "title": "High",
+          "type": "number"
+        },
+        "low": {
+          "title": "Low",
+          "type": "number"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "low",
+        "high",
+        "quote"
+      ],
+      "title": "RangeAnswer",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "callback_requested": {
+      "title": "Callback Requested",
+      "type": "boolean"
+    },
+    "callback_time_iso": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Callback time as ISO 8601 with +05:30 offset, resolved against NOW; null if vague",
+      "title": "Callback Time Iso"
+    },
+    "callback_time_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Callback time in the candidate's words",
+      "title": "Callback Time Text"
+    },
+    "candidate_question": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Question the candidate asked, if any",
+      "title": "Candidate Question"
+    },
+    "confirmed_fields": {
+      "description": "Fields whose value the candidate just affirmed when asked to confirm",
+      "items": {
+        "type": "string"
+      },
+      "title": "Confirmed Fields",
+      "type": "array"
+    },
+    "conversation_complete": {
+      "title": "Conversation Complete",
+      "type": "boolean"
+    },
+    "custom_answers": {
+      "items": {
+        "$ref": "#/$defs/CustomAnswer"
+      },
+      "title": "Custom Answers",
+      "type": "array"
+    },
+    "declined_fields": {
+      "description": "Fields the candidate refused to share",
+      "items": {
+        "type": "string"
+      },
+      "title": "Declined Fields",
+      "type": "array"
+    },
+    "declined_opportunity": {
+      "description": "Candidate is clearly not interested",
+      "title": "Declined Opportunity",
+      "type": "boolean"
+    },
+    "evidence": {
+      "description": "One quote per non-null extracted value",
+      "items": {
+        "$ref": "#/$defs/FieldEvidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "extracted_fields": {
+      "$ref": "#/$defs/ExtractedFields"
+    },
+    "identity_confirmed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Only for the identity question: true = it's them, false = wrong person",
+      "title": "Identity Confirmed"
+    },
+    "next_action": {
+      "$ref": "#/$defs/NextAction"
+    },
+    "next_question": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Key of the field your reply asks about",
+      "title": "Next Question"
+    },
+    "opt_out": {
+      "description": "Candidate asked never to be called or to remove the number",
+      "title": "Opt Out",
+      "type": "boolean"
+    },
+    "permission_granted": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Only for 'is this a good time': true = go ahead, false = not now",
+      "title": "Permission Granted"
+    },
+    "ranges": {
+      "description": "Numeric answers given as a range ('15 to 18 lakhs'); leave the value null",
+      "items": {
+        "$ref": "#/$defs/RangeAnswer"
+      },
+      "title": "Ranges",
+      "type": "array"
+    },
+    "response_text": {
+      "description": "What you say next: spoken, at most two sentences",
+      "title": "Response Text",
+      "type": "string"
+    },
+    "unknown_fields": {
+      "description": "Fields the candidate says they don't know",
+      "items": {
+        "type": "string"
+      },
+      "title": "Unknown Fields",
+      "type": "array"
+    }
+  },
+  "required": [
+    "extracted_fields",
+    "evidence",
+    "ranges",
+    "custom_answers",
+    "declined_fields",
+    "unknown_fields",
+    "confirmed_fields",
+    "identity_confirmed",
+    "permission_granted",
+    "callback_requested",
+    "callback_time_text",
+    "callback_time_iso",
+    "opt_out",
+    "declined_opportunity",
+    "candidate_question",
+    "next_action",
+    "next_question",
+    "conversation_complete",
+    "response_text"
+  ],
+  "title": "AgentTurn",
+  "type": "object"
+}
