@@ -196,3 +196,28 @@ Google Cloud project with the Sheets API enabled; service-account key; spreadshe
 ## 12. Exit
 
 [Phase exit report](README.md#phase-exit-report) with a link to the test-sheet evidence.
+
+## 13. As built (2026-11-19)
+
+Sheets design and setup: [google-sheets.md](../google-sheets.md).
+
+**Deliverables:** `agent/final_pass.py` (final extraction, evidence check, reconciliation, `FinalScreeningData`, screening-status rules), `services/finalization_service.py`, `sheet_mapping.py`, `sheets_service.py`, `sync_service.py`, `workers/sync_worker.py` (+ `finalize_call` and `reconcile_finalize` in `call_worker.py`), `api/v1/integrations.py`, migration **`0005_finalize_and_sync.py`** (0003/0004 were taken), `scripts/sheets_tool.py` (`make sheets-check|sync|backfill|compare`), `docs/google-sheets.md`. Dependencies added: `google-api-python-client` 2.202.0, `google-auth` 2.62.2 (and theirs); nothing upgraded.
+
+**Deviations from §5–§6 and why:**
+- The end of the call (`screening_store.store_outcome`) now stores only the conversation (transcript + live result). Candidate fields, status and meta move into the finalization transaction. **Exception:** an opt-out is written at once with its outbox row. It only ever goes false → true, and no other call may be placed while finalization is queued.
+- Final pass lives in `agent/final_pass.py` (an agent concern, pure and unit-tested); the service does the database work. It reuses the P2 field schema (`FinalFields` extends `ExtractedFields`) plus evidence `{field, quote, seq}`. Quotes are checked with the P2 fuzzy matcher against **candidate** lines only (the cited line first, then any). An assistant's read-back is never evidence.
+- Reconciliation additions: UNKNOWN is treated like MISSING (an evidence-backed value is accepted). An ANSWERED value whose final-pass evidence is *not* later than the live answer is kept and flagged `conflict`, same as CONFIRMED. The live position is found from the live raw words, falling back to the n-th candidate line.
+- Screening status: no data and no decision (e.g. hung up after the greeting) leaves the status unchanged instead of `not_started`, so a retry can't erase a partial result. "Reached closing" = the conversation ended `completed`.
+- Merge: a field without a value this call keeps the older value **and** its meta; the meta records the status (e.g. declined) only when there's no older value. Custom answers go to `screening_field_meta` (there are no columns for them).
+- Summary: 3 tries on LLM errors or rejected text (was 2, errors weren't retried), then the facts-only text. It runs after the commit and saves with its own outbox row (the sheet has a Call Summary column). A crash between the two is handled: `finalized_at` set without a summary → the next run writes only the summary. A cron (`reconcile_finalize`, every 10 min) re-queues conversations not finalized or summarized after 10 min.
+- Sheets operations are **batched**: one `values.batchGet` (header + column A), one `values.batchUpdate` for all existing rows, one `values.append` for all new rows, per round of ≤100 candidates. The service account gets 60 requests a minute (checked 2026-11-19), and a 500-row import would otherwise be 1 000+ requests. The Redis lock covers the whole drain (one drainer); queued sync jobs carry no job id and keep no result, so a change during a running sync is never lost.
+- Numbers are written as numbers (RAW), not strings, so the sheet can sort by CTC; units are in the headers ("Total Experience (Years)", "Current CTC (LPA)"). Labels are human-readable ("No answer", "Partially completed").
+- Retry: transient errors (also 408) back off 1 m/5 m/15 m/1 h/6 h with up to +20% jitter, then fail for good (manual sync retries). Permanent errors (400/403/404, refused key, header mismatch) fail at once with integration status `error`, but retry every 30 min, so "restore access → reconciler syncs" works without a manual step.
+- Outbox rows are also written when a call is queued and when an attempt reaches a final status (Call Status, Attempt Count, Last Call Date columns), not only for candidate edits.
+- Missing tab → created; empty tab → header written, frozen, with the one-way-sync note on A1.
+- Added after running on the 7 real Phase 6 calls (2026-11-19):
+  - **Out-of-order finalization**: an older call finalized after a newer one (a backlog after a worker outage) only fills fields that are still empty and never changes `screening_status` (`final.superseded`). Found when the new reconciler finalized the 7 stored calls in parallel and the dev candidate ended up with an older call's status; the dev candidate was then re-finalized in order.
+  - **No false conflicts**: a final value that restates the live answer (same candidate line, same words once normalized, same notice days) is not a conflict. Before this, 6 of 6 "conflicts" on the real calls were "Thirty days" vs "30 days" or the same quote with/without its full stop. Lines are located by exact normalized words before the fuzzy match ("twelve lakhs" fuzzily matched "eighteen lakhs").
+- `GOOGLE_SERVICE_ACCOUNT_JSON` is a **path** (decision §10, recommendation taken): `./secrets/google-sa.json` mounted read-only at `/app/secrets`.
+
+**Not done:** the live parts. They need the Google Cloud project, the service account and two spreadsheets (§11): `make test-sheets`, the real-call cards (a complete and a partial call through finalization), P7-AC4 on the real sheet (`make sheets-compare`), and the revoke-access drill.

@@ -135,9 +135,12 @@ class Settings(BaseSettings):
     # Reply still silent this long after the candidate finished → "One moment." (0 = never)
     voice_hold_after_ms: int = Field(default=3500, ge=0, le=10000)
 
-    # Google Sheets (Phase 7)
+    # Google Sheets (Phase 7, docs/google-sheets.md). The key is a PATH to a read-only mounted
+    # file (secrets/google-sa.json, gitignored), never the JSON itself.
     google_service_account_json: str | None = None
     google_sheet_id: str | None = None
+    google_sheet_tab: str = "Candidates"
+    google_sheets_timeout_s: float = Field(default=20.0, gt=0, le=120)
 
     # Calling
     max_concurrent_calls: int = Field(default=1, ge=1, le=2)
@@ -211,6 +214,10 @@ class Settings(BaseSettings):
             and self.public_backend_url
         )
 
+    @property
+    def sheets_configured(self) -> bool:
+        return bool(self.google_service_account_json and self.google_sheet_id)
+
     def derived_secret(self, purpose: str, *, hex_only: bool = False) -> str:
         """A stable per-purpose secret derived from APP_SECRET_KEY (URL-safe, 43 chars).
 
@@ -231,7 +238,7 @@ class Settings(BaseSettings):
             "deepgram": bool(self.deepgram_api_key),
             "exotel": self.exotel_configured,
             "kitten_tts": True,  # local model with defaults; whether it loaded is in TTS status
-            "google_sheets": bool(self.google_service_account_json and self.google_sheet_id),
+            "google_sheets": self.sheets_configured,
         }
 
 

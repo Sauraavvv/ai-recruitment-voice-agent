@@ -51,23 +51,29 @@ async def test_gendered_pronoun_is_rewritten() -> None:
     assert "gendered pronoun" in llm.calls[-1][-1].content
 
 
-async def test_gendered_twice_falls_back_to_facts() -> None:
-    llm = ScriptedLLM(["She works in Pune.", "Her CTC is 12 LPA."])
+async def test_gendered_three_times_falls_back_to_facts() -> None:
+    llm = ScriptedLLM(["She works in Pune.", "Her CTC is 12 LPA.", "He is in Pune."])
     s = await generate_summary(await result(), candidate_name="Asha", job_title="Dev", llm=llm)
     assert s.generated_by == "deterministic"
 
 
-async def test_judgment_twice_falls_back_to_facts() -> None:
-    llm = ScriptedLLM(["A good fit.", "I recommend him."])
+async def test_judgment_three_times_falls_back_to_facts() -> None:
+    llm = ScriptedLLM(["A good fit.", "I recommend him.", "Highly suitable."])
     s = await generate_summary(await result(), candidate_name="Rahul", job_title="Dev", llm=llm)
     assert s.generated_by == "deterministic" and s.narrative is None
     assert "Experience: total 5 years" in s.text
 
 
-async def test_llm_failure_falls_back() -> None:
-    llm = ScriptedLLM([LLMTimeoutError("t")])
+async def test_llm_failure_falls_back_after_two_retries() -> None:
+    llm = ScriptedLLM([LLMTimeoutError("t")] * 3)
     s = await generate_summary(await result(), candidate_name="Rahul", job_title="Dev", llm=llm)
-    assert s.generated_by == "deterministic"
+    assert s.generated_by == "deterministic" and len(llm.calls) == 3
+
+
+async def test_llm_error_is_retried() -> None:
+    llm = ScriptedLLM([LLMTimeoutError("t"), "Rahul is based in Pune."])
+    s = await generate_summary(await result(), candidate_name="Rahul", job_title="Dev", llm=llm)
+    assert s.narrative == "Rahul is based in Pune." and s.generated_by == "llm"
 
 
 async def test_length_capped() -> None:

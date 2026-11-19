@@ -158,7 +158,7 @@ def test_company_or_place_without_a_name_is_invalid() -> None:
 
 
 def test_notice_period_must_be_about_time() -> None:
-    from app.agent.extraction import _validate
+    from app.agent.extraction import validate_field as _validate
     from app.agent.schemas import FieldName
 
     assert _validate(FieldName.NOTICE_PERIOD, "Any weekday after 4 pm", None)[0] is None

@@ -16,6 +16,7 @@ services:
       - ./backend/app:/app/app
       # `make tts-say` writes WAVs here so they can be played on the host
       - ./backend/artifacts:/app/artifacts
+      - ./secrets:/app/secrets:ro
 
   worker:
     build:
@@ -27,6 +28,7 @@ services:
     command: ["watchfiles", "--filter", "python", "arq app.workers.settings.WorkerSettings", "app"]
     volumes:
       - ./backend/app:/app/app
+      - ./secrets:/app/secrets:ro
 
   frontend:
     build:

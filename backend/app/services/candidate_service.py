@@ -1,6 +1,7 @@
 """Candidate rules and transactions (plan.md Module A).
 
-Every candidate write goes through this module; Phase 7 adds the Sheets outbox row here.
+Every candidate write goes through this module and adds a Sheets outbox row (sync_service) in
+the same transaction; the API queues the sync after the commit.
 """
 
 import uuid
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Candidate, ConsentSource, ScreeningStatus
 from app.repositories import candidate_repo
 from app.schemas.candidate import CandidateCreate, CandidateUpdate
-from app.services import job_service
+from app.services import job_service, sync_service
 from app.services.errors import conflict, not_found, unprocessable
 from app.utils.log import get_logger
 
@@ -53,6 +54,8 @@ async def create(session: AsyncSession, data: CandidateCreate) -> Candidate:
     )
     session.add(candidate)
     try:
+        await session.flush()  # the id, for the outbox row
+        sync_service.record_change(session, candidate.id)
         await session.commit()
     except IntegrityError:
         # Lost a race with a concurrent insert of the same phone.
@@ -111,6 +114,8 @@ async def update(
 
     for key, value in changes.items():
         setattr(candidate, key, value)
+    if changes:
+        sync_service.record_change(session, candidate.id)
     try:
         await session.commit()
     except IntegrityError:

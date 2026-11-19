@@ -127,6 +127,15 @@ Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`
 
 `call_status`: `queued → initiating → (ringing) → in_progress → completed`, or `failed | no_answer | busy | cancelled` from any live state. `end_reason`: `agent_completed`, `candidate_hangup`, `no_answer`, `busy`, `provider_failed`, `technical_failure`, `cancelled`, `invalid_number`.
 
+### Google Sheets (Phase 7)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/integrations/google-sheets/status` | `{configured, tab, state, message, reachable, header, service_account_email, last_success_at, last_error_at, pending_candidates, failed_candidates, checked_at}`. `state`: `ok`, `degraded` (temporary failures, retrying), `error` (needs fixing), `unknown`, `not_configured`. `reachable`/`header` come from a live check cached 60 s; `?refresh=true` forces it |
+| POST | `/api/v1/integrations/google-sheets/sync/{candidate_id}` | `202 {candidate_id, sync_log_id, sync_status: "pending", queued}`. Also retries a row that failed for good. `404 candidate_not_found`, `409 sheets_not_configured` |
+
+Every candidate change (create, edit, import, call queued or ended, finalization, summary) adds a Sheets outbox row in the same transaction. Details: [google-sheets.md](google-sheets.md).
+
 ### Provider endpoints (no session; secret token in the URL)
 
 | Method | Path | Notes |

@@ -866,8 +866,15 @@ async def test_stream_runs_the_screening_conversation(
     assert conv.extracted_data["result"]["end_reason"] == "wrong_person"
     assert conv.extracted_data["end_reason"] == "wrong_person"
     assert "live" in conv.extracted_data  # saved turn by turn during the call
+    # The candidate record is written by finalization (the queued finalize_call job)
+    from app.services import finalization_service
+
+    monkeypatch.setattr(finalization_service, "get_sessionmaker", lambda: factory)
+    await finalization_service.finalize_attempt(attempt.id, settings=settings, llm=None)
     candidate = await db_session.get(Candidate, attempt.candidate_id)
-    assert candidate is not None and candidate.screening_status == "wrong_person"
+    assert candidate is not None
+    await db_session.refresh(candidate)
+    assert candidate.screening_status == "wrong_person"
     assert await call_slots.in_use(get_redis(), size=1) == []
 
 

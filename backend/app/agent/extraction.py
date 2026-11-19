@@ -43,6 +43,19 @@ def _norm_text(text: str) -> list[str]:
     return [_NUMBER_WORDS.get(t, t.strip(".")) for t in tokens if t.strip(".")]
 
 
+def contains_words(quote: str, utterance: str) -> bool:
+    """Exact (normalized) containment: stricter than `quote_matches`, which is fuzzy and can
+    match "twelve lakhs" against "eighteen lakhs"."""
+    q, u = " ".join(_norm_text(quote)), " ".join(_norm_text(utterance))
+    return bool(q) and f" {q} " in f" {u} "
+
+
+def same_words(a: str, b: str) -> bool:
+    """Same text once case, punctuation and number words are normalized ("Thirty days." ==
+    "30 days")."""
+    return _norm_text(a) == _norm_text(b)
+
+
 def quote_matches(quote: str, utterance: str, threshold: float = QUOTE_MATCH_THRESHOLD) -> bool:
     """True if `quote` appears (fuzzily) in `utterance`. Number words and digits compare equal."""
     q, u = _norm_text(quote), _norm_text(utterance)
@@ -153,7 +166,9 @@ def has_name(text: str) -> bool:
     return any(w.strip(".'") not in _FILLER for w in words if w.strip(".'"))
 
 
-def _validate(name: FieldName, raw: Any, days: int | None) -> tuple[FieldValue, dict[str, Any]]:
+def validate_field(
+    name: FieldName, raw: Any, days: int | None
+) -> tuple[FieldValue, dict[str, Any]]:
     if name in (FieldName.TOTAL_EXPERIENCE, FieldName.RELEVANT_EXPERIENCE):
         return normalize_experience(raw), {}
     if name in (FieldName.CURRENT_CTC, FieldName.EXPECTED_CTC):
@@ -189,7 +204,7 @@ def extract(turn: AgentTurn, utterance: str, state: ScreeningState) -> Extractio
         if quote is None:
             result.dropped[name.value] = "no matching evidence quote"
             continue
-        value, meta = _validate(name, raw, extracted.get("notice_period_days"))
+        value, meta = validate_field(name, raw, extracted.get("notice_period_days"))
         if value is None:
             result.invalid[name.value] = f"value out of range: {raw!r}"
             continue

@@ -8,7 +8,7 @@ own router (api/v1/webhooks.py) with a URL token instead of a session.
 from fastapi import APIRouter, Depends
 
 from app.api.deps import require_user, verify_origin
-from app.api.v1 import auth, calls, candidates, dashboard, imports, jobs
+from app.api.v1 import auth, calls, candidates, dashboard, imports, integrations, jobs
 
 api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(verify_origin)])
 
@@ -21,4 +21,5 @@ protected.include_router(candidates.router)
 protected.include_router(jobs.router)
 protected.include_router(calls.router)
 protected.include_router(dashboard.router)
+protected.include_router(integrations.router)
 api_router.include_router(protected)

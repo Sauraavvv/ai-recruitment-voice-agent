@@ -12,7 +12,7 @@ from app.database.models import CallAttemptType, CallStatus
 from app.repositories import call_repo
 from app.schemas.call import CallAttemptOut, StartCallResult, StartCallsRequest
 from app.schemas.common import DataResponse, PageResponse
-from app.services import call_service
+from app.services import call_service, sync_service
 from app.utils.queue import enqueue_initiate_call
 
 router = APIRouter(prefix="/calls", tags=["calls"])
@@ -38,6 +38,8 @@ async def start_calls(
         # tts_preload off = tests: there is no voice to wait for
         voice_ready=not settings.tts_preload or bool(tts and tts.status().ready),
     )
+    if any(r.attempt_id for r in results):
+        await sync_service.request_sync(settings)
     return ok([r.as_dict() for r in results])
 
 

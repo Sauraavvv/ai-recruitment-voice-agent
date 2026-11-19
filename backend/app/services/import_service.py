@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import ConsentSource, ImportBatch, ImportBatchStatus, User
 from app.repositories import candidate_repo, import_repo
-from app.services import job_service
+from app.services import job_service, sync_service
 from app.services.errors import conflict, gone, not_found, unprocessable
 from app.services.import_validation import (
     FIELD_LABELS,
@@ -187,6 +187,7 @@ async def confirm(
         if row.status == RowStatus.VALID
     ]
     inserted = await candidate_repo.insert_ignoring_duplicates(session, to_insert)
+    sync_service.record_changes(session, inserted)  # new rows for the sheet, same transaction
 
     batch.status = ImportBatchStatus.CONFIRMED
     batch.confirmed_at = now

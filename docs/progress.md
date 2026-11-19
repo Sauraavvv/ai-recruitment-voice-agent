@@ -1,5 +1,67 @@
 # Progress
 
+## Phase 7 exit report (2026-11-19) — closed by the user; real partial call and revoke drill deferred
+
+**Implemented:** post-call finalization and the Google Sheets sync. Sheets design, setup and operations: [google-sheets.md](google-sheets.md). Deviations from the plan: [phase-07 §13](phases/phase-07-data-and-sheets.md#13-as-built-2026-11-19).
+- `agent/final_pass.py`: one LLM pass over the whole transcript (the P2 field schema plus an evidence quote and a line number for every value); the evidence must be in a **candidate** line; reconciliation with the live state per the §5 table; `FinalScreeningData` (a bad field becomes null plus a note); screening-status rules (no data → status unchanged).
+- `services/finalization_service.py`: the `finalize_call` job. One transaction: conversation (`final`, `screening_completed`, `finalized_at`), candidate merge (null never overwrites, `opted_out` only false → true, meta per field with the attempt id), attempt end data, scheduled attempts cancelled on opt-out, outbox row. Then the summary (3 tries, facts-only fallback) with its own outbox row. Idempotent under `SELECT … FOR UPDATE`; an older call finalized after a newer one only fills empty fields.
+- The end of the call (`screening_store.store_outcome`) stores only the conversation; the candidate is written by finalization. Exception: an opt-out is written at once.
+- Sheets: `sheet_mapping.py` (23 columns, IST dates, Yes/No, numbers as numbers, RAW), `sheets_service.py` (official client in a thread; batched read / update / append; header check; missing tab created; one-way-sync note), `sync_service.py` (outbox in the same transaction as every candidate change: create, edit, import, call queued or ended, finalization, summary; drain under the Redis lock; backoff 1 m → 6 h with jitter; permanent errors retried every 30 min), `workers/sync_worker.py`. Crons every 10 min: `reconcile_sync`, `reconcile_finalize`.
+- API: `GET /api/v1/integrations/google-sheets/status`, `POST /api/v1/integrations/google-sheets/sync/{candidate_id}`.
+- Tools: `make sheets-check | sheets-sync | sheets-backfill | sheets-compare` (P7-AC4 script), `make test-sheets` (live API, `-m sheets`), `make final-pass-check` (dry run on stored calls). `make test-call` now prints the finalized fields, conflicts and summary.
+
+**Files created / changed:**
+- Backend, new: `agent/final_pass.py`; `services/finalization_service.py`, `sheet_mapping.py`, `sheets_service.py`, `sync_service.py`; `workers/sync_worker.py`; `api/v1/integrations.py`; `schemas/integrations.py`; migration `0005_finalize_and_sync.py`; `scripts/sheets_tool.py`, `final_pass_check.py`; tests `unit/agent/test_final_pass.py`, `unit/agent/results.py`, `unit/test_sheets.py`, `unit/fake_sheet.py`, `integration/test_finalization.py`, `test_sheets_sync.py`, `test_sheets_live.py`.
+- Backend, changed: `agent/extraction.py` (`validate_field` public, `same_words`, `contains_words`), `services/screening_store.py` (conversation only), `summary_service.py` (retries), `candidate_service.py`, `import_service.py`, `call_service.py` (outbox rows), `workers/call_worker.py` (+ `settings.py`), `api/v1/candidates.py`, `imports.py`, `calls.py`, `webhooks.py`, `__init__.py`, `config.py` (`GOOGLE_SHEET_TAB`, `GOOGLE_SHEETS_TIMEOUT_S`, `sheets_configured`), models `conversation.py` (`finalized_at`), `sync_log.py` (`attempts`, `next_attempt_at`, `updated_at`), `scripts/test_call.py`, `pyproject.toml` (marker `sheets`), older tests updated.
+- Dependencies (additions only, nothing upgraded): `google-api-python-client` 2.202.0, `google-auth` 2.62.2, plus theirs (`google-api-core`, `google-auth-httplib2`, `httplib2`, `cryptography`, `proto-plus`, `pyasn1`, …).
+- Infra: `./secrets` mounted read-only at `/app/secrets` (backend, worker); Makefile targets; `.env.example`.
+- Frontend: regenerated `types/api.ts` / `openapi.json` (no UI change; the Sheets UI is P8).
+- Docs: `google-sheets.md` (new), `api.md`, `setup.md`, `phases/phase-07` §13.
+
+**Tests run:**
+- `make test` → 648 passed, 1 skipped; `make test-docker` → 648 passed. Ruff, mypy (strict), eslint, tsc clean.
+- Unit: the reconciliation table row by row, evidence rejection (assistant read-back, invented quote), validation, the screening-status table (13 cases), row mapping (23 columns, raw formula text, IST, booleans, blanks), upsert (empty sheet, manual sort, 5× no duplicate, header changed), error classification.
+- Integration: complete call, partial call (4 answers), finalize twice → one result, outbox atomicity (failure mid-transaction → no candidate change, no outbox row), opt-out cancels scheduled attempts, summary failure → saved and retried by the reconciler, out-of-order finalization; Sheets drain with a fake sheet: append then update, 5 manual syncs → one row, sorted sheet, outage → failed with backoff, database intact → recovery, permission error → recovery when fixed, AC4 row = mapping of the database state.
+- `make final-pass-check` on the 7 real Phase 6 calls: statuses unchanged, 0 values changed, 0 conflicts (after the fix below), the "Working at" company from call 22 rejected.
+- **Live Google Sheets** (service account `hirecall-sync@project-6674d555-…`, team + test spreadsheets, 2026-11-19): `make sheets-check` → reachable, header ok. The worker's startup reconciler created the `Candidates` tab, wrote the header and appended the tester's row (13 outbox rows → one write). `make test-sheets` → **5 passed** (append then update, manual sort, 5 syncs → one row and formula text stays text, header changed → no writes, wrong sheet → permanent error). `make sheets-backfill` → 1 synced (the only active candidate). 5 manual syncs (outbox row + drain) → the same row updated 5 times. `make sheets-compare` → **0 problems, 0 extra, 0 duplicates**.
+- **Real calls** (tester's phone …9773, 2026-11-19, after `make tunnel`):
+  - Call 1 `fbde41ca` (complete): 33 lines, agent closed it. Finalization: final pass ran, 0 conflicts, 0 rejected; all 10 fields + `completed` match the transcript; sheet row = database (`make sheets-compare` 0 problems). Reply p50 2.9 s (p95 3.7), first sound p50 0.73 s, STT p50 710 ms, LLM p50 2.2 s.
+  - Call 2 `38cb60d5` (meant to be partial): STT heard the location answer as "Would it all" (conf 0.60) and "Go to now" (0.90), probably "Gurugram"/"Gurgaon"; the agent asked again, the tester hung up after 64 s with no answers. Finalization: no data → `screening_status` unchanged (`completed`) and call 1's fields kept, i.e. the no-data rule held on a real call. The 4-answers-then-hang-up case was not reached.
+- **Not run:** a real partial call with answers; the revoke → restore drill.
+
+**Acceptance criteria:**
+- P7-AC1 ✅ real call 1: all 10 fields and `completed` match the transcript; sheet row matches.
+- P7-AC2 ✅ automated (hang up after 4 answers → 4 saved, `partially_completed`). ❌ not shown on a real call (call 2 lost the first answer to STT); deferred.
+- P7-AC3 ✅ summary stored, neutral (judgment and pronoun guard), lists missing information.
+- P7-AC4 ✅ real sheet: `make sheets-compare` → every row equals the database in all 23 columns.
+- P7-AC5 ✅ real sheet: 5 manual syncs → one row (and the live test).
+- P7-AC6 ✅ automated (503 → `failed`, retry in 1 min, database intact, recovery); live tests covered a wrong sheet → permanent error. The revoke → restore drill on the real sheet: deferred.
+
+**Needs credentials or manual configuration (user):**
+- Done 2026-11-19: Google Cloud project (under the user's organization, which enforces `iam.disableServiceAccountKeyCreation` by default: overridden for this project only), Sheets API, service account `hirecall-sync`, key at `secrets/google-sa.json`, team + test spreadsheets shared as Editor, `.env` set. **The first key was pasted in chat: the user was asked to delete it (id `d370321…`) and made a new one (`648743…`) straight into `secrets/`. Check in the console that the old key is gone.**
+- Deferred (do any time, e.g. with Phase 8 or 10): a real partial call (answer 4 questions, hang up) + `make sheets-compare`; the revoke → restore drill (remove the service account from the sheet's sharing → status `error`, rows `failed`, database intact → share again → synced within 30 min or `make sheets-sync`).
+
+**Deferred or not done (for Phase 8 and later):**
+- STT misses Indian city names on real lines (Phase 6: "Deli", now "Gurugram" → "Would it all" / "Go to now"). Proposed, not built: common city names as Deepgram keyterms (`DEEPGRAM_STT_KEYTERMS` / per-call terms), maybe also reading location and company back.
+- STT clips the end of free-text answers (call 1: reason for change stored as "Just for one."). Not fixable in finalization: it only has what STT heard.
+- **Call Summary shows the latest finalized call's summary even when that call collected nothing** (after call 2 the sheet and the candidate show an all-"not provided" summary next to call 1's complete data). Plan rule as written; for P8 decide: latest summary *with data*, or a summary of the candidate record. Ask the user.
+- Sheets settings in the UI (sheet link, service-account email, Check access) and moving `GOOGLE_SHEET_ID` from `.env` to `app_settings`: discussed with the user, P8 settings page. Conflicts are stored for P8's "needs attention".
+- Captured call audio `backend/artifacts/calls/fbde41ca…`, `38cb60d5…` (tester's voice): delete after review.
+
+**Risks or surprises discovered:**
+- **Out-of-order finalization.** On its first run the new `reconcile_finalize` cron finalized the 7 stored Phase 6 calls of the dev tester candidate in parallel; the candidate ended with an older call's status (`callback_requested` from call 17). Fixed (a superseded call only fills empty fields), tested, and the dev candidate was re-finalized in call order (dev data only; the existing summaries were kept).
+- **False conflicts.** On the real calls every "conflict" was the same answer reworded ("Thirty days" / "30 days"). Fixed: same line, same normalized words or same notice days = same answer. The fuzzy quote match also matched "twelve lakhs" to "eighteen lakhs"; lines are now found by exact words first.
+- The test Redis is the dev Redis (db 0): a test that really enqueued a job would reach the running dev worker. The new tests stub `request_sync`.
+- Sheets quota is 60 requests/min for one service account (checked 2026-11-19); batching keeps a sync round at 2–3 requests.
+
+**Decisions made (mine, open to review):**
+- `GOOGLE_SERVICE_ACCOUNT_JSON` is a path (the plan's recommendation). Tab `Candidates`.
+- Opt-out written at call end, not only at finalization.
+- Batched Sheets writes; numbers as numbers; human-readable status labels; units in headers.
+- Permanent Sheets errors retried every 30 min (so restoring access recovers without a manual sync).
+- Soft-deleted candidates keep their sheet row (no "deleted" column in the plan).
+- Conflicts are stored in `conversations.extracted_data.final.conflicts` and on the field's meta, for P8's "needs attention".
+
 ## Phase 6 exit report (2026-11-19)
 
 **Implemented:** real screening calls end to end. Design: [voice-pipeline.md](voice-pipeline.md). Deviations from the plan: [phase-06 §13](phases/phase-06-voice-conversation.md#13-as-built-2026-11-19). Real-call log, latency table and AC evidence: [test-calls/phase-06.md](test-calls/phase-06.md).

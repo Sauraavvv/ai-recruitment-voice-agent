@@ -117,12 +117,18 @@ Protocol, verified facts and the test-call log: [telephony.md](telephony.md).
 1. `.env`: `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_ACCOUNT_SID`, `EXOTEL_SUBDOMAIN` (`api.exotel.com` for a Singapore-region account, `api.in.exotel.com` for Mumbai), `EXOTEL_CALLER_ID` (the ExoPhone), `EXOTEL_APP_ID` (the flow's id).
 2. Public URL: `make tunnel`. With `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` in `.env` (a free ngrok account and its free static domain; `brew install ngrok`), the URL is **fixed**: set `PUBLIC_BACKEND_URL=https://<NGROK_DOMAIN>` and paste the Voicebot URL into the Exotel flow once. After a restart or sleep, just run `make tunnel` again. Without them it falls back to a Cloudflare quick tunnel (`brew install cloudflared`), whose URL changes every run: update `PUBLIC_BACKEND_URL`, run `docker compose up -d backend worker` (containers read `.env` only when created) and paste the new URL into Exotel each time. `make tunnel` keeps the Mac awake (`caffeinate`) while it runs.
 3. `make exotel-urls` prints the Voicebot URL. In Exotel's App Bazaar the flow is exactly **Voicebot** (that URL) → **Hangup**.
-4. Test call to a consenting tester whose number is verified in the Exotel dashboard (trial accounts without KYC can't call anyone else): `make test-call phone=+9198XXXXXXXX` runs a real screening conversation (Phase 6) and prints the transcript, the stored answers, the summary and the per-turn latency table. `mode=full` (clip, echo, stop test, backend hangs up) and `mode=listen` (clip, then you hang up) are the Phase 5 line checks. Test calls skip the calling window. With `TELEPHONY_CAPTURE_DIR` set, each call writes `backend/artifacts/calls/<attempt>_in.wav` and `_stream.json` (gitignored; delete after review).
+4. Test call to a consenting tester whose number is verified in the Exotel dashboard (trial accounts without KYC can't call anyone else): `make test-call phone=+9198XXXXXXXX` runs a real screening conversation (Phase 6) and prints the transcript, the per-turn latency table and, once finalized, the stored answers, conflicts and summary. `mode=full` (clip, echo, stop test, backend hangs up) and `mode=listen` (clip, then you hang up) are the Phase 5 line checks. Test calls skip the calling window. With `TELEPHONY_CAPTURE_DIR` set, each call writes `backend/artifacts/calls/<attempt>_in.wav` and `_stream.json` (gitignored; delete after review).
 5. From the UI: open a candidate and press **Call now** (the API refuses outside the calling window, without consent, or while the voice is still loading).
 
-Voice conversation settings (VAD, barge-in, silence, time limits): `.env.example` and [voice-pipeline.md](voice-pipeline.md). The post-call summary is written by the worker's `finalize_call` job a few seconds after the call.
+Voice conversation settings (VAD, barge-in, silence, time limits): `.env.example` and [voice-pipeline.md](voice-pipeline.md).
 
 The worker places calls (`initiate_call`, one Redis slot per `MAX_CONCURRENT_CALLS`) and checks stuck calls with Exotel every 2 minutes.
+
+### After the call and Google Sheets (Phase 7 onwards)
+
+A few seconds after each conversation the worker's `finalize_call` runs a final extraction pass over the transcript, reconciles it with what the agent stored live, and saves the candidate, the conversation and a Sheets outbox row in one transaction, then the summary. `make final-pass-check` dry-runs the final pass on stored calls (OpenAI, writes nothing).
+
+Google Sheets is optional: without it, sync rows wait as `pending` and nothing else changes. Setup (service account, sharing, `secrets/google-sa.json`, `GOOGLE_SHEET_ID`) and operations (`make sheets-check`, `sheets-backfill`, `sheets-compare`, `test-sheets`): [google-sheets.md](google-sheets.md).
 
 Never commit `.env`. Run `make check-secrets` (needs `brew install gitleaks`) before committing.
 

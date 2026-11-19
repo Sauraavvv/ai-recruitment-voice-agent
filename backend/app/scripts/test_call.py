@@ -12,8 +12,8 @@ Modes (what the stream does once answered):
   full    PoC line check: clip → beep → 15 s echo → stop (`clear`) test → goodbye → hang up
   listen  PoC: clip, then record until the caller hangs up
 
-After a screening call it prints the transcript, the stored fields, the summary (written by the
-worker's `finalize_call` a few seconds later) and the per-turn latency table.
+After a screening call it prints the transcript and the per-turn latency table, then (once the
+worker's `finalize_call` has run) the finalized candidate fields, conflicts and the summary.
 """
 
 import argparse
@@ -127,9 +127,6 @@ async def _print_screening(attempt_id: uuid.UUID) -> None:
         print("\n--- transcript ---")
         for entry in conv.transcript:
             print(f"{entry.get('speaker', '?'):>9}: {entry.get('text', '')}")
-        print(f"\n--- stored on the candidate (screening_status={candidate.screening_status}) ---")
-        for f in FieldName:
-            print(f"  {f.value:<24} {getattr(candidate, f.value)!r}")
         print(f"\nend_reason={attempt.end_reason} failure={attempt.failure_reason or '-'}")
         metrics = (conv.extracted_data or {}).get("turn_metrics") or []
         if metrics:
@@ -144,18 +141,35 @@ async def _print_screening(attempt_id: uuid.UUID) -> None:
         if stats:
             keys = ("merges", "barge_ins", "backchannels_ignored", "clears", "max_loop_lag_ms")
             print({k: stats.get(k) for k in keys})
-    for _ in range(15):  # the worker writes the summary just after the call
+    # Phase 7: the worker's finalize_call (final pass, one transaction, summary) a few seconds
+    # after the call writes the candidate record
+    for _ in range(40):
         async with get_sessionmaker()() as session_db:
             conv2 = (
                 await session_db.execute(
                     select(Conversation).where(Conversation.call_attempt_id == attempt_id)
                 )
             ).scalar_one_or_none()
-        if conv2 is not None and conv2.summary:
-            print(f"\n--- summary ---\n{conv2.summary}\n")
-            return
+            if conv2 is not None and conv2.finalized_at and conv2.summary:
+                candidate = await session_db.get(Candidate, attempt.candidate_id)
+                assert candidate is not None
+                final = (conv2.extracted_data or {}).get("final") or {}
+                print(
+                    f"\n--- stored on the candidate after finalization "
+                    f"(screening_status={candidate.screening_status}) ---"
+                )
+                fields = final.get("fields") or {}
+                for f in FieldName:
+                    source = (fields.get(f.value) or {}).get("source", "")
+                    print(f"  {f.value:<24} {getattr(candidate, f.value)!r:<32} {source}")
+                for key, c in (final.get("conflicts") or {}).items():
+                    print(f"  CONFLICT {key}: final pass says {c['final_value']!r} ({c['reason']})")
+                for key, why in (final.get("rejected") or {}).items():
+                    print(f"  rejected {key}: {why}")
+                print(f"\n--- summary ---\n{conv2.summary}\n")
+                return
         await asyncio.sleep(1)
-    print("\n(no summary yet: is the worker running?)")
+    print("\n(not finalized yet: is the worker running? `docker compose logs worker`)")
 
 
 def print_percentiles(metrics: list[dict[str, object]]) -> None:

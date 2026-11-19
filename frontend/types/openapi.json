@@ -1129,6 +1129,94 @@
           }
         }
       }
+    },
+    "/api/v1/integrations/google-sheets/status": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Sheets Status",
+        "description": "Configured, reachable, header ok, last success, pending and failed counts.",
+        "operationId": "sheets_status_api_v1_integrations_google_sheets_status_get",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_SheetsStatus_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/google-sheets/sync/{candidate_id}": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Sync Candidate",
+        "description": "Queue a sync of this candidate's row (also retries one that failed for good).",
+        "operationId": "sync_candidate_api_v1_integrations_google_sheets_sync__candidate_id__post",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_ManualSyncResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2257,6 +2345,18 @@
         ],
         "title": "DataResponse[JobOut]"
       },
+      "DataResponse_ManualSyncResult_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ManualSyncResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[ManualSyncResult]"
+      },
       "DataResponse_NoneType_": {
         "properties": {
           "data": {
@@ -2269,6 +2369,18 @@
           "data"
         ],
         "title": "DataResponse[NoneType]"
+      },
+      "DataResponse_SheetsStatus_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SheetsStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[SheetsStatus]"
       },
       "DataResponse_Union_JobOut__NoneType__": {
         "properties": {
@@ -3090,6 +3202,36 @@
         ],
         "title": "LoginRequest"
       },
+      "ManualSyncResult": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "sync_log_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Sync Log Id"
+          },
+          "sync_status": {
+            "type": "string",
+            "title": "Sync Status"
+          },
+          "queued": {
+            "type": "boolean",
+            "title": "Queued"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "sync_log_id",
+          "sync_status",
+          "queued"
+        ],
+        "title": "ManualSyncResult"
+      },
       "MappingUpdate": {
         "properties": {
           "column_mapping": {
@@ -3295,6 +3437,139 @@
           "wrong_person"
         ],
         "title": "ScreeningStatus"
+      },
+      "SheetsStatus": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "tab": {
+            "type": "string",
+            "title": "Tab"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "error",
+              "unknown",
+              "not_configured"
+            ],
+            "title": "State"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "reachable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reachable"
+          },
+          "header": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "empty",
+                  "mismatch",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Header"
+          },
+          "service_account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Account Email"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "last_error_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error At"
+          },
+          "pending_candidates": {
+            "type": "integer",
+            "title": "Pending Candidates"
+          },
+          "failed_candidates": {
+            "type": "integer",
+            "title": "Failed Candidates"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "tab",
+          "state",
+          "message",
+          "reachable",
+          "header",
+          "service_account_email",
+          "last_success_at",
+          "last_error_at",
+          "pending_candidates",
+          "failed_candidates",
+          "checked_at"
+        ],
+        "title": "SheetsStatus"
       },
       "StartCallError": {
         "properties": {

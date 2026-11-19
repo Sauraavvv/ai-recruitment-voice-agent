@@ -1,4 +1,8 @@
-"""Conversations (one per call attempt). Only the table exists in Phase 1."""
+"""Conversations (one per call attempt): transcript, per-attempt screening result, summary.
+
+`extracted_data` keeps this attempt's result (live state at the end of the call, and after
+finalization the reconciled `final` data), so history survives later changes to the candidate.
+"""
 
 import uuid
 from datetime import datetime
@@ -28,5 +32,6 @@ class Conversation(Base):
         JSONB, server_default=text("'{}'::jsonb")
     )
     screening_completed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    finalized_at: Mapped[datetime | None]  # set by the finalization transaction (phase-07 §5)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()

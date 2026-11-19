@@ -3,19 +3,23 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import SessionDep
+from app.api.deps import SessionDep, SettingsDep
 from app.api.responses import ok
 from app.database.models import ScreeningStatus
 from app.schemas.candidate import CandidateCreate, CandidateOut, CandidateSort, CandidateUpdate
 from app.schemas.common import DataResponse, PageResponse
-from app.services import candidate_service
+from app.services import candidate_service, sync_service
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
 
 @router.post("", response_model=DataResponse[CandidateOut], status_code=status.HTTP_201_CREATED)
-async def create_candidate(body: CandidateCreate, session: SessionDep) -> dict[str, Any]:
-    return ok(await candidate_service.create(session, body))
+async def create_candidate(
+    body: CandidateCreate, session: SessionDep, settings: SettingsDep
+) -> dict[str, Any]:
+    candidate = await candidate_service.create(session, body)
+    await sync_service.request_sync(settings)
+    return ok(candidate)
 
 
 @router.get("", response_model=PageResponse[CandidateOut])
@@ -49,9 +53,11 @@ async def get_candidate(candidate_id: uuid.UUID, session: SessionDep) -> dict[st
 
 @router.patch("/{candidate_id}", response_model=DataResponse[CandidateOut])
 async def update_candidate(
-    candidate_id: uuid.UUID, body: CandidateUpdate, session: SessionDep
+    candidate_id: uuid.UUID, body: CandidateUpdate, session: SessionDep, settings: SettingsDep
 ) -> dict[str, Any]:
-    return ok(await candidate_service.update(session, candidate_id, body))
+    candidate = await candidate_service.update(session, candidate_id, body)
+    await sync_service.request_sync(settings)
+    return ok(candidate)
 
 
 @router.delete("/{candidate_id}", response_model=DataResponse[None])

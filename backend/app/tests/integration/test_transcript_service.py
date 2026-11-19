@@ -10,9 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import CallAttempt, Candidate, Conversation, Job
-from app.services import screening_store, transcript_service
+from app.services import finalization_service, screening_store, transcript_service
 from app.tests.conftest import make_settings
-from app.tests.integration.test_screening_store import _result
+from app.tests.unit.agent.results import make_result
 from app.workers import call_worker
 
 
@@ -22,7 +22,7 @@ def sessions(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
     async def factory() -> AsyncIterator[AsyncSession]:
         yield db_session
 
-    for module in (transcript_service, screening_store, call_worker):
+    for module in (transcript_service, screening_store, finalization_service, call_worker):
         monkeypatch.setattr(module, "get_sessionmaker", lambda: factory)
 
 
@@ -84,16 +84,16 @@ async def test_turns_are_merged_by_seq_and_idempotent(
     assert conv.extracted_data == {"live": {"turn": 2}}
 
 
-async def test_finalize_call_writes_the_summary_once(
+async def test_finalize_call_finalizes_and_summarizes_once(
     db_session: AsyncSession, sessions: None
 ) -> None:
     attempt = await _attempt(db_session)
     ctx: dict[str, Any] = {"settings": make_settings()}  # no OpenAI key: facts-only summary
     assert await call_worker.finalize_call(ctx, str(attempt.id)) == "no_result"
     await screening_store.store_outcome(
-        attempt_id=attempt.id, candidate_id=attempt.candidate_id, result=_result()
+        attempt_id=attempt.id, candidate_id=attempt.candidate_id, result=make_result()
     )
-    assert await call_worker.finalize_call(ctx, str(attempt.id)) == "summarized"
+    assert await call_worker.finalize_call(ctx, str(attempt.id)) == "finalized"
     conv = await _conversation(db_session, attempt.id)
     assert conv.summary and "summary_sections" in conv.extracted_data
     assert conv.extracted_data["result"]["end_reason"] == "completed"

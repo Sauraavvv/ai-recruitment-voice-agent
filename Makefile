@@ -7,7 +7,8 @@ VENV := $(BACKEND)/.venv/bin
 	migrate migration create-user types agent-cli agent-eval llm-bench \
 	tts-model tts-say test-tts test-deepgram-tts bench-tts \
 	stt-clips stt-file stt-mic stt-record voice-loop test-stt bench-stt \
-	tunnel exotel-urls test-call voice-sim
+	tunnel exotel-urls test-call voice-sim \
+	sheets-check sheets-sync sheets-backfill sheets-compare test-sheets final-pass-check
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -162,3 +163,23 @@ test-call:  ## Real screening call to a verified tester: make test-call phone=+9
 	@test -n "$(phone)$(candidate)" || (echo 'usage: make test-call phone=+91XXXXXXXXXX [mode=screen|full|listen]'; exit 1)
 	docker compose exec -T backend python -m app.scripts.test_call \
 	  $(if $(phone),--phone "$(phone)",--candidate-id "$(candidate)") --mode $(or $(mode),screen)
+
+# --- Phase 7: Google Sheets (docs/google-sheets.md) ---
+
+sheets-check:  ## Service account, spreadsheet access and header
+	docker compose exec -T backend python -m app.scripts.sheets_tool check
+
+sheets-sync:  ## Sync everything pending now (the worker does this on its own)
+	docker compose exec -T backend python -m app.scripts.sheets_tool sync
+
+sheets-backfill:  ## Queue and sync every candidate (first fill of a new sheet)
+	docker compose exec -T backend python -m app.scripts.sheets_tool backfill
+
+sheets-compare:  ## P7-AC4: compare every sheet row with the database
+	docker compose exec -T backend python -m app.scripts.sheets_tool compare
+
+test-sheets:  ## Live tests against GOOGLE_TEST_SHEET_ID (a separate test spreadsheet)
+	docker compose exec -T backend pytest -q -p no:cacheprovider -m sheets app/tests/integration/test_sheets_live.py
+
+final-pass-check:  ## Dry run of the post-call final pass on stored calls (OpenAI, writes nothing)
+	docker compose exec -T backend python -m app.scripts.final_pass_check $(args)

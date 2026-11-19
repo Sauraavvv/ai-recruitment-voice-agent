@@ -8,7 +8,7 @@ initiate_call(attempt_id):
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from arq import Retry
@@ -24,7 +24,7 @@ from app.providers.telephony.base import (
     TelephonyTimeoutError,
 )
 from app.repositories import call_repo, candidate_repo
-from app.services import call_service, call_slots, call_state
+from app.services import call_service, call_slots, call_state, sync_service
 from app.utils.log import get_logger
 from app.utils.redis import get_redis
 
@@ -43,7 +43,10 @@ def _provider(ctx: dict[str, Any], settings: Settings) -> TelephonyProvider:
 
 
 async def _fail(session: Any, attempt: CallAttempt, reason: str, end_reason: str) -> None:
-    call_state.transition(attempt, CallStatus.FAILED, end_reason=end_reason, failure_reason=reason)
+    changed = call_state.transition(
+        attempt, CallStatus.FAILED, end_reason=end_reason, failure_reason=reason
+    )
+    call_service.record_if_ended(session, attempt, changed)
     await session.commit()
 
 
@@ -81,13 +84,15 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             ignore_window=ignore_window,
         )
         if problem or candidate is None:
-            call_state.transition(
+            changed = call_state.transition(
                 attempt,
                 CallStatus.CANCELLED,
                 end_reason=CallEndReason.CANCELLED,
                 failure_reason=f"ineligible:{problem}",
             )
+            call_service.record_if_ended(session, attempt, changed)
             await session.commit()
+            await sync_service.request_sync(settings, ctx.get("redis"))
             await call_slots.release(redis, attempt_id, size=settings.max_concurrent_calls)
             logger.info("call_cancelled_ineligible", call_attempt_id=attempt_id, reason=problem)
             return "cancelled"
@@ -108,6 +113,7 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             return "timeout"
         except TelephonyError as exc:
             await _fail(session, attempt, f"initiate_failed: {exc}", CallEndReason.PROVIDER_FAILED)
+            await sync_service.request_sync(settings, ctx.get("redis"))
             await call_slots.release(redis, attempt_id, size=settings.max_concurrent_calls)
             logger.warning("call_initiate_failed", call_attempt_id=attempt_id, error=str(exc))
             return "failed"
@@ -155,48 +161,56 @@ async def reconcile_calls(ctx: dict[str, Any], *, now: datetime | None = None) -
                     logger.warning(
                         "call_reconcile_failed", call_attempt_id=str(attempt.id), error=str(exc)
                     )
+    if count:
+        await sync_service.request_sync(settings, ctx.get("redis"))
     return count
 
 
 async def finalize_call(ctx: dict[str, Any], attempt_id: str) -> str:
-    """After a conversation (phase-06 §5.6): the recruiter summary from the stored result.
-    Idempotent (an existing summary is kept). Phase 7 adds the extraction pass and Sheets."""
-    from sqlalchemy import select
-
-    from app.agent.conversation_manager import ScreeningResult
-    from app.database.models import Candidate, Conversation, Job
+    """After a conversation (phase-07 §5): final extraction, one transaction (conversation,
+    candidate, attempt, Sheets outbox), summary, Sheets sync. Idempotent."""
     from app.providers.llm import create_llm_provider
-    from app.services import screening_store
+    from app.services import finalization_service
 
     settings: Settings = ctx.get("settings") or get_settings()
-    aid = uuid.UUID(attempt_id)
-    async with get_sessionmaker()() as session:
-        conversation = (
-            await session.execute(select(Conversation).where(Conversation.call_attempt_id == aid))
-        ).scalar_one_or_none()
-        if conversation is None or not (conversation.extracted_data or {}).get("result"):
-            return "no_result"
-        if conversation.summary:
-            return "already_done"
-        attempt = await session.get(CallAttempt, aid)
-        assert attempt is not None
-        candidate = await session.get(Candidate, attempt.candidate_id)
-        assert candidate is not None
-        job = await session.get(Job, candidate.job_id)
-        result = ScreeningResult.from_dict(conversation.extracted_data["result"])
     llm = (
         create_llm_provider(settings) if settings.openai_api_key and settings.openai_model else None
     )
     try:
-        await screening_store.store_summary(
-            attempt_id=aid,
-            result=result,
-            job_title=job.job_title if job else "",
-            candidate_name=candidate.name,
-            llm=llm,
+        outcome = await finalization_service.finalize_attempt(
+            uuid.UUID(attempt_id), settings=settings, llm=llm, pool=ctx.get("redis")
         )
     finally:
         if llm is not None:
             await llm.aclose()
-    logger.info("call_finalized", call_attempt_id=attempt_id)
-    return "summarized"
+    logger.info("finalize_call_done", call_attempt_id=attempt_id, outcome=outcome)
+    return outcome
+
+
+FINALIZE_STALE = timedelta(minutes=10)
+
+
+async def reconcile_finalize(ctx: dict[str, Any], *, now: datetime | None = None) -> int:
+    """Cron: conversations whose call ended but that weren't finalized (or have no summary)
+    after 10 minutes, e.g. the worker was down → queue `finalize_call` again."""
+    from sqlalchemy import or_, select
+
+    from app.database.models import Conversation
+
+    now = now or datetime.now(UTC)
+    async with get_sessionmaker()() as session:
+        rows = await session.execute(
+            select(Conversation.call_attempt_id).where(
+                Conversation.extracted_data.has_key("result"),
+                Conversation.updated_at <= now - FINALIZE_STALE,
+                or_(Conversation.finalized_at.is_(None), Conversation.summary.is_(None)),
+            )
+        )
+        attempt_ids = [str(r[0]) for r in rows]
+    pool = ctx.get("redis")
+    for aid in attempt_ids:
+        if pool is not None:
+            await pool.enqueue_job("finalize_call", aid, _job_id=f"finalize:{aid}")
+    if attempt_ids:
+        logger.info("finalize_requeued", count=len(attempt_ids))
+    return len(attempt_ids)

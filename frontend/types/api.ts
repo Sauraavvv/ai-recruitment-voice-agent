@@ -363,6 +363,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/google-sheets/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sheets Status
+         * @description Configured, reachable, header ok, last success, pending and failed counts.
+         */
+        get: operations["sheets_status_api_v1_integrations_google_sheets_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/google-sheets/sync/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Candidate
+         * @description Queue a sync of this candidate's row (also retries one that failed for good).
+         */
+        post: operations["sync_candidate_api_v1_integrations_google_sheets_sync__candidate_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -673,10 +713,18 @@ export interface components {
         DataResponse_JobOut_: {
             data: components["schemas"]["JobOut"];
         };
+        /** DataResponse[ManualSyncResult] */
+        DataResponse_ManualSyncResult_: {
+            data: components["schemas"]["ManualSyncResult"];
+        };
         /** DataResponse[NoneType] */
         DataResponse_NoneType_: {
             /** Data */
             data: null;
+        };
+        /** DataResponse[SheetsStatus] */
+        DataResponse_SheetsStatus_: {
+            data: components["schemas"]["SheetsStatus"];
         };
         /** DataResponse[Union[JobOut, NoneType]] */
         DataResponse_Union_JobOut__NoneType__: {
@@ -984,6 +1032,23 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** ManualSyncResult */
+        ManualSyncResult: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Sync Log Id
+             * Format: uuid
+             */
+            sync_log_id: string;
+            /** Sync Status */
+            sync_status: string;
+            /** Queued */
+            queued: boolean;
+        };
         /** MappingUpdate */
         MappingUpdate: {
             /** Column Mapping */
@@ -1060,6 +1125,36 @@ export interface components {
          * @enum {string}
          */
         ScreeningStatus: "not_started" | "in_progress" | "partially_completed" | "completed" | "declined" | "opted_out" | "callback_requested" | "wrong_person";
+        /** SheetsStatus */
+        SheetsStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Tab */
+            tab: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "degraded" | "error" | "unknown" | "not_configured";
+            /** Message */
+            message: string | null;
+            /** Reachable */
+            reachable: boolean | null;
+            /** Header */
+            header: ("ok" | "empty" | "mismatch" | "unknown") | null;
+            /** Service Account Email */
+            service_account_email: string | null;
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Last Error At */
+            last_error_at: string | null;
+            /** Pending Candidates */
+            pending_candidates: number;
+            /** Failed Candidates */
+            failed_candidates: number;
+            /** Checked At */
+            checked_at: string | null;
+        };
         /** StartCallError */
         StartCallError: {
             /** Code */
@@ -1900,6 +1995,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_DashboardSummary_"];
+                };
+            };
+        };
+    };
+    sheets_status_api_v1_integrations_google_sheets_status_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SheetsStatus_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_candidate_api_v1_integrations_google_sheets_sync__candidate_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ManualSyncResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

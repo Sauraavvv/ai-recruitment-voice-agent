@@ -30,7 +30,7 @@ from app.database.models import (
 from app.providers.telephony import exotel_models as em
 from app.providers.telephony.base import ProviderCallStatus
 from app.repositories import call_repo, candidate_repo
-from app.services import call_slots, call_state
+from app.services import call_slots, call_state, sync_service
 from app.services.errors import not_found
 from app.utils.log import get_logger
 from app.utils.phone import normalize_phone
@@ -172,6 +172,7 @@ async def start_calls(
             # Another request created a live attempt for this candidate at the same moment.
             result.error = Ineligible.LIVE_ATTEMPT
             continue
+        sync_service.record_change(session, candidate.id)  # Call Status in the sheet
         await session.commit()
         result.attempt_id = attempt.id
         logger.info(
@@ -249,6 +250,15 @@ def apply_provider_status(
     return changed
 
 
+def record_if_ended(session: AsyncSession, attempt: CallAttempt, changed: bool) -> bool:
+    """Sheets outbox row when an attempt just reached a final status (Call Status, Attempt
+    Count, Last Call Date). Same transaction as the status change."""
+    if changed and call_state.is_terminal(attempt.call_status):
+        sync_service.record_change(session, attempt.candidate_id)
+        return True
+    return False
+
+
 async def release_slot_if_done(redis: Redis, attempt: CallAttempt, settings: Settings) -> None:
     if call_state.is_terminal(attempt.call_status):
         await call_slots.release(redis, str(attempt.id), size=settings.max_concurrent_calls)
@@ -319,6 +329,7 @@ async def handle_status_callback(
     event.processed_at = now
     if not changed:
         event.error = f"ignored:{attempt.call_status}->{status.value}"
+    record_if_ended(session, attempt, changed)
     await session.commit()
     await release_slot_if_done(redis, attempt, settings)
     logger.info(
@@ -430,6 +441,7 @@ async def reconcile_attempt(
             attempt.provider_call_id = status.provider_call_id
         changed = apply_provider_status(attempt, status)
         outcome = f"applied:{status.status}" if changed else f"unchanged:{status.status}"
+    record_if_ended(session, attempt, outcome.startswith(("applied", "failed")))
     await session.commit()
     await release_slot_if_done(redis, attempt, settings)
     logger.info("call_reconciled", call_attempt_id=str(attempt.id), outcome=outcome)

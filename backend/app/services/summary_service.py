@@ -20,6 +20,7 @@ log = structlog.get_logger(__name__)
 
 MAX_CHARS = 1000
 SUMMARY_TIMEOUT_S = 15.0
+SUMMARY_TRIES = 3  # phase-07 P7-T4: up to 2 retries (errors or a rejected judgment/pronoun)
 
 JUDGMENT = re.compile(
     r"\b(suitab\w*|unsuitab\w*|strong (candidate|fit|profile)|weak (candidate|profile)|"
@@ -171,12 +172,12 @@ async def generate_summary(
             Message("system", SUMMARY_PROMPT),
             Message("user", "DATA: " + json.dumps(data, ensure_ascii=False)),
         ]
-        for attempt in (1, 2):
+        for attempt in range(1, SUMMARY_TRIES + 1):  # the first try plus up to 2 retries
             try:
                 out = await llm.text(messages, timeout_s=SUMMARY_TIMEOUT_S, max_tokens=400)
             except LLMError as exc:
-                log.warning("summary_llm_failed", error=type(exc).__name__)
-                break
+                log.warning("summary_llm_failed", attempt=attempt, error=type(exc).__name__)
+                continue
             candidate_text = " ".join(out.value.split())
             judged, gendered = JUDGMENT.search(candidate_text), GENDERED.search(candidate_text)
             if not judged and not gendered:
