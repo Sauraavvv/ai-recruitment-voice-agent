@@ -1,12 +1,28 @@
 import { apiFetch, send } from "@/lib/api";
-import type { Job, JobCreate, JobUpdate, ScreeningQuestion } from "@/types";
+import type { DefaultQuestionsResult, Job, JobCreate, JobUpdate, ScreeningQuestion } from "@/types";
+
+const DEFAULTS_PATH = "/api/v1/jobs/default-screening-questions";
 
 export async function listJobs() {
   return (await apiFetch<Job[]>("/api/v1/jobs", { cache: "no-store" })).data;
 }
 
 export async function defaultQuestions() {
-  return (await apiFetch<ScreeningQuestion[]>("/api/v1/jobs/default-screening-questions")).data;
+  return (
+    await apiFetch<ScreeningQuestion[]>(DEFAULTS_PATH, {
+      cache: "no-store",
+    })
+  ).data;
+}
+
+/** Replace the default questions; jobs still using the defaults follow along. */
+export async function updateDefaultQuestions(questions: ScreeningQuestion[]) {
+  return (await send<DefaultQuestionsResult>("PUT", DEFAULTS_PATH, { questions })).data;
+}
+
+/** Restore the ten original default questions. */
+export async function resetDefaultQuestions() {
+  return (await send<DefaultQuestionsResult>("DELETE", DEFAULTS_PATH)).data;
 }
 
 export async function createJob(body: JobCreate) {

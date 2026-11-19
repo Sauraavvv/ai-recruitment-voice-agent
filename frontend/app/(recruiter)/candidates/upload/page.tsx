@@ -1,6 +1,6 @@
 import { UploadFlow } from "./upload-flow";
 
-export const metadata = { title: "Upload candidates · AI Recruitment Voice Agent" };
+export const metadata = { title: "Upload candidates · HireCall" };
 
 export default function UploadPage() {
   return <UploadFlow />;

@@ -7,9 +7,15 @@ from app.api.deps import SessionDep
 from app.api.responses import ok
 from app.repositories import job_repo
 from app.schemas.common import DataResponse
-from app.schemas.job import JobCreate, JobOut, JobUpdate, default_screening_questions
+from app.schemas.job import (
+    DefaultQuestionsOut,
+    DefaultQuestionsUpdate,
+    JobCreate,
+    JobOut,
+    JobUpdate,
+)
 from app.schemas.job import ScreeningQuestion as ScreeningQuestionSchema
-from app.services import job_service
+from app.services import default_questions_service, job_service
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -23,8 +29,32 @@ async def list_jobs(session: SessionDep) -> dict[str, Any]:
     "/default-screening-questions",
     response_model=DataResponse[list[ScreeningQuestionSchema]],
 )
-async def default_questions() -> dict[str, Any]:
-    return ok(default_screening_questions())
+async def default_questions(session: SessionDep) -> dict[str, Any]:
+    return ok(await default_questions_service.get(session))
+
+
+@router.put(
+    "/default-screening-questions",
+    response_model=DataResponse[DefaultQuestionsOut],
+)
+async def update_default_questions(
+    body: DefaultQuestionsUpdate, session: SessionDep
+) -> dict[str, Any]:
+    """Replace the default questions (reword, reorder, remove, add).
+
+    Jobs still asking exactly the old defaults, in any order, switch to the new list."""
+    questions, updated = await default_questions_service.update(session, body.questions)
+    return ok(DefaultQuestionsOut(questions=questions, jobs_updated=updated))
+
+
+@router.delete(
+    "/default-screening-questions",
+    response_model=DataResponse[DefaultQuestionsOut],
+)
+async def reset_default_questions(session: SessionDep) -> dict[str, Any]:
+    """Restore the ten original questions."""
+    questions, updated = await default_questions_service.reset(session)
+    return ok(DefaultQuestionsOut(questions=questions, jobs_updated=updated))
 
 
 @router.post("", response_model=DataResponse[JobOut], status_code=status.HTTP_201_CREATED)

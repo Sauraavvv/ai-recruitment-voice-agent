@@ -65,3 +65,25 @@ async def test_unknown_job_is_404(authed: AsyncClient) -> None:
     response = await authed.get("/api/v1/jobs/00000000-0000-0000-0000-000000000009")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "job_not_found"
+
+
+async def test_job_needs_at_least_one_question(authed: AsyncClient) -> None:
+    response = await authed.post(
+        "/api/v1/jobs",
+        json={"job_title": "Chef", "company_name": "Cafe", "screening_questions": []},
+    )
+    assert response.status_code == 422
+
+
+async def test_job_with_only_custom_questions(authed: AsyncClient) -> None:
+    questions = [
+        {"key": "q_can_you_work_weekends", "prompt": "Can you work weekends?", "type": "boolean"},
+        {"key": "q_cuisines", "prompt": "Which cuisines do you cook?"},
+    ]
+    response = await authed.post(
+        "/api/v1/jobs",
+        json={"job_title": "Chef", "company_name": "Cafe", "screening_questions": questions},
+    )
+    assert response.status_code == 201, response.text
+    saved = response.json()["data"]["screening_questions"]
+    assert [q["key"] for q in saved] == ["q_can_you_work_weekends", "q_cuisines"]

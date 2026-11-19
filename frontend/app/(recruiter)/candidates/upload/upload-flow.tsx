@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 
-import { Alert, Button, Field, Muted, PageHeader, buttonClass, inputClass } from "@/components/ui";
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  Muted,
+  PageHeader,
+  buttonClass,
+  inputClass,
+} from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { useLoad } from "@/lib/use-load";
 import { confirmImport, remapImport, uploadImport } from "@/services/imports";
@@ -67,7 +76,10 @@ export function UploadFlow() {
 
   return (
     <>
-      <PageHeader title="Upload candidates" />
+      <PageHeader
+        title="Upload candidates"
+        subtitle="Import a .csv or .xlsx file, check the preview, then confirm."
+      />
       {error && (
         <div className="mb-4">
           <Alert>{error}</Alert>
@@ -75,10 +87,55 @@ export function UploadFlow() {
       )}
 
       {!preview && (
-        <section className="max-w-2xl space-y-4">
-          <Alert kind="info">
-            <p className="mb-2 font-medium">File format</p>
-            <ul className="list-disc space-y-1 pl-5">
+        <div className="grid gap-4 lg:grid-cols-5">
+          <Card
+            title="Upload a file"
+            description="Candidates are added to the selected job."
+            className="lg:col-span-3"
+          >
+            <div className="space-y-4">
+              {jobs.data?.length === 0 && (
+                <Alert>
+                  No job is configured yet.{" "}
+                  <Link href="/settings/job" className="underline">
+                    Create the job first
+                  </Link>
+                  .
+                </Alert>
+              )}
+
+              <form onSubmit={onUpload} className="space-y-4">
+                <Field label="Job">
+                  <select
+                    value={jobId || activeJob?.id || ""}
+                    onChange={(e) => setJobId(e.target.value)}
+                    className={inputClass}
+                  >
+                    {jobs.data?.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.job_title} — {job.company_name}
+                        {job.is_active ? " (active)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="File">
+                  <input
+                    name="file"
+                    type="file"
+                    accept=".csv,.xlsx"
+                    required
+                    className="block w-full cursor-pointer rounded-xl border border-dashed border-[#34363d] bg-[#202226] p-5 text-sm text-zinc-400 file:mr-4 file:rounded-lg file:border-0 file:bg-[#2c2f35] file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-zinc-100 hover:border-zinc-500"
+                  />
+                </Field>
+                <Button type="submit" disabled={busy || !jobs.data?.length}>
+                  {busy ? "Reading file…" : "Upload and preview"}
+                </Button>
+              </form>
+            </div>
+          </Card>
+          <Card title="File format" className="lg:col-span-2">
+            <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-300 marker:text-zinc-600">
               <li>.csv or .xlsx (save older .xls files as .xlsx), up to 5 MB and 1,000 rows.</li>
               <li>
                 The first row holds column names. Required: <b>Candidate name</b>,{" "}
@@ -91,126 +148,99 @@ export function UploadFlow() {
               </li>
               <li>Numbers already in the system are reported as duplicates and left unchanged.</li>
             </ul>
-            <a href="/candidate-template.csv" download className="mt-2 inline-block underline">
+            <a
+              href="/candidate-template.csv"
+              download
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[#60a5fa] hover:underline"
+            >
               Download the template (.csv)
             </a>
-          </Alert>
-
-          {jobs.data?.length === 0 && (
-            <Alert>
-              No job is configured yet.{" "}
-              <Link href="/settings/job" className="underline">
-                Create the job first
-              </Link>
-              .
-            </Alert>
-          )}
-
-          <form onSubmit={onUpload} className="space-y-4">
-            <Field label="Job">
-              <select
-                value={jobId || activeJob?.id || ""}
-                onChange={(e) => setJobId(e.target.value)}
-                className={inputClass}
-              >
-                {jobs.data?.map((job) => (
-                  <option key={job.id} value={job.id}>
-                    {job.job_title} — {job.company_name}
-                    {job.is_active ? " (active)" : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="File">
-              <input name="file" type="file" accept=".csv,.xlsx" required className="text-sm" />
-            </Field>
-            <Button type="submit" disabled={busy || !jobs.data?.length}>
-              {busy ? "Reading file…" : "Upload and preview"}
-            </Button>
-          </form>
-        </section>
+          </Card>
+        </div>
       )}
 
       {preview && report && (
-        <section className="space-y-6">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-            <span>
-              <b>{preview.filename}</b>
-            </span>
-            <span>Rows: {report.total_rows}</span>
-            <span className="text-green-700 dark:text-green-400">
-              Valid: {report.valid_candidates}
-            </span>
-            <span className="text-amber-700 dark:text-amber-400">
-              Duplicates: {report.duplicate_candidates} ({report.duplicates_in_file} in file,{" "}
-              {report.duplicates_existing} existing)
-            </span>
-            <span className="text-red-700 dark:text-red-400">
-              Invalid: {report.invalid_candidates}
-            </span>
-            {done && <span className="font-medium">Imported: {report.imported_candidates}</span>}
-          </div>
+        <Card>
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <span>
+                <b>{preview.filename}</b>
+              </span>
+              <span>Rows: {report.total_rows}</span>
+              <span className="text-green-700 dark:text-green-400">
+                Valid: {report.valid_candidates}
+              </span>
+              <span className="text-amber-700 dark:text-amber-400">
+                Duplicates: {report.duplicate_candidates} ({report.duplicates_in_file} in file,{" "}
+                {report.duplicates_existing} existing)
+              </span>
+              <span className="text-red-700 dark:text-red-400">
+                Invalid: {report.invalid_candidates}
+              </span>
+              {done && <span className="font-medium">Imported: {report.imported_candidates}</span>}
+            </div>
 
-          {done ? (
-            <Alert kind="success">
-              Imported {report.imported_candidates} candidate
-              {report.imported_candidates === 1 ? "" : "s"}.
-              {report.imported_candidates < report.valid_candidates &&
-                " Some rows were added by someone else in the meantime and were skipped as duplicates."}{" "}
-              <Link href="/candidates" className="underline">
-                View candidates
-              </Link>
-            </Alert>
-          ) : (
-            <MappingEditor preview={preview} disabled={busy} onChange={onMappingChange} />
-          )}
+            {done ? (
+              <Alert kind="success">
+                Imported {report.imported_candidates} candidate
+                {report.imported_candidates === 1 ? "" : "s"}.
+                {report.imported_candidates < report.valid_candidates &&
+                  " Some rows were added by someone else in the meantime and were skipped as duplicates."}{" "}
+                <Link href="/candidates" className="underline">
+                  View candidates
+                </Link>
+              </Alert>
+            ) : (
+              <MappingEditor preview={preview} disabled={busy} onChange={onMappingChange} />
+            )}
 
-          {done ? (
-            report.errors.length > 0 && <ErrorList errors={report.errors} />
-          ) : (
-            <PreviewTable rows={preview.rows} />
-          )}
+            {done ? (
+              report.errors.length > 0 && <ErrorList errors={report.errors} />
+            ) : (
+              <PreviewTable rows={preview.rows} />
+            )}
 
-          {!done && (
-            <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-1"
-                />
-                These candidates have agreed to be contacted by phone about this role.
-              </label>
+            {!done && (
+              <div className="space-y-3 border-t border-white/10 pt-4">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-1"
+                  />
+                  These candidates have agreed to be contacted by phone about this role.
+                </label>
+                <div className="flex gap-2">
+                  <Button
+                    disabled={busy || !consent || report.valid_candidates === 0}
+                    onClick={() => void run(() => confirmImport(preview.id))}
+                  >
+                    Import {report.valid_candidates} valid candidate
+                    {report.valid_candidates === 1 ? "" : "s"}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setPreview(null)} disabled={busy}>
+                    Start over
+                  </Button>
+                </div>
+                <Muted>
+                  Invalid and duplicate rows are skipped. Nothing is saved until you import.
+                </Muted>
+              </div>
+            )}
+
+            {done && (
               <div className="flex gap-2">
-                <Button
-                  disabled={busy || !consent || report.valid_candidates === 0}
-                  onClick={() => void run(() => confirmImport(preview.id))}
-                >
-                  Import {report.valid_candidates} valid candidate
-                  {report.valid_candidates === 1 ? "" : "s"}
-                </Button>
-                <Button variant="secondary" onClick={() => setPreview(null)} disabled={busy}>
-                  Start over
+                <Link href="/candidates" className={buttonClass("primary")}>
+                  View candidates
+                </Link>
+                <Button variant="secondary" onClick={() => setPreview(null)}>
+                  Upload another file
                 </Button>
               </div>
-              <Muted>
-                Invalid and duplicate rows are skipped. Nothing is saved until you import.
-              </Muted>
-            </div>
-          )}
-
-          {done && (
-            <div className="flex gap-2">
-              <Link href="/candidates" className={buttonClass("primary")}>
-                View candidates
-              </Link>
-              <Button variant="secondary" onClick={() => setPreview(null)}>
-                Upload another file
-              </Button>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        </Card>
       )}
     </>
   );
@@ -226,8 +256,8 @@ function MappingEditor({
   onChange: (field: string, value: string) => void;
 }) {
   return (
-    <details open className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-      <summary className="cursor-pointer text-sm font-medium">Column mapping</summary>
+    <details open className="rounded-2xl bg-[#202226] p-4">
+      <summary className="cursor-pointer text-sm font-medium text-white">Column mapping</summary>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {preview.fields.map((field) => (
           <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`}>
@@ -260,7 +290,7 @@ function PreviewTable({ rows }: { rows: ImportRow[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-zinc-200 text-xs text-zinc-500 uppercase dark:border-zinc-800">
+        <thead className="border-b border-white/10 text-xs text-zinc-500 uppercase">
           <tr>
             <th className="py-2 pr-3">Row</th>
             <th className="py-2 pr-3">Status</th>
@@ -274,7 +304,7 @@ function PreviewTable({ rows }: { rows: ImportRow[] }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.row} className="border-b border-zinc-100 align-top dark:border-zinc-900">
+            <tr key={row.row} className="border-b border-white/5 align-top text-zinc-200">
               <td className="py-2 pr-3">{row.row}</td>
               <td className={`py-2 pr-3 whitespace-nowrap ${STATUS_STYLES[row.status]}`}>
                 {STATUS_LABELS[row.status]}

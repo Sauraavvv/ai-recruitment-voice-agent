@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
+  // Dev-only badge: keep it clear of the sidebar's bottom-left buttons
+  devIndicators: { position: "bottom-right" },
   turbopack: {
     rules: {
       "*.css": {

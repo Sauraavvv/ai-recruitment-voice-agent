@@ -14,6 +14,7 @@ MIGRATIONS_DB = make_url(TEST_DATABASE_URL).set(database="recruitment_ai_migrati
 URL = MIGRATIONS_DB.render_as_string(hide_password=False)
 TABLES = {
     "alembic_version",
+    "app_settings",
     "call_attempts",
     "candidates",
     "conversations",

@@ -2,11 +2,18 @@
 
 import { type FormEvent, useState } from "react";
 
-import { Alert, Button, Field, Muted, PageHeader, inputClass } from "@/components/ui";
+import { Alert, Button, Card, Field, Muted, PageHeader, inputClass } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { useLoad } from "@/lib/use-load";
 import { activateJob, createJob, defaultQuestions, listJobs, updateJob } from "@/services/jobs";
 import type { Job, ScreeningQuestion } from "@/types";
+
+import {
+  blankQuestion,
+  finalizeCustom,
+  type QuestionMode,
+  QuestionsSection,
+} from "./questions-section";
 
 const MAX_LONG_TEXT = 4000;
 const NEW = "new";
@@ -35,44 +42,69 @@ function toDraft(job: Job | undefined, defaults: ScreeningQuestion[]): Draft {
   };
 }
 
+const SUBTITLE =
+  "The calling agent uses the active job's details and questions. Only one job is active at a time.";
+
 export function JobSettings() {
   const jobs = useLoad("jobs", listJobs);
   const defaults = useLoad("default-questions", defaultQuestions);
+  // null: the overview (existing jobs + create new); otherwise a job id or NEW
   const [selected, setSelected] = useState<string | null>(null);
 
   if (jobs.error) return <Alert>{errorMessage(jobs.error)}</Alert>;
   if (!jobs.data || !defaults.data) return <Muted>Loading…</Muted>;
 
-  const active = jobs.data.find((j) => j.is_active);
-  const selectedId = selected ?? active?.id ?? jobs.data[0]?.id ?? NEW;
-  const job = jobs.data.find((j) => j.id === selectedId);
+  if (selected === null) {
+    return (
+      <>
+        <PageHeader title="Job settings" subtitle={SUBTITLE} />
+        <JobOverview jobs={jobs.data} onOpen={setSelected} />
+      </>
+    );
+  }
+
+  const job = jobs.data.find((j) => j.id === selected);
 
   return (
     <>
-      <PageHeader title="Job settings">
-        {jobs.data.length > 0 && (
-          <select
-            value={selectedId}
-            onChange={(e) => setSelected(e.target.value)}
-            className={inputClass}
-            aria-label="Job to edit"
-          >
-            {jobs.data.map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.job_title} — {j.company_name}
-                {j.is_active ? " (active)" : ""}
-              </option>
-            ))}
-            <option value={NEW}>+ New job</option>
-          </select>
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setSelected(null)}
+          className="inline-flex items-center gap-1.5 text-sm text-zinc-400 transition hover:text-white"
+        >
+          <span aria-hidden>←</span> Back to jobs
+        </button>
+      </div>
+      <PageHeader
+        title={
+          job ? (
+            <>
+              {job.job_title}{" "}
+              <span className="font-sans text-sm font-normal text-zinc-500">
+                at {job.company_name}
+              </span>
+            </>
+          ) : (
+            "New job"
+          )
+        }
+        subtitle={job ? undefined : "Fill in the details the agent will use on calls."}
+      >
+        {job && (
+          <>
+            <Button variant="secondary" onClick={() => setSelected(NEW)}>
+              + Create new job
+            </Button>
+            {/* Shown but switched off until deleting jobs is supported */}
+            <Button variant="danger" disabled title="Deleting jobs isn't available yet">
+              Delete this job
+            </Button>
+          </>
         )}
       </PageHeader>
-      <Muted>
-        The calling agent uses the active job&apos;s details and screening questions. Only one job
-        is active at a time.
-      </Muted>
       <JobForm
-        key={`${selectedId}:${job?.updated_at ?? ""}`}
+        key={`${selected}:${job?.updated_at ?? ""}`}
         job={job}
         defaults={defaults.data}
         onSaved={(saved) => {
@@ -81,6 +113,100 @@ export function JobSettings() {
         }}
       />
     </>
+  );
+}
+
+const companyInitials = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+
+function JobOverview({ jobs, onOpen }: { jobs: Job[]; onOpen: (id: string) => void }) {
+  // Active job first, then by company
+  const sorted = [...jobs].sort(
+    (a, b) =>
+      Number(b.is_active) - Number(a.is_active) ||
+      a.company_name.localeCompare(b.company_name) ||
+      a.job_title.localeCompare(b.job_title),
+  );
+  const companies = new Set(jobs.map((j) => j.company_name)).size;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <Card
+        title="Existing jobs"
+        description={
+          jobs.length
+            ? `${jobs.length} job${jobs.length === 1 ? "" : "s"} across ${companies} compan${companies === 1 ? "y" : "ies"}. Choose one to view or edit it.`
+            : "No jobs yet."
+        }
+        className="lg:col-span-2"
+      >
+        {jobs.length ? (
+          <ul className="space-y-2">
+            {sorted.map((j) => (
+              <li key={j.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(j.id)}
+                  className="group flex w-full items-center gap-3 rounded-2xl border border-[#34363d] bg-[#202226] p-4 text-left transition hover:border-zinc-500 hover:bg-[#24262b]"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-sm font-medium text-white">
+                    {companyInitials(j.company_name)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-white">
+                      {j.company_name}
+                    </span>
+                    <span className="block truncate text-sm text-zinc-400">
+                      {j.job_title}
+                      {j.location ? ` · ${j.location}` : ""}
+                    </span>
+                  </span>
+                  <span className="hidden text-xs text-zinc-500 sm:inline">
+                    {j.screening_questions.length} questions
+                  </span>
+                  {j.is_active ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0ca30c]/15 px-2.5 py-1 text-xs font-medium text-[#5fd35f]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#0ca30c]" />
+                      Active
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
+                      Inactive
+                    </span>
+                  )}
+                  <span
+                    aria-hidden
+                    className="text-zinc-500 transition group-hover:translate-x-0.5 group-hover:text-white"
+                  >
+                    →
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Muted>Create your first job to start screening candidates.</Muted>
+        )}
+      </Card>
+
+      <button
+        type="button"
+        onClick={() => onOpen(NEW)}
+        className="group flex min-h-48 flex-col items-center justify-center rounded-3xl border border-dashed border-[#34363d] bg-[#18191c] p-6 text-center transition hover:border-[#2563eb] hover:bg-[#2563eb]/5"
+      >
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1d4ed8] text-2xl text-white transition group-hover:bg-[#2563eb]">
+          +
+        </span>
+        <span className="font-display mt-4 text-base font-semibold text-white">Create new job</span>
+        <span className="mt-1 text-sm text-zinc-500">
+          Add a role with its details and screening questions.
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -98,7 +224,26 @@ function JobForm({
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft({ ...draft, [key]: value });
-  const standardKeys = new Set(defaults.map((q) => q.key));
+  // Nothing is chosen until the recruiter picks an option; until then the questions aren't shown
+  // and an existing job keeps the questions it has.
+  const [mode, setMode] = useState<QuestionMode | null>(null);
+  // "Create new questions" starts from this job's own questions (none if it uses the defaults),
+  // and what's written there survives a look at the defaults and back.
+  // Default questions never appear here: only questions written for this job.
+  const [customDraft, setCustomDraft] = useState<ScreeningQuestion[]>(() => {
+    const standard = new Set(defaults.map((q) => q.key));
+    return (job?.screening_questions ?? []).filter((q) => !standard.has(q.key));
+  });
+
+  function changeMode(next: QuestionMode) {
+    if (next === mode) return;
+    if (mode === "custom") setCustomDraft(draft.screening_questions);
+    set(
+      "screening_questions",
+      next === "default" ? defaults : customDraft.length ? customDraft : [blankQuestion([])],
+    );
+    setMode(next);
+  }
 
   async function run(action: () => Promise<Job>, success: string) {
     setBusy(true);
@@ -116,8 +261,26 @@ function JobForm({
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (mode === null && !job) {
+      setMessage({
+        kind: "error",
+        text: "Choose the screening questions: default questions or new ones.",
+      });
+      return;
+    }
+    const questions =
+      mode === "default"
+        ? defaults
+        : mode === "custom"
+          ? finalizeCustom(draft.screening_questions)
+          : draft.screening_questions;
+    if (questions.length === 0) {
+      setMessage({ kind: "error", text: "Add at least one screening question before saving." });
+      return;
+    }
     const body = {
       ...draft,
+      screening_questions: questions,
       skills: draft.skills
         .split(",")
         .map((s) => s.trim())
@@ -129,32 +292,8 @@ function JobForm({
     );
   }
 
-  function updateQuestion(index: number, changes: Partial<ScreeningQuestion>) {
-    const questions = draft.screening_questions.map((q, i) =>
-      i === index ? { ...q, ...changes } : q,
-    );
-    set("screening_questions", questions);
-  }
-
-  function move(index: number, delta: number) {
-    const questions = [...draft.screening_questions];
-    const [item] = questions.splice(index, 1);
-    questions.splice(index + delta, 0, item);
-    set("screening_questions", questions);
-  }
-
-  function addQuestion() {
-    const used = new Set(draft.screening_questions.map((q) => q.key));
-    let n = 1;
-    while (used.has(`custom_${n}`)) n++;
-    set("screening_questions", [
-      ...draft.screening_questions,
-      { key: `custom_${n}`, prompt: "", required: false, type: "string", unit: null },
-    ]);
-  }
-
   return (
-    <form onSubmit={onSubmit} className="mt-6 max-w-3xl space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       {message && <Alert kind={message.kind}>{message.text}</Alert>}
       {job && !job.is_active && (
         <Alert kind="info">
@@ -169,166 +308,100 @@ function JobForm({
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Job title *">
-          <input
-            required
-            maxLength={200}
-            value={draft.job_title}
-            onChange={(e) => set("job_title", e.target.value)}
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Company name *">
-          <input
-            required
-            maxLength={200}
-            value={draft.company_name}
-            onChange={(e) => set("company_name", e.target.value)}
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Location">
-          <input
-            maxLength={200}
-            value={draft.location}
-            onChange={(e) => set("location", e.target.value)}
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Required experience" hint="e.g. 3–5 years">
-          <input
-            maxLength={100}
-            value={draft.required_experience}
-            onChange={(e) => set("required_experience", e.target.value)}
-            className={inputClass}
-          />
-        </Field>
-      </div>
-      <Field label="Skills" hint="Comma-separated">
-        <input
-          value={draft.skills}
-          onChange={(e) => set("skills", e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-      <Field
-        label="Job description"
-        hint={`${draft.job_description.length}/${MAX_LONG_TEXT}. The agent only answers questions from what's written here.`}
-      >
-        <textarea
-          rows={6}
-          maxLength={MAX_LONG_TEXT}
-          value={draft.job_description}
-          onChange={(e) => set("job_description", e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-      <Field
-        label="Agent instructions"
-        hint={`${draft.agent_instructions.length}/${MAX_LONG_TEXT}. Extra guidance for the calling agent.`}
-      >
-        <textarea
-          rows={4}
-          maxLength={MAX_LONG_TEXT}
-          value={draft.agent_instructions}
-          onChange={(e) => set("agent_instructions", e.target.value)}
-          className={inputClass}
-        />
-      </Field>
-
-      <fieldset className="space-y-3">
-        <legend className="mb-2 font-medium">Screening questions (asked in this order)</legend>
-        {draft.screening_questions.map((q, index) => {
-          const standard = standardKeys.has(q.key);
-          return (
-            <div key={index} className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-zinc-500">{index + 1}.</span>
-                {standard ? (
-                  <code>{q.key}</code>
-                ) : (
-                  <input
-                    aria-label="Question key"
-                    value={q.key}
-                    pattern="[a-z][a-z0-9_]{0,49}"
-                    title="Lowercase letters, digits and underscores"
-                    onChange={(e) => updateQuestion(index, { key: e.target.value })}
-                    className={`${inputClass} max-w-40 font-mono text-xs`}
-                  />
-                )}
-                <select
-                  aria-label="Answer type"
-                  value={q.type}
-                  disabled={standard}
-                  onChange={(e) =>
-                    updateQuestion(index, { type: e.target.value as ScreeningQuestion["type"] })
-                  }
-                  className={`${inputClass} max-w-28 text-xs`}
-                >
-                  <option value="string">Text</option>
-                  <option value="number">Number</option>
-                  <option value="boolean">Yes / no</option>
-                </select>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    checked={q.required}
-                    onChange={(e) => updateQuestion(index, { required: e.target.checked })}
-                  />
-                  Required
-                </label>
-                <span className="ml-auto flex gap-1">
-                  <Button
-                    variant="secondary"
-                    disabled={index === 0}
-                    onClick={() => move(index, -1)}
-                    aria-label="Move up"
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={index === draft.screening_questions.length - 1}
-                    onClick={() => move(index, 1)}
-                    aria-label="Move down"
-                  >
-                    ↓
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={() =>
-                      set(
-                        "screening_questions",
-                        draft.screening_questions.filter((_, i) => i !== index),
-                      )
-                    }
-                    aria-label="Remove question"
-                  >
-                    ✕
-                  </Button>
-                </span>
-              </div>
+      <Card title="Job details" description="Shown to candidates by the agent on the call.">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Field label="Job title *">
               <input
-                aria-label="Question"
                 required
-                maxLength={500}
-                value={q.prompt}
-                onChange={(e) => updateQuestion(index, { prompt: e.target.value })}
+                maxLength={200}
+                value={draft.job_title}
+                onChange={(e) => set("job_title", e.target.value)}
                 className={inputClass}
-                placeholder="Question the agent asks"
               />
-            </div>
-          );
-        })}
-        <Button variant="secondary" onClick={addQuestion}>
-          Add custom question
-        </Button>
-      </fieldset>
+            </Field>
+            <Field label="Company name *">
+              <input
+                required
+                maxLength={200}
+                value={draft.company_name}
+                onChange={(e) => set("company_name", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Location">
+              <input
+                maxLength={200}
+                value={draft.location}
+                onChange={(e) => set("location", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Required experience">
+              <input
+                maxLength={100}
+                placeholder="e.g. 3–5 years"
+                value={draft.required_experience}
+                onChange={(e) => set("required_experience", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+          <Field label="Skills" hint="Comma-separated">
+            <input
+              value={draft.skills}
+              onChange={(e) => set("skills", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </Card>
 
-      <Button type="submit" disabled={busy}>
-        {busy ? "Saving…" : job ? "Save job" : "Create job"}
-      </Button>
+      <Card
+        title="What the agent knows"
+        description="The agent answers candidates' questions only from this."
+      >
+        <div className="space-y-4">
+          <Field
+            label="Job description"
+            hint={`${draft.job_description.length}/${MAX_LONG_TEXT}. The agent only answers questions from what's written here.`}
+          >
+            <textarea
+              rows={6}
+              maxLength={MAX_LONG_TEXT}
+              value={draft.job_description}
+              onChange={(e) => set("job_description", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <Field
+            label="Agent instructions"
+            hint={`${draft.agent_instructions.length}/${MAX_LONG_TEXT}. Extra guidance for the calling agent.`}
+          >
+            <textarea
+              rows={4}
+              maxLength={MAX_LONG_TEXT}
+              value={draft.agent_instructions}
+              onChange={(e) => set("agent_instructions", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </Card>
+
+      <QuestionsSection
+        mode={mode}
+        questions={draft.screening_questions}
+        defaults={defaults}
+        onModeChange={changeMode}
+        onChange={(questions) => set("screening_questions", questions)}
+      />
+
+      <div className="flex justify-end">
+        <Button type="submit" disabled={busy}>
+          {busy ? "Saving…" : job ? "Save job" : "Create job"}
+        </Button>
+      </div>
     </form>
   );
 }

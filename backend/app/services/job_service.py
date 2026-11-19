@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Job
 from app.repositories import job_repo
-from app.schemas.job import JobCreate, JobUpdate, default_screening_questions
+from app.schemas.job import JobCreate, JobUpdate
+from app.services import default_questions_service
 from app.services.errors import not_found, unprocessable
 
 
@@ -34,7 +35,7 @@ async def list_jobs(session: AsyncSession) -> list[Job]:
 
 
 async def create(session: AsyncSession, data: JobCreate) -> Job:
-    questions = data.screening_questions or default_screening_questions()
+    questions = data.screening_questions or await default_questions_service.get(session)
     job = Job(
         **data.model_dump(exclude={"screening_questions"}),
         screening_questions=[q.model_dump(exclude_none=True) for q in questions],

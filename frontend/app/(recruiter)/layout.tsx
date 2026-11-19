@@ -1,15 +1,17 @@
 import { Suspense } from "react";
 
-import { AppNav } from "@/components/app-nav";
+import { Sidebar } from "@/components/sidebar";
 
 export default function RecruiterLayout({ children }: LayoutProps<"/">) {
   return (
-    <>
-      {/* AppNav reads the pathname, which is only known at request time on dynamic routes. */}
-      <Suspense fallback={<div className="h-11 border-b border-zinc-200 dark:border-zinc-800" />}>
-        <AppNav />
+    <div className="flex min-h-screen flex-1 bg-black text-white">
+      {/* The sidebar reads the pathname, which is only known at request time on dynamic routes. */}
+      <Suspense fallback={<div className="w-[252px] shrink-0" />}>
+        <Sidebar />
       </Suspense>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
-    </>
+      <main className="min-w-0 flex-1 px-8 py-8">
+        <div className="mx-auto w-full max-w-6xl">{children}</div>
+      </main>
+    </div>
   );
 }

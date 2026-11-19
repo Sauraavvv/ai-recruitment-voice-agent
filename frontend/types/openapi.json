@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "AI Recruitment Voice Agent API",
+    "title": "HireCall API",
     "version": "0.0.0"
   },
   "paths": {
@@ -715,6 +715,66 @@
             }
           }
         }
+      },
+      "put": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Update Default Questions",
+        "description": "Replace the default questions (reword, reorder, remove, add).\n\nJobs still asking exactly the old defaults, in any order, switch to the new list.",
+        "operationId": "update_default_questions_api_v1_jobs_default_screening_questions_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefaultQuestionsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_DefaultQuestionsOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Reset Default Questions",
+        "description": "Restore the ten original questions.",
+        "operationId": "reset_default_questions_api_v1_jobs_default_screening_questions_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_DefaultQuestionsOut_"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/jobs/active": {
@@ -1048,6 +1108,27 @@
           }
         }
       }
+    },
+    "/api/v1/dashboard/summary": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Get Summary",
+        "operationId": "get_summary_api_v1_dashboard_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_DashboardSummary_"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1270,6 +1351,29 @@
         ],
         "title": "CallStatus",
         "description": "plan.md Module F."
+      },
+      "CallsOnDay": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "connected": {
+            "type": "integer",
+            "title": "Connected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "total",
+          "connected"
+        ],
+        "title": "CallsOnDay"
       },
       "CandidateCreate": {
         "properties": {
@@ -1897,6 +2001,183 @@
         "title": "CandidateUpdate",
         "description": "Partial update. Fields left out are unchanged; send null to clear an optional field."
       },
+      "DashboardFunnel": {
+        "properties": {
+          "candidates": {
+            "type": "integer",
+            "title": "Candidates"
+          },
+          "called": {
+            "type": "integer",
+            "title": "Called"
+          },
+          "connected": {
+            "type": "integer",
+            "title": "Connected"
+          },
+          "screened": {
+            "type": "integer",
+            "title": "Screened"
+          },
+          "interested": {
+            "type": "integer",
+            "title": "Interested"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates",
+          "called",
+          "connected",
+          "screened",
+          "interested"
+        ],
+        "title": "DashboardFunnel"
+      },
+      "DashboardKpis": {
+        "properties": {
+          "candidates_total": {
+            "type": "integer",
+            "title": "Candidates Total"
+          },
+          "screened": {
+            "type": "integer",
+            "title": "Screened"
+          },
+          "interested": {
+            "type": "integer",
+            "title": "Interested"
+          },
+          "interested_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interested Rate"
+          },
+          "opted_out": {
+            "type": "integer",
+            "title": "Opted Out"
+          },
+          "calls_total": {
+            "type": "integer",
+            "title": "Calls Total"
+          },
+          "calls_today": {
+            "type": "integer",
+            "title": "Calls Today"
+          },
+          "calls_connected": {
+            "type": "integer",
+            "title": "Calls Connected"
+          },
+          "connect_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connect Rate"
+          },
+          "avg_call_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Call Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates_total",
+          "screened",
+          "interested",
+          "interested_rate",
+          "opted_out",
+          "calls_total",
+          "calls_today",
+          "calls_connected",
+          "connect_rate",
+          "avg_call_seconds"
+        ],
+        "title": "DashboardKpis"
+      },
+      "DashboardSummary": {
+        "properties": {
+          "kpis": {
+            "$ref": "#/components/schemas/DashboardKpis"
+          },
+          "funnel": {
+            "$ref": "#/components/schemas/DashboardFunnel"
+          },
+          "calls_by_day": {
+            "items": {
+              "$ref": "#/components/schemas/CallsOnDay"
+            },
+            "type": "array",
+            "title": "Calls By Day"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Outcomes"
+          },
+          "live_calls": {
+            "items": {
+              "$ref": "#/components/schemas/LiveCall"
+            },
+            "type": "array",
+            "title": "Live Calls"
+          },
+          "latest_conversation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestConversation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "interview_availability": {
+            "items": {
+              "$ref": "#/components/schemas/InterviewAvailability"
+            },
+            "type": "array",
+            "title": "Interview Availability"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kpis",
+          "funnel",
+          "calls_by_day",
+          "outcomes",
+          "live_calls",
+          "latest_conversation",
+          "interview_availability",
+          "generated_at"
+        ],
+        "title": "DashboardSummary"
+      },
       "DataResponse_CallAttemptOut_": {
         "properties": {
           "data": {
@@ -1920,6 +2201,30 @@
           "data"
         ],
         "title": "DataResponse[CandidateOut]"
+      },
+      "DataResponse_DashboardSummary_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DashboardSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[DashboardSummary]"
+      },
+      "DataResponse_DefaultQuestionsOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DefaultQuestionsOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[DefaultQuestionsOut]"
       },
       "DataResponse_ImportOut_": {
         "properties": {
@@ -2036,6 +2341,48 @@
           "data"
         ],
         "title": "DataResponse[list[StartCallResult]]"
+      },
+      "DefaultQuestionsOut": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/ScreeningQuestion"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "jobs_updated": {
+            "type": "integer",
+            "title": "Jobs Updated",
+            "description": "Jobs that used the defaults and now ask the new list"
+          }
+        },
+        "type": "object",
+        "required": [
+          "questions",
+          "jobs_updated"
+        ],
+        "title": "DefaultQuestionsOut"
+      },
+      "DefaultQuestionsUpdate": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/ScreeningQuestion"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Questions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "title": "DefaultQuestionsUpdate",
+        "description": "The full list of default questions, in order. Standard keys keep their types."
       },
       "HTTPValidationError": {
         "properties": {
@@ -2310,6 +2657,48 @@
         ],
         "title": "ImportRow"
       },
+      "InterviewAvailability": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "type": "string",
+            "title": "Candidate Name"
+          },
+          "availability": {
+            "type": "string",
+            "title": "Availability"
+          },
+          "notice_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Period"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "candidate_name",
+          "availability",
+          "notice_period",
+          "updated_at"
+        ],
+        "title": "InterviewAvailability"
+      },
       "JobCreate": {
         "properties": {
           "job_title": {
@@ -2360,7 +2749,8 @@
                   "$ref": "#/components/schemas/ScreeningQuestion"
                 },
                 "type": "array",
-                "maxItems": 30
+                "maxItems": 30,
+                "minItems": 1
               },
               {
                 "type": "null"
@@ -2549,7 +2939,8 @@
                   "$ref": "#/components/schemas/ScreeningQuestion"
                 },
                 "type": "array",
-                "maxItems": 30
+                "maxItems": 30,
+                "minItems": 1
               },
               {
                 "type": "null"
@@ -2573,6 +2964,103 @@
         "additionalProperties": false,
         "type": "object",
         "title": "JobUpdate"
+      },
+      "LatestConversation": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "type": "string",
+            "title": "Candidate Name"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ended At"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns"
+          },
+          "transcript": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptLine"
+            },
+            "type": "array",
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "candidate_id",
+          "candidate_name",
+          "ended_at",
+          "duration_seconds",
+          "turns",
+          "transcript"
+        ],
+        "title": "LatestConversation"
+      },
+      "LiveCall": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "type": "string",
+            "title": "Candidate Name"
+          },
+          "applied_role": {
+            "type": "string",
+            "title": "Applied Role"
+          },
+          "call_status": {
+            "type": "string",
+            "title": "Call Status"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "candidate_id",
+          "candidate_name",
+          "applied_role",
+          "call_status",
+          "started_at"
+        ],
+        "title": "LiveCall"
       },
       "LoginRequest": {
         "properties": {
@@ -2880,6 +3368,38 @@
           "candidate_ids"
         ],
         "title": "StartCallsRequest"
+      },
+      "TranscriptLine": {
+        "properties": {
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "speaker",
+          "text"
+        ],
+        "title": "TranscriptLine"
       },
       "UserOut": {
         "properties": {

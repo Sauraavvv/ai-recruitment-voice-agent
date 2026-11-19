@@ -29,7 +29,7 @@ The backend applies database migrations (`alembic upgrade head`) every time its 
 
 | URL | What |
 |---|---|
-| http://localhost:3000 | Frontend: system status page; recruiter pages at `/candidates` (log in first) |
+| http://localhost:3000 (3010 on this machine) | Frontend: opens the login page; after login `/dashboard` (calls and analytics); candidates at `/candidates`; system status at `/status` |
 | http://localhost:8000/health | Backend liveness |
 | http://localhost:8000/health/ready | Database, Redis and worker readiness |
 | http://localhost:8000/docs | API reference (development only) |

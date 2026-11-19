@@ -1,4 +1,6 @@
-# AI Recruitment Voice Calling Agent
+# HireCall
+
+AI recruitment voice calling agent.
 
 A web platform where recruiters upload candidates and an AI voice agent calls them over a real phone line, runs an initial screening conversation in English, and records structured answers, a transcript and a summary in PostgreSQL and Google Sheets.
 

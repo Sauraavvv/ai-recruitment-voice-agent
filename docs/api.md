@@ -106,7 +106,9 @@ Row status: `valid`, `invalid`, `duplicate_in_file` (the first row with a phone 
 |---|---|---|
 | GET | `/api/v1/jobs` | All jobs, active first |
 | GET | `/api/v1/jobs/active` | The active job, or `null` |
-| GET | `/api/v1/jobs/default-screening-questions` | The ten standard questions |
+| GET | `/api/v1/jobs/default-screening-questions` | The ten standard questions, with the recruiters' wording |
+| PUT | `/api/v1/jobs/default-screening-questions` | Change wording / required of standard questions (`{questions:[{key,prompt,required}]}`); keys, types and order are fixed. Jobs that ask exactly the old defaults (any order) are updated too; returns `jobs_updated` |
+| DELETE | `/api/v1/jobs/default-screening-questions` | Restore the original wording (same propagation) |
 | POST | `/api/v1/jobs` | Questions default to the standard ten. The first job becomes active |
 | GET / PATCH | `/api/v1/jobs/{id}` | `job_description` and `agent_instructions` are limited to 4,000 characters |
 | POST | `/api/v1/jobs/{id}/activate` | Makes this the only active job |

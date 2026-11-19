@@ -71,7 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("shutdown")
 
     app = FastAPI(
-        title="AI Recruitment Voice Agent API",
+        title="HireCall API",
         version=settings.app_version,
         lifespan=lifespan,
         docs_url=None if settings.app_env is AppEnv.PRODUCTION else "/docs",

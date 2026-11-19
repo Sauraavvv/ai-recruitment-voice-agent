@@ -67,7 +67,7 @@ Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
 LongText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=MAX_LONG_TEXT)]
 Skill = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-Questions = Annotated[list[ScreeningQuestion], Field(max_length=30)]
+Questions = Annotated[list[ScreeningQuestion], Field(min_length=1, max_length=30)]
 
 
 def _check_questions(questions: list[ScreeningQuestion] | None) -> None:
@@ -136,3 +136,21 @@ class JobOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class DefaultQuestionsUpdate(BaseModel):
+    """The full list of default questions, in order. Standard keys keep their types."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    questions: Questions
+
+    @model_validator(mode="after")
+    def _questions(self) -> "DefaultQuestionsUpdate":
+        _check_questions(self.questions)
+        return self
+
+
+class DefaultQuestionsOut(BaseModel):
+    questions: list[ScreeningQuestion]
+    jobs_updated: int = Field(description="Jobs that used the defaults and now ask the new list")

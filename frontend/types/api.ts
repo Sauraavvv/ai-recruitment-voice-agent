@@ -221,9 +221,19 @@ export interface paths {
         };
         /** Default Questions */
         get: operations["default_questions_api_v1_jobs_default_screening_questions_get"];
-        put?: never;
+        /**
+         * Update Default Questions
+         * @description Replace the default questions (reword, reorder, remove, add).
+         *
+         *     Jobs still asking exactly the old defaults, in any order, switch to the new list.
+         */
+        put: operations["update_default_questions_api_v1_jobs_default_screening_questions_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Reset Default Questions
+         * @description Restore the ten original questions.
+         */
+        delete: operations["reset_default_questions_api_v1_jobs_default_screening_questions_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -335,6 +345,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Summary */
+        get: operations["get_summary_api_v1_dashboard_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -410,6 +437,15 @@ export interface components {
          * @enum {string}
          */
         CallStatus: "pending" | "queued" | "initiating" | "ringing" | "in_progress" | "completed" | "no_answer" | "busy" | "failed" | "cancelled" | "callback_requested" | "retry_scheduled" | "exhausted";
+        /** CallsOnDay */
+        CallsOnDay: {
+            /** Date */
+            date: string;
+            /** Total */
+            total: number;
+            /** Connected */
+            connected: number;
+        };
         /** CandidateCreate */
         CandidateCreate: {
             /** Name */
@@ -555,6 +591,63 @@ export interface components {
             /** Opted Out */
             opted_out?: boolean | null;
         };
+        /** DashboardFunnel */
+        DashboardFunnel: {
+            /** Candidates */
+            candidates: number;
+            /** Called */
+            called: number;
+            /** Connected */
+            connected: number;
+            /** Screened */
+            screened: number;
+            /** Interested */
+            interested: number;
+        };
+        /** DashboardKpis */
+        DashboardKpis: {
+            /** Candidates Total */
+            candidates_total: number;
+            /** Screened */
+            screened: number;
+            /** Interested */
+            interested: number;
+            /** Interested Rate */
+            interested_rate: number | null;
+            /** Opted Out */
+            opted_out: number;
+            /** Calls Total */
+            calls_total: number;
+            /** Calls Today */
+            calls_today: number;
+            /** Calls Connected */
+            calls_connected: number;
+            /** Connect Rate */
+            connect_rate: number | null;
+            /** Avg Call Seconds */
+            avg_call_seconds: number | null;
+        };
+        /** DashboardSummary */
+        DashboardSummary: {
+            kpis: components["schemas"]["DashboardKpis"];
+            funnel: components["schemas"]["DashboardFunnel"];
+            /** Calls By Day */
+            calls_by_day: components["schemas"]["CallsOnDay"][];
+            /** Outcomes */
+            outcomes: {
+                [key: string]: number;
+            };
+            /** Live Calls */
+            live_calls: components["schemas"]["LiveCall"][];
+            latest_conversation: components["schemas"]["LatestConversation"] | null;
+            /** Interview Availability */
+            interview_availability: components["schemas"]["InterviewAvailability"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
         /** DataResponse[CallAttemptOut] */
         DataResponse_CallAttemptOut_: {
             data: components["schemas"]["CallAttemptOut"];
@@ -562,6 +655,14 @@ export interface components {
         /** DataResponse[CandidateOut] */
         DataResponse_CandidateOut_: {
             data: components["schemas"]["CandidateOut"];
+        };
+        /** DataResponse[DashboardSummary] */
+        DataResponse_DashboardSummary_: {
+            data: components["schemas"]["DashboardSummary"];
+        };
+        /** DataResponse[DefaultQuestionsOut] */
+        DataResponse_DefaultQuestionsOut_: {
+            data: components["schemas"]["DefaultQuestionsOut"];
         };
         /** DataResponse[ImportOut] */
         DataResponse_ImportOut_: {
@@ -598,6 +699,24 @@ export interface components {
         DataResponse_list_StartCallResult__: {
             /** Data */
             data: components["schemas"]["StartCallResult"][];
+        };
+        /** DefaultQuestionsOut */
+        DefaultQuestionsOut: {
+            /** Questions */
+            questions: components["schemas"]["ScreeningQuestion"][];
+            /**
+             * Jobs Updated
+             * @description Jobs that used the defaults and now ask the new list
+             */
+            jobs_updated: number;
+        };
+        /**
+         * DefaultQuestionsUpdate
+         * @description The full list of default questions, in order. Standard keys keep their types.
+         */
+        DefaultQuestionsUpdate: {
+            /** Questions */
+            questions: components["schemas"]["ScreeningQuestion"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -696,6 +815,25 @@ export interface components {
             /** Existing Candidate Id */
             existing_candidate_id: string | null;
         };
+        /** InterviewAvailability */
+        InterviewAvailability: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /** Availability */
+            availability: string;
+            /** Notice Period */
+            notice_period: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** JobCreate */
         JobCreate: {
             /** Job Title */
@@ -787,6 +925,56 @@ export interface components {
             screening_questions?: components["schemas"]["ScreeningQuestion"][] | null;
             /** Agent Instructions */
             agent_instructions?: string | null;
+        };
+        /** LatestConversation */
+        LatestConversation: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /**
+             * Ended At
+             * Format: date-time
+             */
+            ended_at: string;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /** Turns */
+            turns: number;
+            /** Transcript */
+            transcript: components["schemas"]["TranscriptLine"][];
+        };
+        /** LiveCall */
+        LiveCall: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /** Applied Role */
+            applied_role: string;
+            /** Call Status */
+            call_status: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -895,6 +1083,13 @@ export interface components {
         StartCallsRequest: {
             /** Candidate Ids */
             candidate_ids: string[];
+        };
+        /** TranscriptLine */
+        TranscriptLine: {
+            /** Speaker */
+            speaker: string | null;
+            /** Text */
+            text: string | null;
         };
         /** UserOut */
         UserOut: {
@@ -1420,6 +1615,59 @@ export interface operations {
             };
         };
     };
+    update_default_questions_api_v1_jobs_default_screening_questions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultQuestionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DefaultQuestionsOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_default_questions_api_v1_jobs_default_screening_questions_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DefaultQuestionsOut_"];
+                };
+            };
+        };
+    };
     active_job_api_v1_jobs_active_get: {
         parameters: {
             query?: never;
@@ -1631,6 +1879,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_summary_api_v1_dashboard_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DashboardSummary_"];
                 };
             };
         };

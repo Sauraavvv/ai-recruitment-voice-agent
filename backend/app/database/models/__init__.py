@@ -1,5 +1,6 @@
 """ORM models. Importing this package registers every table on `Base.metadata`."""
 
+from app.database.models.app_setting import AppSetting
 from app.database.models.base import Base
 from app.database.models.call_attempt import CallAttempt
 from app.database.models.candidate import Candidate
@@ -22,6 +23,7 @@ from app.database.models.webhook_event import WebhookEvent
 
 __all__ = [
     "LIVE_CALL_STATUSES",
+    "AppSetting",
     "Base",
     "CallAttempt",
     "CallAttemptType",
