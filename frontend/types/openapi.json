@@ -365,6 +365,7 @@
           "candidates"
         ],
         "summary": "List Candidates",
+        "description": "Rows include `eligibility` (can_call + why not) and the latest call.",
         "operationId": "list_candidates_api_v1_candidates_get",
         "parameters": [
           {
@@ -401,6 +402,25 @@
               ],
               "title": "Screening Status"
             }
+          },
+          {
+            "name": "call_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(pending|queued|initiating|ringing|in_progress|completed|no_answer|busy|failed|cancelled|callback_requested|retry_scheduled|exhausted|not_called)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Status of the latest call; not_called = never called",
+              "title": "Call Status"
+            },
+            "description": "Status of the latest call; not_called = never called"
           },
           {
             "name": "job_id",
@@ -483,7 +503,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PageResponse_CandidateOut_"
+                  "$ref": "#/components/schemas/PageResponse_CandidateListItem_"
                 }
               }
             }
@@ -619,6 +639,116 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DataResponse_NoneType_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candidates/{candidate_id}/overview": {
+      "get": {
+        "tags": [
+          "candidates"
+        ],
+        "summary": "Candidate Overview",
+        "description": "Eligibility, the summary, the sheet sync status and open conflicts.",
+        "operationId": "candidate_overview_api_v1_candidates__candidate_id__overview_get",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CandidateOverview_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candidates/{candidate_id}/conflicts/{field}/resolve": {
+      "post": {
+        "tags": [
+          "candidates"
+        ],
+        "summary": "Resolve Conflict",
+        "description": "Keep the stored value or use the other one; the sheet row follows.",
+        "operationId": "resolve_conflict_api_v1_candidates__candidate_id__conflicts__field__resolve_post",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "field",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "title": "Field"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictResolution"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CandidateOut_"
                 }
               }
             }
@@ -941,7 +1071,7 @@
           "calls"
         ],
         "summary": "Start Calls",
-        "description": "Queue a screening call per candidate. Each candidate gets its own result (ok or a\nreason). Calls need the AI voice loaded in this process (it speaks on the stream).",
+        "description": "Queue a screening call per candidate. Each candidate gets its own result (ok or a\nreason). `dry_run`: only the results, nothing queued (the confirmation dialog).",
         "operationId": "start_calls_api_v1_calls_start_post",
         "requestBody": {
           "content": {
@@ -1009,7 +1139,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "$ref": "#/components/schemas/CallStatus"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CallStatus"
+                  }
                 },
                 {
                   "type": "null"
@@ -1017,6 +1150,59 @@
               ],
               "title": "Call Status"
             }
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "name": "created_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Candidate name or phone",
+              "title": "Q"
+            },
+            "description": "Candidate name or phone"
           },
           {
             "name": "page",
@@ -1048,7 +1234,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PageResponse_CallAttemptOut_"
+                  "$ref": "#/components/schemas/PageResponse_CallListItem_"
                 }
               }
             }
@@ -1109,6 +1295,182 @@
         }
       }
     },
+    "/api/v1/calls/{call_attempt_id}/transcript": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Get Transcript",
+        "description": "The call's transcript (empty for a call nobody answered), and its summary.",
+        "operationId": "get_transcript_api_v1_calls__call_attempt_id__transcript_get",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CallTranscript_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calls/{call_attempt_id}/retry": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Retry Call",
+        "description": "Call this attempt's candidate again (a new `manual` attempt) when eligible.",
+        "operationId": "retry_call_api_v1_calls__call_attempt_id__retry_post",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_StartCallResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calls/{call_attempt_id}/cancel": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Cancel Call",
+        "description": "Cancel a call that hasn't dialed yet (pending, queued, retry or callback scheduled).",
+        "operationId": "cancel_call_api_v1_calls__call_attempt_id__cancel_post",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CallAttemptOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calls/{call_attempt_id}/hangup": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Hangup Call",
+        "description": "Safety control: end a call in progress. The agent says its closing line and hangs up\n(the flow's Hangup step ends the call). Only a call this server is handling.",
+        "operationId": "hangup_call_api_v1_calls__call_attempt_id__hangup_post",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_HangupResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/summary": {
       "get": {
         "tags": [
@@ -1123,6 +1485,119 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DataResponse_DashboardSummary_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/stats": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Get Stats",
+        "description": "The stat tiles; `definitions` holds each one's tooltip.",
+        "operationId": "get_stats_api_v1_dashboard_stats_get",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "today",
+                "7d",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_DashboardStats_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/activity": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Get Activity",
+        "operationId": "get_activity_api_v1_dashboard_activity_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_list_ActivityItem__"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/attention": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Get Attention",
+        "operationId": "get_attention_api_v1_dashboard_attention_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_list_AttentionItem__"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/quick-start": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Get Quick Start",
+        "description": "Eligible candidates who were never called, oldest first (the dashboard's quick start).",
+        "operationId": "get_quick_start_api_v1_dashboard_quick_start_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_QuickStart_"
                 }
               }
             }
@@ -1217,10 +1692,374 @@
           }
         }
       }
+    },
+    "/api/v1/integrations/google-sheets/backfill": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Backfill",
+        "description": "\"Sync all\": queue every active candidate's row.",
+        "operationId": "backfill_api_v1_integrations_google_sheets_backfill_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_BackfillResult_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/google-sheets/check": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Check Sheet",
+        "description": "Admin: can the service account edit this sheet, and is its header ours or empty?",
+        "operationId": "check_sheet_api_v1_integrations_google_sheets_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SheetChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_SheetAccessCheck_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/google-sheets/sheet": {
+      "put": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Change Sheet",
+        "description": "Admin: copy candidates to another sheet from now on. Checked first; then every active\ncandidate is queued so the new sheet is filled. The old sheet keeps its rows.",
+        "operationId": "change_sheet_api_v1_integrations_google_sheets_sheet_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SheetChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_SheetAccessCheck_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Settings Page",
+        "operationId": "get_settings_page_api_v1_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_SettingsOut_"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Settings",
+        "description": "Partial update; each section is validated. Changes are logged with the user id.",
+        "operationId": "update_settings_api_v1_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneralUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_SettingsOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/status": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Provider Status",
+        "description": "Per provider: configured, reachable, last checked, message. Cached for 60 s.",
+        "operationId": "provider_status_api_v1_settings_status_get",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_StatusOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActivityItem": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "type": "string",
+            "title": "Candidate Name"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "candidate_id",
+          "candidate_name",
+          "attempt_number",
+          "call_status",
+          "end_reason",
+          "at"
+        ],
+        "title": "ActivityItem"
+      },
+      "AttentionItem": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "candidate_name": {
+            "type": "string",
+            "title": "Candidate Name"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "callback_due",
+              "data_conflict",
+              "unanswered_question",
+              "vague_callback",
+              "technical_failure",
+              "partially_completed",
+              "wrong_person",
+              "attempts_exhausted",
+              "sheets_sync_failed"
+            ],
+            "title": "Reason"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "call_attempt_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Attempt Id"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Conflict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "candidate_name",
+          "reason",
+          "at",
+          "call_attempt_id",
+          "detail",
+          "conflict"
+        ],
+        "title": "AttentionItem"
+      },
+      "BackfillResult": {
+        "properties": {
+          "queued_candidates": {
+            "type": "integer",
+            "title": "Queued Candidates"
+          },
+          "queued": {
+            "type": "boolean",
+            "title": "Queued"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queued_candidates",
+          "queued"
+        ],
+        "title": "BackfillResult"
+      },
       "Body_upload_import_api_v1_candidates_import_post": {
         "properties": {
           "file": {
@@ -1341,16 +2180,10 @@
             ],
             "title": "Duration Seconds"
           },
-          "recording_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recording Url"
+          "has_recording": {
+            "type": "boolean",
+            "title": "Has Recording",
+            "default": false
           },
           "failure_reason": {
             "anyOf": [
@@ -1362,6 +2195,18 @@
               }
             ],
             "title": "Failure Reason"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
           },
           "created_at": {
             "type": "string",
@@ -1388,8 +2233,8 @@
           "start_time",
           "end_time",
           "duration_seconds",
-          "recording_url",
           "failure_reason",
+          "next_retry_at",
           "created_at",
           "updated_at"
         ],
@@ -1427,6 +2272,174 @@
         "title": "CallEndReason",
         "description": "Normalized reason a call attempt ended (phase-05 \u00a75, phase-06 \u00a75.6)."
       },
+      "CallListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "attempt_type": {
+            "$ref": "#/components/schemas/CallAttemptType"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "provider_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Call Id"
+          },
+          "provider_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Status"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "has_recording": {
+            "type": "boolean",
+            "title": "Has Recording",
+            "default": false
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "candidate_name": {
+            "type": "string",
+            "title": "Candidate Name"
+          },
+          "applied_role": {
+            "type": "string",
+            "title": "Applied Role"
+          },
+          "has_transcript": {
+            "type": "boolean",
+            "title": "Has Transcript"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "candidate_id",
+          "attempt_number",
+          "attempt_type",
+          "provider",
+          "provider_call_id",
+          "provider_status",
+          "call_status",
+          "end_reason",
+          "start_time",
+          "end_time",
+          "duration_seconds",
+          "failure_reason",
+          "next_retry_at",
+          "created_at",
+          "updated_at",
+          "candidate_name",
+          "applied_role",
+          "has_transcript"
+        ],
+        "title": "CallListItem"
+      },
       "CallStatus": {
         "type": "string",
         "enum": [
@@ -1446,6 +2459,129 @@
         ],
         "title": "CallStatus",
         "description": "plan.md Module F."
+      },
+      "CallTranscript": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "finalized": {
+            "type": "boolean",
+            "title": "Finalized"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "candidate_id",
+          "attempt_number",
+          "call_status",
+          "end_reason",
+          "start_time",
+          "duration_seconds",
+          "entries",
+          "summary",
+          "finalized"
+        ],
+        "title": "CallTranscript"
+      },
+      "CallingWindow": {
+        "properties": {
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Days"
+          },
+          "start_hour": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Start Hour"
+          },
+          "end_hour": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "End Hour"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "days",
+          "start_hour",
+          "end_hour"
+        ],
+        "title": "CallingWindow"
       },
       "CallsOnDay": {
         "properties": {
@@ -1601,6 +2737,286 @@
           "consent_attested"
         ],
         "title": "CandidateCreate"
+      },
+      "CandidateListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "applied_role": {
+            "type": "string",
+            "title": "Applied Role"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "resume_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Url"
+          },
+          "recruiter_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recruiter Notes"
+          },
+          "current_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Location"
+          },
+          "current_company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Company"
+          },
+          "total_experience": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Experience"
+          },
+          "relevant_experience": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevant Experience"
+          },
+          "current_ctc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Ctc"
+          },
+          "expected_ctc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Ctc"
+          },
+          "notice_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Period"
+          },
+          "reason_for_change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason For Change"
+          },
+          "interested": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interested"
+          },
+          "interview_availability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interview Availability"
+          },
+          "screening_field_meta": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Screening Field Meta"
+          },
+          "screening_status": {
+            "$ref": "#/components/schemas/ScreeningStatus"
+          },
+          "opted_out": {
+            "type": "boolean",
+            "title": "Opted Out"
+          },
+          "consent_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Source"
+          },
+          "consent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "last_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastCall"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_call_has_transcript": {
+            "type": "boolean",
+            "title": "Last Call Has Transcript"
+          },
+          "open_conflicts": {
+            "type": "integer",
+            "title": "Open Conflicts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "phone",
+          "email",
+          "job_id",
+          "applied_role",
+          "source",
+          "resume_url",
+          "recruiter_notes",
+          "current_location",
+          "current_company",
+          "total_experience",
+          "relevant_experience",
+          "current_ctc",
+          "expected_ctc",
+          "notice_period",
+          "reason_for_change",
+          "interested",
+          "interview_availability",
+          "screening_field_meta",
+          "screening_status",
+          "opted_out",
+          "consent_source",
+          "consent_at",
+          "created_at",
+          "updated_at",
+          "eligibility",
+          "last_call",
+          "last_call_has_transcript",
+          "open_conflicts"
+        ],
+        "title": "CandidateListItem"
       },
       "CandidateOut": {
         "properties": {
@@ -1857,6 +3273,153 @@
         ],
         "title": "CandidateOut"
       },
+      "CandidateOverview": {
+        "properties": {
+          "eligibility": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sheet_sync": {
+            "$ref": "#/components/schemas/SheetSyncState"
+          },
+          "sheets_configured": {
+            "type": "boolean",
+            "title": "Sheets Configured"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eligibility",
+          "summary",
+          "sheet_sync",
+          "sheets_configured",
+          "conflicts"
+        ],
+        "title": "CandidateOverview",
+        "description": "Everything on the candidate page besides the candidate and its calls."
+      },
+      "CandidateSummary": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "attempt_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Number"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "generated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated By"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "callback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback"
+          },
+          "callback_request": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Request"
+          },
+          "finalized_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized At"
+          },
+          "collected_data": {
+            "type": "boolean",
+            "title": "Collected Data"
+          },
+          "newer_call_without_data": {
+            "type": "boolean",
+            "title": "Newer Call Without Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "attempt_number",
+          "text",
+          "generated_by",
+          "missing_information",
+          "callback",
+          "callback_request",
+          "finalized_at",
+          "collected_data",
+          "newer_call_without_data"
+        ],
+        "title": "CandidateSummary"
+      },
       "CandidateUpdate": {
         "properties": {
           "name": {
@@ -2096,6 +3659,117 @@
         "title": "CandidateUpdate",
         "description": "Partial update. Fields left out are unchanged; send null to clear an optional field."
       },
+      "Conflict": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "stored_value": {
+            "title": "Stored Value"
+          },
+          "stored_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Quote"
+          },
+          "stored_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Seq"
+          },
+          "other_value": {
+            "title": "Other Value"
+          },
+          "other_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Quote"
+          },
+          "other_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Seq"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "call_attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Attempt Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "stored_value",
+          "stored_quote",
+          "stored_seq",
+          "other_value",
+          "other_quote",
+          "other_seq",
+          "reason",
+          "call_attempt_id"
+        ],
+        "title": "Conflict"
+      },
+      "ConflictResolution": {
+        "properties": {
+          "choice": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "use"
+            ],
+            "title": "Choice"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "choice"
+        ],
+        "title": "ConflictResolution"
+      },
       "DashboardFunnel": {
         "properties": {
           "candidates": {
@@ -2208,6 +3882,78 @@
         ],
         "title": "DashboardKpis"
       },
+      "DashboardStats": {
+        "properties": {
+          "range": {
+            "type": "string",
+            "title": "Range"
+          },
+          "total_candidates": {
+            "type": "integer",
+            "title": "Total Candidates"
+          },
+          "calls_completed": {
+            "type": "integer",
+            "title": "Calls Completed"
+          },
+          "calls_pending": {
+            "type": "integer",
+            "title": "Calls Pending"
+          },
+          "calls_in_progress": {
+            "type": "integer",
+            "title": "Calls In Progress"
+          },
+          "unanswered_calls": {
+            "type": "integer",
+            "title": "Unanswered Calls"
+          },
+          "failed_calls": {
+            "type": "integer",
+            "title": "Failed Calls"
+          },
+          "interested_candidates": {
+            "type": "integer",
+            "title": "Interested Candidates"
+          },
+          "screening_completed": {
+            "type": "integer",
+            "title": "Screening Completed"
+          },
+          "scheduled_retries": {
+            "type": "integer",
+            "title": "Scheduled Retries"
+          },
+          "definitions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Definitions"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range",
+          "total_candidates",
+          "calls_completed",
+          "calls_pending",
+          "calls_in_progress",
+          "unanswered_calls",
+          "failed_calls",
+          "interested_candidates",
+          "screening_completed",
+          "scheduled_retries",
+          "definitions",
+          "generated_at"
+        ],
+        "title": "DashboardStats"
+      },
       "DashboardSummary": {
         "properties": {
           "kpis": {
@@ -2273,6 +4019,18 @@
         ],
         "title": "DashboardSummary"
       },
+      "DataResponse_BackfillResult_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BackfillResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[BackfillResult]"
+      },
       "DataResponse_CallAttemptOut_": {
         "properties": {
           "data": {
@@ -2285,6 +4043,18 @@
         ],
         "title": "DataResponse[CallAttemptOut]"
       },
+      "DataResponse_CallTranscript_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CallTranscript"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[CallTranscript]"
+      },
       "DataResponse_CandidateOut_": {
         "properties": {
           "data": {
@@ -2296,6 +4066,30 @@
           "data"
         ],
         "title": "DataResponse[CandidateOut]"
+      },
+      "DataResponse_CandidateOverview_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CandidateOverview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[CandidateOverview]"
+      },
+      "DataResponse_DashboardStats_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DashboardStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[DashboardStats]"
       },
       "DataResponse_DashboardSummary_": {
         "properties": {
@@ -2320,6 +4114,18 @@
           "data"
         ],
         "title": "DataResponse[DefaultQuestionsOut]"
+      },
+      "DataResponse_HangupResult_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HangupResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[HangupResult]"
       },
       "DataResponse_ImportOut_": {
         "properties": {
@@ -2370,6 +4176,42 @@
         ],
         "title": "DataResponse[NoneType]"
       },
+      "DataResponse_QuickStart_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QuickStart"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[QuickStart]"
+      },
+      "DataResponse_SettingsOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SettingsOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[SettingsOut]"
+      },
+      "DataResponse_SheetAccessCheck_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SheetAccessCheck"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[SheetAccessCheck]"
+      },
       "DataResponse_SheetsStatus_": {
         "properties": {
           "data": {
@@ -2381,6 +4223,30 @@
           "data"
         ],
         "title": "DataResponse[SheetsStatus]"
+      },
+      "DataResponse_StartCallResult_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StartCallResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[StartCallResult]"
+      },
+      "DataResponse_StatusOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StatusOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[StatusOut]"
       },
       "DataResponse_Union_JobOut__NoneType__": {
         "properties": {
@@ -2412,6 +4278,38 @@
           "data"
         ],
         "title": "DataResponse[UserOut]"
+      },
+      "DataResponse_list_ActivityItem__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[list[ActivityItem]]"
+      },
+      "DataResponse_list_AttentionItem__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionItem"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[list[AttentionItem]]"
       },
       "DataResponse_list_JobOut__": {
         "properties": {
@@ -2503,6 +4401,172 @@
         "title": "DefaultQuestionsUpdate",
         "description": "The full list of default questions, in order. Standard keys keep their types."
       },
+      "Eligibility": {
+        "properties": {
+          "can_call": {
+            "type": "boolean",
+            "title": "Can Call"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "can_call",
+          "reason",
+          "message"
+        ],
+        "title": "Eligibility"
+      },
+      "GeneralSettings": {
+        "properties": {
+          "organization_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Name"
+          },
+          "agent_introduction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Introduction"
+          },
+          "calling": {
+            "$ref": "#/components/schemas/CallingWindow"
+          },
+          "max_concurrent_calls": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Concurrent Calls"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryConfig"
+          },
+          "calling_enabled": {
+            "type": "boolean",
+            "title": "Calling Enabled",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "calling",
+          "max_concurrent_calls",
+          "retry"
+        ],
+        "title": "GeneralSettings"
+      },
+      "GeneralUpdate": {
+        "properties": {
+          "organization_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Name"
+          },
+          "agent_introduction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Introduction"
+          },
+          "calling": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallingWindow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_concurrent_calls": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrent Calls"
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calling_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calling Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GeneralUpdate",
+        "description": "PATCH body: sections left out are unchanged."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2515,6 +4579,25 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HangupResult": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "ending": {
+            "type": "boolean",
+            "title": "Ending"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "ending"
+        ],
+        "title": "HangupResult"
       },
       "ImportBatchStatus": {
         "type": "string",
@@ -2818,6 +4901,51 @@
         ],
         "title": "InterviewAvailability"
       },
+      "IntroductionPreview": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "sample_first_name": {
+            "type": "string",
+            "title": "Sample First Name"
+          },
+          "company": {
+            "type": "string",
+            "title": "Company"
+          },
+          "job_title": {
+            "type": "string",
+            "title": "Job Title"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "built_in": {
+            "type": "boolean",
+            "title": "Built In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "sample_first_name",
+          "company",
+          "job_title",
+          "organization",
+          "built_in"
+        ],
+        "title": "IntroductionPreview"
+      },
       "JobCreate": {
         "properties": {
           "job_title": {
@@ -3084,6 +5212,51 @@
         "type": "object",
         "title": "JobUpdate"
       },
+      "LastCall": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "terminal": {
+            "type": "boolean",
+            "title": "Terminal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "attempt_number",
+          "call_status",
+          "end_reason",
+          "at",
+          "terminal"
+        ],
+        "title": "LastCall"
+      },
       "LatestConversation": {
         "properties": {
           "call_attempt_id": {
@@ -3279,11 +5452,11 @@
         ],
         "title": "PageMeta"
       },
-      "PageResponse_CallAttemptOut_": {
+      "PageResponse_CallListItem_": {
         "properties": {
           "data": {
             "items": {
-              "$ref": "#/components/schemas/CallAttemptOut"
+              "$ref": "#/components/schemas/CallListItem"
             },
             "type": "array",
             "title": "Data"
@@ -3297,13 +5470,13 @@
           "data",
           "meta"
         ],
-        "title": "PageResponse[CallAttemptOut]"
+        "title": "PageResponse[CallListItem]"
       },
-      "PageResponse_CandidateOut_": {
+      "PageResponse_CandidateListItem_": {
         "properties": {
           "data": {
             "items": {
-              "$ref": "#/components/schemas/CandidateOut"
+              "$ref": "#/components/schemas/CandidateListItem"
             },
             "type": "array",
             "title": "Data"
@@ -3317,7 +5490,162 @@
           "data",
           "meta"
         ],
-        "title": "PageResponse[CandidateOut]"
+        "title": "PageResponse[CandidateListItem]"
+      },
+      "ProviderStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "reachable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reachable"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "last_checked": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Checked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "configured",
+          "reachable",
+          "message",
+          "detail",
+          "last_checked"
+        ],
+        "title": "ProviderStatus"
+      },
+      "QuickStart": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/QuickStartCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "calling_now": {
+            "type": "boolean",
+            "title": "Calling Now"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "blocked_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Message"
+          },
+          "max_concurrent_calls": {
+            "type": "integer",
+            "title": "Max Concurrent Calls"
+          },
+          "live_calls": {
+            "type": "integer",
+            "title": "Live Calls"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates",
+          "total",
+          "limit",
+          "calling_now",
+          "blocked_reason",
+          "blocked_message",
+          "max_concurrent_calls",
+          "live_calls"
+        ],
+        "title": "QuickStart",
+        "description": "Eligible candidates never called (for \"Call new candidates\")."
+      },
+      "QuickStartCandidate": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "applied_role": {
+            "type": "string",
+            "title": "Applied Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "name",
+          "applied_role"
+        ],
+        "title": "QuickStartCandidate"
       },
       "ReportError": {
         "properties": {
@@ -3341,6 +5669,30 @@
           "message"
         ],
         "title": "ReportError"
+      },
+      "RetryConfig": {
+        "properties": {
+          "max_attempts": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Attempts"
+          },
+          "interval_days": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 2.0,
+            "title": "Interval Days"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "max_attempts",
+          "interval_days"
+        ],
+        "title": "RetryConfig",
+        "description": "Used by the Phase 9 retry automation; editable from now on."
       },
       "RowIssue": {
         "properties": {
@@ -3438,6 +5790,209 @@
         ],
         "title": "ScreeningStatus"
       },
+      "SettingsLimits": {
+        "properties": {
+          "max_concurrent_calls": {
+            "type": "integer",
+            "title": "Max Concurrent Calls"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "calling_enabled_env": {
+            "type": "boolean",
+            "title": "Calling Enabled Env"
+          }
+        },
+        "type": "object",
+        "required": [
+          "max_concurrent_calls",
+          "timezone",
+          "calling_enabled_env"
+        ],
+        "title": "SettingsLimits",
+        "description": "Fixed in the environment; shown read-only."
+      },
+      "SettingsOut": {
+        "properties": {
+          "general": {
+            "$ref": "#/components/schemas/GeneralSettings"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SettingsLimits"
+          },
+          "introduction": {
+            "$ref": "#/components/schemas/IntroductionPreview"
+          },
+          "calling_now": {
+            "type": "boolean",
+            "title": "Calling Now"
+          }
+        },
+        "type": "object",
+        "required": [
+          "general",
+          "limits",
+          "introduction",
+          "calling_now"
+        ],
+        "title": "SettingsOut"
+      },
+      "SheetAccessCheck": {
+        "properties": {
+          "sheet_id": {
+            "type": "string",
+            "title": "Sheet Id"
+          },
+          "sheet_url": {
+            "type": "string",
+            "title": "Sheet Url"
+          },
+          "tab": {
+            "type": "string",
+            "title": "Tab"
+          },
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "header": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "empty",
+              "mismatch",
+              "unknown"
+            ],
+            "title": "Header"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "service_account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Account Email"
+          },
+          "can_save": {
+            "type": "boolean",
+            "title": "Can Save"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sheet_id",
+          "sheet_url",
+          "tab",
+          "reachable",
+          "header",
+          "message",
+          "service_account_email",
+          "can_save"
+        ],
+        "title": "SheetAccessCheck"
+      },
+      "SheetChange": {
+        "properties": {
+          "link": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Link",
+            "description": "Sheet link or id"
+          },
+          "tab": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "link"
+        ],
+        "title": "SheetChange"
+      },
+      "SheetSyncState": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "never",
+              "pending",
+              "success",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "synced_at",
+          "error",
+          "next_attempt_at"
+        ],
+        "title": "SheetSyncState"
+      },
       "SheetsStatus": {
         "properties": {
           "configured": {
@@ -3447,6 +6002,62 @@
           "tab": {
             "type": "string",
             "title": "Tab"
+          },
+          "sheet_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet Id"
+          },
+          "sheet_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet Url"
+          },
+          "sheet_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "settings",
+                  "env"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet Source"
+          },
+          "sheet_changed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet Changed At"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "key_configured": {
+            "type": "boolean",
+            "title": "Key Configured"
           },
           "state": {
             "type": "string",
@@ -3558,6 +6169,12 @@
         "required": [
           "configured",
           "tab",
+          "sheet_id",
+          "sheet_url",
+          "sheet_source",
+          "sheet_changed_at",
+          "can_edit",
+          "key_configured",
           "state",
           "message",
           "reachable",
@@ -3643,6 +6260,11 @@
             "maxItems": 100,
             "minItems": 1,
             "title": "Candidate Ids"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
           }
         },
         "type": "object",
@@ -3650,6 +6272,85 @@
           "candidate_ids"
         ],
         "title": "StartCallsRequest"
+      },
+      "StatusOut": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatus"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "google_sheets": {
+            "$ref": "#/components/schemas/SheetsStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "providers",
+          "google_sheets"
+        ],
+        "title": "StatusOut"
+      },
+      "TranscriptEntry": {
+        "properties": {
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "speaker": {
+            "type": "string",
+            "title": "Speaker"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "interrupted": {
+            "type": "boolean",
+            "title": "Interrupted",
+            "default": false
+          },
+          "heard_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heard Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "speaker",
+          "text",
+          "timestamp"
+        ],
+        "title": "TranscriptEntry"
       },
       "TranscriptLine": {
         "properties": {
@@ -3697,15 +6398,28 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
           }
         },
         "type": "object",
         "required": [
           "id",
           "email",
-          "name"
+          "name",
+          "role"
         ],
         "title": "UserOut"
+      },
+      "UserRole": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "recruiter"
+        ],
+        "title": "UserRole",
+        "description": "Admins may also change integration settings (the Google Sheet), phase-08."
       },
       "ValidationError": {
         "properties": {

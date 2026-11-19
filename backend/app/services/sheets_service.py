@@ -365,10 +365,26 @@ class SheetsService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._client: SheetsClient | None = None
+        # One call at a time: the client (httplib2) isn't thread-safe. Two status checks in
+        # parallel threads on it hung until the 20 s timeout (Settings page, 2026-11-19).
+        self.lock = asyncio.Lock()
 
     @property
     def configured(self) -> bool:
         return self._settings.sheets_configured
+
+    def configure(self, settings: Settings) -> "SheetsService":
+        """Use these (effective) settings; the client is rebuilt when the sheet changed (an
+        admin picked another sheet on the Settings page)."""
+        old = self._settings
+        if (old.google_sheet_id, old.google_sheet_tab, old.google_service_account_json) != (
+            settings.google_sheet_id,
+            settings.google_sheet_tab,
+            settings.google_service_account_json,
+        ):
+            self._client = None
+        self._settings = settings
+        return self
 
     def _get_client(self) -> SheetsClient:
         if self._client is None:
@@ -383,10 +399,16 @@ class SheetsService:
         return self._client
 
     async def upsert(self, rows: dict[str, list[Cell]]) -> UpsertResult:
-        client = await asyncio.to_thread(self._get_client)
-        return await asyncio.to_thread(upsert_blocking, client, rows)
+        async with self.lock:
+            client = await asyncio.to_thread(self._get_client)
+            return await asyncio.to_thread(upsert_blocking, client, rows)
 
     async def check(self) -> SheetCheck:
+        async with self.lock:
+            return await self.check_unlocked()
+
+    async def check_unlocked(self) -> SheetCheck:
+        """`check` for a caller that already holds `lock`."""
         try:
             client = await asyncio.to_thread(self._get_client)
         except SheetsError as exc:

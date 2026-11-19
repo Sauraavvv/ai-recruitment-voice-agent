@@ -200,3 +200,26 @@ async def generate_summary(
         text=_compose(body, tail),
         generated_by="llm" if narrative else "deterministic",
     )
+
+
+# --- Which summary a candidate shows (phase-08, decided with the user 2026-11-19) -----------
+
+
+def collected_data(extracted_data: dict[str, Any] | None) -> bool:
+    """Did this call collect any value? (A call that only reached voicemail, or where the
+    candidate hung up before answering, didn't.)"""
+    final = (extracted_data or {}).get("final") or {}
+    fields = final.get("fields") or {}
+    if any(isinstance(f, dict) and f.get("value") is not None for f in fields.values()):
+        return True
+    return any(v is not None for v in (final.get("collected_data") or {}).values())
+
+
+def pick_summary_conversation[C](conversations: list[C]) -> C | None:
+    """The conversation whose summary a candidate shows: the latest finalized one that
+    collected data, else the latest finalized one. `conversations`: finalized, oldest first;
+    each needs `.extracted_data`. A call with no data keeps its own summary in its history."""
+    for conv in reversed(conversations):
+        if collected_data(getattr(conv, "extracted_data", None)):
+            return conv
+    return conversations[-1] if conversations else None

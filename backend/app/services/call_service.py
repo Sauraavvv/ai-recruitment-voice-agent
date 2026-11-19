@@ -15,11 +15,13 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import (
+    LIVE_CALL_STATUSES,
     CallAttempt,
     CallAttemptType,
     CallEndReason,
@@ -31,7 +33,7 @@ from app.providers.telephony import exotel_models as em
 from app.providers.telephony.base import ProviderCallStatus
 from app.repositories import call_repo, candidate_repo
 from app.services import call_slots, call_state, sync_service
-from app.services.errors import not_found
+from app.services.errors import conflict, not_found
 from app.utils.log import get_logger
 from app.utils.phone import normalize_phone
 
@@ -55,6 +57,7 @@ class Ineligible:
     OUTSIDE_WINDOW = "outside_calling_window"
     NOT_CONFIGURED = "telephony_not_configured"
     VOICE_UNAVAILABLE = "voice_unavailable"
+    PAUSED = "calling_paused"
 
 
 INELIGIBLE_MESSAGES = {
@@ -68,6 +71,7 @@ INELIGIBLE_MESSAGES = {
     Ineligible.OUTSIDE_WINDOW: "Outside calling hours",
     Ineligible.NOT_CONFIGURED: "Telephony is not configured",
     Ineligible.VOICE_UNAVAILABLE: "The AI voice isn't ready yet; try again in a minute",
+    Ineligible.PAUSED: "Calling is paused on the Settings page",
 }
 
 
@@ -105,11 +109,82 @@ async def check_eligibility(
     live = await call_repo.live_for_candidate(session, candidate.id)
     if live is not None and live.id != own_attempt_id:
         return Ineligible.LIVE_ATTEMPT
+    return global_problem(settings, now=now, ignore_window=ignore_window)
+
+
+def global_problem(
+    settings: Settings, *, now: datetime | None = None, ignore_window: bool = False
+) -> str | None:
+    """The reasons that apply to every candidate alike (pause, window, telephony)."""
+    if not settings.calling_enabled:
+        return Ineligible.PAUSED
     if not ignore_window and not in_calling_window(settings, now):
         return Ineligible.OUTSIDE_WINDOW
     if not settings.exotel_configured:
         return Ineligible.NOT_CONFIGURED
     return None
+
+
+async def eligibility_for(
+    session: AsyncSession,
+    candidates: list[Candidate],
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+    voice_ready: bool = True,
+) -> dict[uuid.UUID, str | None]:
+    """`check_eligibility` for a page of candidates in two queries (the candidate list's
+    buttons). Same rules and order."""
+    if not candidates:
+        return {}
+    ids = [c.id for c in candidates]
+    live = set(
+        (
+            await session.execute(
+                select(CallAttempt.candidate_id).where(
+                    CallAttempt.candidate_id.in_(ids),
+                    CallAttempt.call_status.in_([s.value for s in LIVE_CALL_STATUSES]),
+                )
+            )
+        ).scalars()
+    )
+    active_jobs = set(
+        (
+            await session.execute(
+                select(Job.id).where(
+                    Job.id.in_({c.job_id for c in candidates}), Job.is_active.is_(True)
+                )
+            )
+        ).scalars()
+    )
+    common = global_problem(settings, now=now)
+    if common is None and not voice_ready:
+        common = Ineligible.VOICE_UNAVAILABLE
+    out: dict[uuid.UUID, str | None] = {}
+    for c in candidates:
+        if c.deleted_at is not None:
+            out[c.id] = Ineligible.DELETED
+        elif c.opted_out:
+            out[c.id] = Ineligible.OPTED_OUT
+        elif c.consent_at is None:
+            out[c.id] = Ineligible.NO_CONSENT
+        elif not normalize_phone(c.phone).ok:
+            out[c.id] = Ineligible.BAD_PHONE
+        elif c.job_id not in active_jobs:
+            out[c.id] = Ineligible.JOB_INACTIVE
+        elif c.id in live:
+            out[c.id] = Ineligible.LIVE_ATTEMPT
+        else:
+            out[c.id] = common
+    return out
+
+
+def eligibility_dict(code: str | None) -> dict[str, Any]:
+    return {
+        "can_call": code is None,
+        "reason": code,
+        "message": INELIGIBLE_MESSAGES.get(code or "") or None,
+    }
 
 
 # --- Starting calls ---------------------------------------------------------------------------
@@ -145,7 +220,9 @@ async def start_calls(
     attempt_type: CallAttemptType = CallAttemptType.MANUAL,
     ignore_window: bool = False,
     voice_ready: bool = True,
+    dry_run: bool = False,
 ) -> list[StartResult]:
+    """`dry_run`: eligibility only (the confirmation dialog), nothing is queued."""
     results: list[StartResult] = []
     for candidate_id in dict.fromkeys(candidate_ids):  # de-duplicate, keep order
         result = StartResult(candidate_id)
@@ -156,7 +233,7 @@ async def start_calls(
         )
         if result.error is None and not voice_ready:
             result.error = Ineligible.VOICE_UNAVAILABLE  # nothing could speak on the call
-        if result.error or candidate is None:
+        if result.error or candidate is None or dry_run:
             continue
         attempt = CallAttempt(
             candidate_id=candidate.id,
@@ -200,6 +277,74 @@ async def get(session: AsyncSession, attempt_id: uuid.UUID) -> CallAttempt:
     attempt = await call_repo.get(session, attempt_id)
     if attempt is None:
         raise not_found("call_not_found", "Call attempt not found")
+    return attempt
+
+
+# --- Recruiter controls (phase-08 §5.3) ---------------------------------------------------------
+
+# Attempts that haven't dialed yet: the recruiter may cancel them
+CANCELLABLE = (
+    CallStatus.PENDING,
+    CallStatus.QUEUED,
+    CallStatus.RETRY_SCHEDULED,
+    CallStatus.CALLBACK_REQUESTED,
+)
+
+
+async def retry(
+    session: AsyncSession,
+    attempt_id: uuid.UUID,
+    settings: Settings,
+    enqueue: Enqueue,
+    *,
+    voice_ready: bool = True,
+) -> StartResult:
+    """A new manual attempt for this attempt's candidate, under the same eligibility rules as
+    starting a call (opt-out, consent, window, pause, no live attempt)."""
+    attempt = await get(session, attempt_id)  # still live → call_already_active below
+    results = await start_calls(
+        session,
+        [attempt.candidate_id],
+        settings,
+        enqueue,
+        attempt_type=CallAttemptType.MANUAL,
+        voice_ready=voice_ready,
+    )
+    return results[0]
+
+
+async def cancel(
+    session: AsyncSession,
+    redis: Redis,
+    attempt_id: uuid.UUID,
+    settings: Settings,
+    *,
+    user_id: uuid.UUID,
+) -> CallAttempt:
+    """Cancel an attempt that hasn't dialed yet. A queued job then finds it not queued and
+    skips it."""
+    attempt = await call_repo.get(session, attempt_id, lock=True)
+    if attempt is None:
+        raise not_found("call_not_found", "Call attempt not found")
+    current = attempt.call_status
+    if current not in {s.value for s in CANCELLABLE}:
+        await session.rollback()
+        raise conflict(
+            "call_not_cancellable",
+            "Only a call that hasn't started dialing can be cancelled",
+            {"call_status": current},
+        )
+    changed = call_state.transition(
+        attempt,
+        CallStatus.CANCELLED,
+        end_reason=CallEndReason.CANCELLED.value,
+        failure_reason=f"cancelled_by_recruiter:{user_id}",
+    )
+    record_if_ended(session, attempt, changed)
+    await session.commit()
+    await session.refresh(attempt)
+    await call_slots.release(redis, str(attempt.id), size=settings.max_concurrent_calls)
+    logger.info("call_cancelled", call_attempt_id=str(attempt.id), user_id=str(user_id))
     return attempt
 
 

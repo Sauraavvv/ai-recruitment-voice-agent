@@ -164,7 +164,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Candidates */
+        /**
+         * List Candidates
+         * @description Rows include `eligibility` (can_call + why not) and the latest call.
+         */
         get: operations["list_candidates_api_v1_candidates_get"];
         put?: never;
         /** Create Candidate */
@@ -192,6 +195,46 @@ export interface paths {
         head?: never;
         /** Update Candidate */
         patch: operations["update_candidate_api_v1_candidates__candidate_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/candidates/{candidate_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Candidate Overview
+         * @description Eligibility, the summary, the sheet sync status and open conflicts.
+         */
+        get: operations["candidate_overview_api_v1_candidates__candidate_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/candidates/{candidate_id}/conflicts/{field}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Conflict
+         * @description Keep the stored value or use the other one; the sheet row follows.
+         */
+        post: operations["resolve_conflict_api_v1_candidates__candidate_id__conflicts__field__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/jobs": {
@@ -303,7 +346,7 @@ export interface paths {
         /**
          * Start Calls
          * @description Queue a screening call per candidate. Each candidate gets its own result (ok or a
-         *     reason). Calls need the AI voice loaded in this process (it speaks on the stream).
+         *     reason). `dry_run`: only the results, nothing queued (the confirmation dialog).
          */
         post: operations["start_calls_api_v1_calls_start_post"];
         delete?: never;
@@ -346,6 +389,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calls/{call_attempt_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Transcript
+         * @description The call's transcript (empty for a call nobody answered), and its summary.
+         */
+        get: operations["get_transcript_api_v1_calls__call_attempt_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_attempt_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Call
+         * @description Call this attempt's candidate again (a new `manual` attempt) when eligible.
+         */
+        post: operations["retry_call_api_v1_calls__call_attempt_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_attempt_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Call
+         * @description Cancel a call that hasn't dialed yet (pending, queued, retry or callback scheduled).
+         */
+        post: operations["cancel_call_api_v1_calls__call_attempt_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_attempt_id}/hangup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hangup Call
+         * @description Safety control: end a call in progress. The agent says its closing line and hangs up
+         *     (the flow's Hangup step ends the call). Only a call this server is handling.
+         */
+        post: operations["hangup_call_api_v1_calls__call_attempt_id__hangup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboard/summary": {
         parameters: {
             query?: never;
@@ -355,6 +479,80 @@ export interface paths {
         };
         /** Get Summary */
         get: operations["get_summary_api_v1_dashboard_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stats
+         * @description The stat tiles; `definitions` holds each one's tooltip.
+         */
+        get: operations["get_stats_api_v1_dashboard_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Activity */
+        get: operations["get_activity_api_v1_dashboard_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Attention */
+        get: operations["get_attention_api_v1_dashboard_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/quick-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Quick Start
+         * @description Eligible candidates who were never called, oldest first (the dashboard's quick start).
+         */
+        get: operations["get_quick_start_api_v1_dashboard_quick_start_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -403,10 +601,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/google-sheets/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill
+         * @description "Sync all": queue every active candidate's row.
+         */
+        post: operations["backfill_api_v1_integrations_google_sheets_backfill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/google-sheets/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Sheet
+         * @description Admin: can the service account edit this sheet, and is its header ours or empty?
+         */
+        post: operations["check_sheet_api_v1_integrations_google_sheets_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/google-sheets/sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change Sheet
+         * @description Admin: copy candidates to another sheet from now on. Checked first; then every active
+         *     candidate is queued so the new sheet is filled. The old sheet keeps its rows.
+         */
+        put: operations["change_sheet_api_v1_integrations_google_sheets_sheet_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings Page */
+        get: operations["get_settings_page_api_v1_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Settings
+         * @description Partial update; each section is validated. Changes are logged with the user id.
+         */
+        patch: operations["update_settings_api_v1_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Status
+         * @description Per provider: configured, reachable, last checked, message. Cached for 60 s.
+         */
+        get: operations["provider_status_api_v1_settings_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityItem */
+        ActivityItem: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /** Attempt Number */
+            attempt_number: number;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** AttentionItem */
+        AttentionItem: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "callback_due" | "data_conflict" | "unanswered_question" | "vague_callback" | "technical_failure" | "partially_completed" | "wrong_person" | "attempts_exhausted" | "sheets_sync_failed";
+            /** At */
+            at: string | null;
+            /** Call Attempt Id */
+            call_attempt_id: string | null;
+            /** Detail */
+            detail: string | null;
+            conflict: components["schemas"]["Conflict"] | null;
+        };
+        /** BackfillResult */
+        BackfillResult: {
+            /** Queued Candidates */
+            queued_candidates: number;
+            /** Queued */
+            queued: boolean;
+        };
         /** Body_upload_import_api_v1_candidates_import_post */
         Body_upload_import_api_v1_candidates_import_post: {
             /**
@@ -446,10 +799,15 @@ export interface components {
             end_time: string | null;
             /** Duration Seconds */
             duration_seconds: number | null;
-            /** Recording Url */
-            recording_url: string | null;
+            /**
+             * Has Recording
+             * @default false
+             */
+            has_recording: boolean;
             /** Failure Reason */
             failure_reason: string | null;
+            /** Next Retry At */
+            next_retry_at: string | null;
             /**
              * Created At
              * Format: date-time
@@ -472,12 +830,103 @@ export interface components {
          * @enum {string}
          */
         CallEndReason: "no_answer" | "busy" | "invalid_number" | "candidate_hangup" | "agent_completed" | "provider_failed" | "technical_failure" | "cancelled" | "declined" | "opted_out" | "callback_scheduled" | "wrong_person" | "silence_timeout" | "max_duration" | "escalated";
+        /** CallListItem */
+        CallListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Attempt Number */
+            attempt_number: number;
+            attempt_type: components["schemas"]["CallAttemptType"];
+            /** Provider */
+            provider: string;
+            /** Provider Call Id */
+            provider_call_id: string | null;
+            /** Provider Status */
+            provider_status: string | null;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /** Start Time */
+            start_time: string | null;
+            /** End Time */
+            end_time: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /**
+             * Has Recording
+             * @default false
+             */
+            has_recording: boolean;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /** Next Retry At */
+            next_retry_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /** Applied Role */
+            applied_role: string;
+            /** Has Transcript */
+            has_transcript: boolean;
+        };
         /**
          * CallStatus
          * @description plan.md Module F.
          * @enum {string}
          */
         CallStatus: "pending" | "queued" | "initiating" | "ringing" | "in_progress" | "completed" | "no_answer" | "busy" | "failed" | "cancelled" | "callback_requested" | "retry_scheduled" | "exhausted";
+        /** CallTranscript */
+        CallTranscript: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Attempt Number */
+            attempt_number: number;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /** Start Time */
+            start_time: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /** Entries */
+            entries: components["schemas"]["TranscriptEntry"][];
+            /** Summary */
+            summary: string | null;
+            /** Finalized */
+            finalized: boolean;
+        };
+        /** CallingWindow */
+        CallingWindow: {
+            /** Days */
+            days: string[];
+            /** Start Hour */
+            start_hour: number;
+            /** End Hour */
+            end_hour: number;
+        };
         /** CallsOnDay */
         CallsOnDay: {
             /** Date */
@@ -519,6 +968,80 @@ export interface components {
              * @description The candidate agreed to be contacted by phone about this role
              */
             consent_attested: boolean;
+        };
+        /** CandidateListItem */
+        CandidateListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+            /** Email */
+            email: string | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Applied Role */
+            applied_role: string;
+            /** Source */
+            source: string | null;
+            /** Resume Url */
+            resume_url: string | null;
+            /** Recruiter Notes */
+            recruiter_notes: string | null;
+            /** Current Location */
+            current_location: string | null;
+            /** Current Company */
+            current_company: string | null;
+            /** Total Experience */
+            total_experience: number | null;
+            /** Relevant Experience */
+            relevant_experience: number | null;
+            /** Current Ctc */
+            current_ctc: number | null;
+            /** Expected Ctc */
+            expected_ctc: number | null;
+            /** Notice Period */
+            notice_period: string | null;
+            /** Reason For Change */
+            reason_for_change: string | null;
+            /** Interested */
+            interested: boolean | null;
+            /** Interview Availability */
+            interview_availability: string | null;
+            /** Screening Field Meta */
+            screening_field_meta: {
+                [key: string]: unknown;
+            };
+            screening_status: components["schemas"]["ScreeningStatus"];
+            /** Opted Out */
+            opted_out: boolean;
+            /** Consent Source */
+            consent_source: string | null;
+            /** Consent At */
+            consent_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            eligibility: components["schemas"]["Eligibility"];
+            last_call: components["schemas"]["LastCall"] | null;
+            /** Last Call Has Transcript */
+            last_call_has_transcript: boolean;
+            /** Open Conflicts */
+            open_conflicts: number;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -589,6 +1112,47 @@ export interface components {
             updated_at: string;
         };
         /**
+         * CandidateOverview
+         * @description Everything on the candidate page besides the candidate and its calls.
+         */
+        CandidateOverview: {
+            eligibility: components["schemas"]["Eligibility"];
+            summary: components["schemas"]["CandidateSummary"] | null;
+            sheet_sync: components["schemas"]["SheetSyncState"];
+            /** Sheets Configured */
+            sheets_configured: boolean;
+            /** Conflicts */
+            conflicts: components["schemas"]["Conflict"][];
+        };
+        /** CandidateSummary */
+        CandidateSummary: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /** Attempt Number */
+            attempt_number: number | null;
+            /** Text */
+            text: string | null;
+            /** Generated By */
+            generated_by: string | null;
+            /** Missing Information */
+            missing_information: string[];
+            /** Callback */
+            callback: string | null;
+            /** Callback Request */
+            callback_request: {
+                [key: string]: unknown;
+            } | null;
+            /** Finalized At */
+            finalized_at: string | null;
+            /** Collected Data */
+            collected_data: boolean;
+            /** Newer Call Without Data */
+            newer_call_without_data: boolean;
+        };
+        /**
          * CandidateUpdate
          * @description Partial update. Fields left out are unchanged; send null to clear an optional field.
          */
@@ -632,6 +1196,35 @@ export interface components {
             /** Opted Out */
             opted_out?: boolean | null;
         };
+        /** Conflict */
+        Conflict: {
+            /** Field */
+            field: string;
+            /** Stored Value */
+            stored_value: unknown;
+            /** Stored Quote */
+            stored_quote: string | null;
+            /** Stored Seq */
+            stored_seq: number | null;
+            /** Other Value */
+            other_value: unknown;
+            /** Other Quote */
+            other_quote: string | null;
+            /** Other Seq */
+            other_seq: number | null;
+            /** Reason */
+            reason: string | null;
+            /** Call Attempt Id */
+            call_attempt_id: string | null;
+        };
+        /** ConflictResolution */
+        ConflictResolution: {
+            /**
+             * Choice
+             * @enum {string}
+             */
+            choice: "keep" | "use";
+        };
         /** DashboardFunnel */
         DashboardFunnel: {
             /** Candidates */
@@ -668,6 +1261,38 @@ export interface components {
             /** Avg Call Seconds */
             avg_call_seconds: number | null;
         };
+        /** DashboardStats */
+        DashboardStats: {
+            /** Range */
+            range: string;
+            /** Total Candidates */
+            total_candidates: number;
+            /** Calls Completed */
+            calls_completed: number;
+            /** Calls Pending */
+            calls_pending: number;
+            /** Calls In Progress */
+            calls_in_progress: number;
+            /** Unanswered Calls */
+            unanswered_calls: number;
+            /** Failed Calls */
+            failed_calls: number;
+            /** Interested Candidates */
+            interested_candidates: number;
+            /** Screening Completed */
+            screening_completed: number;
+            /** Scheduled Retries */
+            scheduled_retries: number;
+            /** Definitions */
+            definitions: {
+                [key: string]: string;
+            };
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
         /** DashboardSummary */
         DashboardSummary: {
             kpis: components["schemas"]["DashboardKpis"];
@@ -689,13 +1314,29 @@ export interface components {
              */
             generated_at: string;
         };
+        /** DataResponse[BackfillResult] */
+        DataResponse_BackfillResult_: {
+            data: components["schemas"]["BackfillResult"];
+        };
         /** DataResponse[CallAttemptOut] */
         DataResponse_CallAttemptOut_: {
             data: components["schemas"]["CallAttemptOut"];
         };
+        /** DataResponse[CallTranscript] */
+        DataResponse_CallTranscript_: {
+            data: components["schemas"]["CallTranscript"];
+        };
         /** DataResponse[CandidateOut] */
         DataResponse_CandidateOut_: {
             data: components["schemas"]["CandidateOut"];
+        };
+        /** DataResponse[CandidateOverview] */
+        DataResponse_CandidateOverview_: {
+            data: components["schemas"]["CandidateOverview"];
+        };
+        /** DataResponse[DashboardStats] */
+        DataResponse_DashboardStats_: {
+            data: components["schemas"]["DashboardStats"];
         };
         /** DataResponse[DashboardSummary] */
         DataResponse_DashboardSummary_: {
@@ -704,6 +1345,10 @@ export interface components {
         /** DataResponse[DefaultQuestionsOut] */
         DataResponse_DefaultQuestionsOut_: {
             data: components["schemas"]["DefaultQuestionsOut"];
+        };
+        /** DataResponse[HangupResult] */
+        DataResponse_HangupResult_: {
+            data: components["schemas"]["HangupResult"];
         };
         /** DataResponse[ImportOut] */
         DataResponse_ImportOut_: {
@@ -722,9 +1367,29 @@ export interface components {
             /** Data */
             data: null;
         };
+        /** DataResponse[QuickStart] */
+        DataResponse_QuickStart_: {
+            data: components["schemas"]["QuickStart"];
+        };
+        /** DataResponse[SettingsOut] */
+        DataResponse_SettingsOut_: {
+            data: components["schemas"]["SettingsOut"];
+        };
+        /** DataResponse[SheetAccessCheck] */
+        DataResponse_SheetAccessCheck_: {
+            data: components["schemas"]["SheetAccessCheck"];
+        };
         /** DataResponse[SheetsStatus] */
         DataResponse_SheetsStatus_: {
             data: components["schemas"]["SheetsStatus"];
+        };
+        /** DataResponse[StartCallResult] */
+        DataResponse_StartCallResult_: {
+            data: components["schemas"]["StartCallResult"];
+        };
+        /** DataResponse[StatusOut] */
+        DataResponse_StatusOut_: {
+            data: components["schemas"]["StatusOut"];
         };
         /** DataResponse[Union[JobOut, NoneType]] */
         DataResponse_Union_JobOut__NoneType__: {
@@ -733,6 +1398,16 @@ export interface components {
         /** DataResponse[UserOut] */
         DataResponse_UserOut_: {
             data: components["schemas"]["UserOut"];
+        };
+        /** DataResponse[list[ActivityItem]] */
+        DataResponse_list_ActivityItem__: {
+            /** Data */
+            data: components["schemas"]["ActivityItem"][];
+        };
+        /** DataResponse[list[AttentionItem]] */
+        DataResponse_list_AttentionItem__: {
+            /** Data */
+            data: components["schemas"]["AttentionItem"][];
         };
         /** DataResponse[list[JobOut]] */
         DataResponse_list_JobOut__: {
@@ -767,10 +1442,61 @@ export interface components {
             /** Questions */
             questions: components["schemas"]["ScreeningQuestion"][];
         };
+        /** Eligibility */
+        Eligibility: {
+            /** Can Call */
+            can_call: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Message */
+            message: string | null;
+        };
+        /** GeneralSettings */
+        GeneralSettings: {
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Agent Introduction */
+            agent_introduction?: string | null;
+            calling: components["schemas"]["CallingWindow"];
+            /** Max Concurrent Calls */
+            max_concurrent_calls: number;
+            retry: components["schemas"]["RetryConfig"];
+            /**
+             * Calling Enabled
+             * @default true
+             */
+            calling_enabled: boolean;
+        };
+        /**
+         * GeneralUpdate
+         * @description PATCH body: sections left out are unchanged.
+         */
+        GeneralUpdate: {
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Agent Introduction */
+            agent_introduction?: string | null;
+            calling?: components["schemas"]["CallingWindow"] | null;
+            /** Max Concurrent Calls */
+            max_concurrent_calls?: number | null;
+            retry?: components["schemas"]["RetryConfig"] | null;
+            /** Calling Enabled */
+            calling_enabled?: boolean | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HangupResult */
+        HangupResult: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /** Ending */
+            ending: boolean;
         };
         /**
          * ImportBatchStatus
@@ -883,6 +1609,21 @@ export interface components {
              */
             updated_at: string;
         };
+        /** IntroductionPreview */
+        IntroductionPreview: {
+            /** Text */
+            text: string;
+            /** Sample First Name */
+            sample_first_name: string;
+            /** Company */
+            company: string;
+            /** Job Title */
+            job_title: string;
+            /** Organization */
+            organization: string | null;
+            /** Built In */
+            built_in: boolean;
+        };
         /** JobCreate */
         JobCreate: {
             /** Job Title */
@@ -975,6 +1716,25 @@ export interface components {
             /** Agent Instructions */
             agent_instructions?: string | null;
         };
+        /** LastCall */
+        LastCall: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Attempt Number */
+            attempt_number: number;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Terminal */
+            terminal: boolean;
+        };
         /** LatestConversation */
         LatestConversation: {
             /**
@@ -1065,17 +1825,71 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** PageResponse[CallAttemptOut] */
-        PageResponse_CallAttemptOut_: {
+        /** PageResponse[CallListItem] */
+        PageResponse_CallListItem_: {
             /** Data */
-            data: components["schemas"]["CallAttemptOut"][];
+            data: components["schemas"]["CallListItem"][];
             meta: components["schemas"]["PageMeta"];
         };
-        /** PageResponse[CandidateOut] */
-        PageResponse_CandidateOut_: {
+        /** PageResponse[CandidateListItem] */
+        PageResponse_CandidateListItem_: {
             /** Data */
-            data: components["schemas"]["CandidateOut"][];
+            data: components["schemas"]["CandidateListItem"][];
             meta: components["schemas"]["PageMeta"];
+        };
+        /** ProviderStatus */
+        ProviderStatus: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Configured */
+            configured: boolean;
+            /** Reachable */
+            reachable: boolean | null;
+            /** Message */
+            message: string | null;
+            /** Detail */
+            detail: string | null;
+            /**
+             * Last Checked
+             * Format: date-time
+             */
+            last_checked: string;
+        };
+        /**
+         * QuickStart
+         * @description Eligible candidates never called (for "Call new candidates").
+         */
+        QuickStart: {
+            /** Candidates */
+            candidates: components["schemas"]["QuickStartCandidate"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Calling Now */
+            calling_now: boolean;
+            /** Blocked Reason */
+            blocked_reason: string | null;
+            /** Blocked Message */
+            blocked_message: string | null;
+            /** Max Concurrent Calls */
+            max_concurrent_calls: number;
+            /** Live Calls */
+            live_calls: number;
+        };
+        /** QuickStartCandidate */
+        QuickStartCandidate: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Name */
+            name: string;
+            /** Applied Role */
+            applied_role: string;
         };
         /** ReportError */
         ReportError: {
@@ -1085,6 +1899,16 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /**
+         * RetryConfig
+         * @description Used by the Phase 9 retry automation; editable from now on.
+         */
+        RetryConfig: {
+            /** Max Attempts */
+            max_attempts: number;
+            /** Interval Days */
+            interval_days: number;
         };
         /** RowIssue */
         RowIssue: {
@@ -1125,12 +1949,90 @@ export interface components {
          * @enum {string}
          */
         ScreeningStatus: "not_started" | "in_progress" | "partially_completed" | "completed" | "declined" | "opted_out" | "callback_requested" | "wrong_person";
+        /**
+         * SettingsLimits
+         * @description Fixed in the environment; shown read-only.
+         */
+        SettingsLimits: {
+            /** Max Concurrent Calls */
+            max_concurrent_calls: number;
+            /** Timezone */
+            timezone: string;
+            /** Calling Enabled Env */
+            calling_enabled_env: boolean;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            general: components["schemas"]["GeneralSettings"];
+            limits: components["schemas"]["SettingsLimits"];
+            introduction: components["schemas"]["IntroductionPreview"];
+            /** Calling Now */
+            calling_now: boolean;
+        };
+        /** SheetAccessCheck */
+        SheetAccessCheck: {
+            /** Sheet Id */
+            sheet_id: string;
+            /** Sheet Url */
+            sheet_url: string;
+            /** Tab */
+            tab: string;
+            /** Reachable */
+            reachable: boolean;
+            /**
+             * Header
+             * @enum {string}
+             */
+            header: "ok" | "empty" | "mismatch" | "unknown";
+            /** Message */
+            message: string | null;
+            /** Service Account Email */
+            service_account_email: string | null;
+            /** Can Save */
+            can_save: boolean;
+        };
+        /** SheetChange */
+        SheetChange: {
+            /**
+             * Link
+             * @description Sheet link or id
+             */
+            link: string;
+            /** Tab */
+            tab?: string | null;
+        };
+        /** SheetSyncState */
+        SheetSyncState: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "never" | "pending" | "success" | "failed";
+            /** Synced At */
+            synced_at: string | null;
+            /** Error */
+            error: string | null;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
+        };
         /** SheetsStatus */
         SheetsStatus: {
             /** Configured */
             configured: boolean;
             /** Tab */
             tab: string;
+            /** Sheet Id */
+            sheet_id: string | null;
+            /** Sheet Url */
+            sheet_url: string | null;
+            /** Sheet Source */
+            sheet_source: ("settings" | "env") | null;
+            /** Sheet Changed At */
+            sheet_changed_at: string | null;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Key Configured */
+            key_configured: boolean;
             /**
              * State
              * @enum {string}
@@ -1179,6 +2081,35 @@ export interface components {
         StartCallsRequest: {
             /** Candidate Ids */
             candidate_ids: string[];
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** StatusOut */
+        StatusOut: {
+            /** Providers */
+            providers: components["schemas"]["ProviderStatus"][];
+            google_sheets: components["schemas"]["SheetsStatus"];
+        };
+        /** TranscriptEntry */
+        TranscriptEntry: {
+            /** Seq */
+            seq: number | null;
+            /** Speaker */
+            speaker: string;
+            /** Text */
+            text: string;
+            /** Timestamp */
+            timestamp: string | null;
+            /**
+             * Interrupted
+             * @default false
+             */
+            interrupted: boolean;
+            /** Heard Text */
+            heard_text?: string | null;
         };
         /** TranscriptLine */
         TranscriptLine: {
@@ -1198,7 +2129,14 @@ export interface components {
             email: string;
             /** Name */
             name: string;
+            role: components["schemas"]["UserRole"];
         };
+        /**
+         * UserRole
+         * @description Admins may also change integration settings (the Google Sheet), phase-08.
+         * @enum {string}
+         */
+        UserRole: "admin" | "recruiter";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1476,6 +2414,8 @@ export interface operations {
                 /** @description Name, phone or email */
                 q?: string | null;
                 screening_status?: components["schemas"]["ScreeningStatus"] | null;
+                /** @description Status of the latest call; not_called = never called */
+                call_status?: string | null;
                 job_id?: string | null;
                 interested?: boolean | null;
                 sort?: "created_at" | "-created_at" | "name" | "-name" | "updated_at" | "-updated_at";
@@ -1494,7 +2434,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageResponse_CandidateOut_"];
+                    "application/json": components["schemas"]["PageResponse_CandidateListItem_"];
                 };
             };
             /** @description Validation Error */
@@ -1615,6 +2555,73 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CandidateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CandidateOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_overview_api_v1_candidates__candidate_id__overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CandidateOverview_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_conflict_api_v1_candidates__candidate_id__conflicts__field__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+                field: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictResolution"];
             };
         };
         responses: {
@@ -1918,7 +2925,11 @@ export interface operations {
         parameters: {
             query?: {
                 candidate_id?: string | null;
-                call_status?: components["schemas"]["CallStatus"] | null;
+                call_status?: components["schemas"]["CallStatus"][] | null;
+                created_from?: string | null;
+                created_to?: string | null;
+                /** @description Candidate name or phone */
+                q?: string | null;
                 page?: number;
                 page_size?: number;
             };
@@ -1934,7 +2945,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageResponse_CallAttemptOut_"];
+                    "application/json": components["schemas"]["PageResponse_CallListItem_"];
                 };
             };
             /** @description Validation Error */
@@ -1979,6 +2990,130 @@ export interface operations {
             };
         };
     };
+    get_transcript_api_v1_calls__call_attempt_id__transcript_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CallTranscript_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_call_api_v1_calls__call_attempt_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_StartCallResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_call_api_v1_calls__call_attempt_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CallAttemptOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hangup_call_api_v1_calls__call_attempt_id__hangup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_HangupResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_summary_api_v1_dashboard_summary_get: {
         parameters: {
             query?: never;
@@ -1995,6 +3130,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_DashboardSummary_"];
+                };
+            };
+        };
+    };
+    get_stats_api_v1_dashboard_stats_get: {
+        parameters: {
+            query?: {
+                range?: "today" | "7d" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_DashboardStats_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_activity_api_v1_dashboard_activity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_ActivityItem__"];
+                };
+            };
+        };
+    };
+    get_attention_api_v1_dashboard_attention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_AttentionItem__"];
+                };
+            };
+        };
+    };
+    get_quick_start_api_v1_dashboard_quick_start_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_QuickStart_"];
                 };
             };
         };
@@ -2048,6 +3274,176 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_ManualSyncResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_api_v1_integrations_google_sheets_backfill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_BackfillResult_"];
+                };
+            };
+        };
+    };
+    check_sheet_api_v1_integrations_google_sheets_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SheetChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SheetAccessCheck_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_sheet_api_v1_integrations_google_sheets_sheet_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SheetChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SheetAccessCheck_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_page_api_v1_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SettingsOut_"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneralUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_SettingsOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_status_api_v1_settings_status_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_StatusOut_"];
                 };
             };
             /** @description Validation Error */

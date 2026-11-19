@@ -1,9 +1,11 @@
 """Create or reset a recruiter account. There is no public sign-up.
 
-    python -m app.scripts.create_user --email you@example.com --name "Your Name"
+    python -m app.scripts.create_user --email you@example.com --name "Your Name" [--role admin]
 
 The password is prompted for (never pass it on the command line). Running it again for an
-existing email resets that user's password and re-activates the account.
+existing email resets that user's password and re-activates the account; --role changes the
+role only when it's given (new accounts default to recruiter). Admins may also change the
+Google Sheet the candidates are copied to.
 """
 
 import argparse
@@ -13,7 +15,7 @@ import sys
 
 from app.config import get_settings
 from app.database.connection import dispose_engine, get_sessionmaker, init_engine
-from app.database.models import User
+from app.database.models import User, UserRole
 from app.repositories import user_repo
 from app.services.auth_service import hash_password
 from app.utils.candidate_fields import normalize_email
@@ -31,18 +33,27 @@ def _read_password() -> str:
     return first
 
 
-async def _save(email: str, name: str, password: str) -> str:
+async def _save(email: str, name: str, password: str, role: str | None) -> str:
     init_engine(get_settings().database_url.get_secret_value())
     try:
         async with get_sessionmaker()() as session:
             user = await user_repo.get_by_email(session, email)
             if user is None:
-                session.add(User(email=email, name=name, password_hash=hash_password(password)))
+                session.add(
+                    User(
+                        email=email,
+                        name=name,
+                        password_hash=hash_password(password),
+                        role=role or UserRole.RECRUITER.value,
+                    )
+                )
                 action = "Created"
             else:
                 user.name = name
                 user.password_hash = hash_password(password)
                 user.is_active = True
+                if role:
+                    user.role = role
                 action = "Updated"
             await session.commit()
             return action
@@ -54,6 +65,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--email", required=True)
     parser.add_argument("--name", required=True)
+    parser.add_argument("--role", choices=[r.value for r in UserRole], default=None)
     args = parser.parse_args()
 
     try:
@@ -64,8 +76,8 @@ def main() -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise SystemExit(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
 
-    action = asyncio.run(_save(email, args.name.strip(), password))
-    print(f"{action} recruiter account {email}")
+    action = asyncio.run(_save(email, args.name.strip(), password, args.role))
+    print(f"{action} account {email}" + (f" ({args.role})" if args.role else ""))
 
 
 if __name__ == "__main__":

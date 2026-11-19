@@ -1,24 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { type FormEvent, type ReactNode, useCallback, useRef, useState } from "react";
 
-import { Alert, Button, Card, Field, Muted, PageHeader, inputClass } from "@/components/ui";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ConflictList, ScreeningAnswers } from "@/components/screening-answers";
+import { StartCallsDialog } from "@/components/start-calls-dialog";
+import { ErrorState, Skeleton } from "@/components/states";
+import { StatusBadge } from "@/components/status-badge";
+import { SummaryCard } from "@/components/summary-card";
+import { useToast } from "@/components/toast";
+import { TranscriptView } from "@/components/transcript-view";
+import { Alert, Button, Card, Field, PageHeader, inputClass } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
-import {
-  SCREENING_STATUS_LABELS,
-  SCREENING_STATUS_TONE,
-  formatDate,
-  initials,
-  yesNo,
-} from "@/lib/labels";
+import { formatDate, initials, timeAgo } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
-import { deleteCandidate, getCandidate, updateCandidate } from "@/services/candidates";
+import { deleteCandidate, getCandidate, getOverview, updateCandidate } from "@/services/candidates";
 import { listJobs } from "@/services/jobs";
-import type { Candidate, CandidateUpdate } from "@/types";
+import { syncCandidate } from "@/services/settings";
+import type { Candidate, CandidateOverview, CandidateUpdate } from "@/types";
 
-import { CallButton, CallsPanel, useCalls } from "./calls-panel";
+import { CallsPanel, useCalls } from "./calls-panel";
 
 const TEXT_FIELDS = [
   { key: "name", label: "Name", required: true },
@@ -36,12 +39,33 @@ type Message = { kind: "error" | "success"; text: string } | null;
 export function CandidateDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const notify = useToast();
   const candidate = useLoad(`candidate:${id}`, () => getCandidate(id));
+  const overview = useLoad(`overview:${id}`, () => getOverview(id));
   const jobs = useLoad("jobs", listJobs);
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
-  const calls = useCalls(id, candidate.reload);
+  const [calling, setCalling] = useState(false);
+  const [confirm, setConfirm] = useState<"opt_out" | "delete" | null>(null);
+  const requested = useSearchParams().get("call");
+  const [picked, setPicked] = useState<string | null>(requested);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+
+  const reloadCandidate = candidate.reload;
+  const reloadOverview = overview.reload;
+  const refreshAll = useCallback(() => {
+    reloadCandidate();
+    reloadOverview();
+  }, [reloadCandidate, reloadOverview]);
+  const calls = useCalls(id, refreshAll);
+  const attempts = calls.calls.data ?? [];
+  const selected = picked ?? attempts[0]?.id ?? null;
+
+  function showTranscript(attemptId: string) {
+    setPicked(attemptId);
+    transcriptRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   if (candidate.error?.status === 404) {
     return (
@@ -51,11 +75,17 @@ export function CandidateDetail() {
       </>
     );
   }
-  if (candidate.error) return <Alert>{errorMessage(candidate.error)}</Alert>;
+  if (candidate.error && !candidate.data) {
+    return <ErrorState error={candidate.error} onRetry={candidate.reload} />;
+  }
   const c = candidate.data;
-  if (!c) return <Muted>Loading…</Muted>;
+  if (!c) return <DetailSkeleton />;
 
   const job = jobs.data?.find((j) => j.id === c.job_id);
+  const eligibility = overview.data?.eligibility;
+  const latestLive = attempts.find((a) =>
+    ["pending", "queued", "initiating", "ringing", "in_progress"].includes(a.call_status),
+  );
 
   async function save(changes: CandidateUpdate, success: string) {
     setBusy(true);
@@ -97,25 +127,30 @@ export function CandidateDetail() {
   }
 
   async function onOptOut() {
-    if (
-      !window.confirm(
-        "Mark this candidate as opted out? They will never be called. This can't be undone.",
-      )
-    ) {
-      return;
-    }
-    await save({ opted_out: true }, "Marked as opted out");
+    if (await save({ opted_out: true }, "Marked as opted out")) overview.reload();
+    setConfirm(null);
   }
 
   async function onDelete() {
-    if (!window.confirm(`Delete ${c?.name}? They will be hidden and never called.`)) return;
     setBusy(true);
     try {
       await deleteCandidate(id);
+      notify("success", `${c?.name} was deleted.`);
       router.push("/candidates");
     } catch (err) {
       setMessage({ kind: "error", text: errorMessage(err) });
       setBusy(false);
+      setConfirm(null);
+    }
+  }
+
+  async function onSyncNow() {
+    try {
+      await syncCandidate(id);
+      notify("success", "Sheet sync queued.");
+      setTimeout(overview.reload, 3000);
+    } catch (err) {
+      notify("error", errorMessage(err));
     }
   }
 
@@ -131,18 +166,13 @@ export function CandidateDetail() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-display truncate text-2xl font-semibold text-white">{c.name}</h1>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs whitespace-nowrap ${
-                  SCREENING_STATUS_TONE[c.screening_status] ?? "bg-white/5 text-zinc-400"
-                }`}
-              >
-                {SCREENING_STATUS_LABELS[c.screening_status]}
-              </span>
+              <StatusBadge kind="screening" status={c.screening_status} />
               {c.opted_out && (
                 <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300">
                   Opted out
                 </span>
               )}
+              {latestLive && <StatusBadge kind="call" status={latestLive.call_status} />}
             </div>
             <p className="mt-1 truncate text-sm text-zinc-500">
               {c.applied_role}
@@ -153,25 +183,33 @@ export function CandidateDetail() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CallButton calls={calls} canCall={!c.opted_out && !!c.consent_at} />
+          <Button
+            onClick={() => setCalling(true)}
+            disabled={!eligibility?.can_call}
+            title={eligibility && !eligibility.can_call ? (eligibility.message ?? "") : undefined}
+          >
+            {latestLive ? "Call in progress…" : "Call now"}
+          </Button>
           {!c.opted_out && (
-            <Button variant="secondary" onClick={onOptOut} disabled={busy}>
+            <Button variant="secondary" onClick={() => setConfirm("opt_out")} disabled={busy}>
               Mark opted out
             </Button>
           )}
-          <Button variant="danger" onClick={onDelete} disabled={busy}>
+          <Button variant="danger" onClick={() => setConfirm("delete")} disabled={busy}>
             Delete
           </Button>
         </div>
       </div>
+      {eligibility && !eligibility.can_call && !latestLive && (
+        <p className="-mt-3 mb-4 text-right text-xs text-zinc-500">
+          Can&apos;t call now: {eligibility.message}
+        </p>
+      )}
 
-      {[message, calls.message].map(
-        (m, i) =>
-          m && (
-            <div key={i} className="mb-4">
-              <Alert kind={m.kind}>{m.text}</Alert>
-            </div>
-          ),
+      {message && (
+        <div className="mb-4">
+          <Alert kind={message.kind}>{message.text}</Alert>
+        </div>
       )}
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
@@ -293,38 +331,148 @@ export function CandidateDetail() {
               <DetailRow label="Updated" value={formatDate(c.updated_at)} />
             </dl>
           </Card>
+
+          <SheetSyncCard overview={overview.data} onSyncNow={onSyncNow} />
         </div>
 
         <div className="space-y-4">
-          <Card title="Screening results" description="Filled in by the screening calls.">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Stat
-                label="Interested"
-                value={yesNo(c.interested)}
-                tone={
-                  c.interested === true
-                    ? "text-[#5fd35f]"
-                    : c.interested === false
-                      ? "text-red-300"
-                      : undefined
-                }
+          {overview.error && !overview.data && (
+            <ErrorState error={overview.error} onRetry={overview.reload} />
+          )}
+          {overview.data && overview.data.conflicts.length > 0 && (
+            <Card
+              title="Answers that disagree"
+              description="The call's final check heard a different answer. Pick the right one; the sheet follows."
+            >
+              <ConflictList
+                candidateId={id}
+                conflicts={overview.data.conflicts}
+                onResolved={refreshAll}
+                onOpenTranscript={showTranscript}
               />
-              <Stat label="Relevant experience" value={years(c.relevant_experience)} />
-              <Stat label="Notice period" value={c.notice_period} />
-              <Stat label="Current CTC" value={lpa(c.current_ctc)} />
-              <Stat label="Expected CTC" value={lpa(c.expected_ctc)} />
-              <Stat label="Interview availability" value={c.interview_availability} />
-            </div>
-            <div className="mt-3 rounded-2xl bg-[#202226] p-4">
-              <div className="text-xs text-zinc-500">Reason for change</div>
-              <p className="mt-1 text-sm text-zinc-200">{c.reason_for_change || "—"}</p>
-            </div>
+            </Card>
+          )}
+
+          {overview.data ? (
+            <SummaryCard summary={overview.data.summary} />
+          ) : (
+            <Skeleton className="h-32" />
+          )}
+
+          <Card
+            title="Screening answers"
+            description="Filled in by the screening calls. Hover an answer to see the candidate's words."
+          >
+            <ScreeningAnswers candidate={c} />
           </Card>
 
-          <CallsPanel calls={calls} />
+          <CallsPanel
+            calls={calls}
+            eligibility={eligibility}
+            onChanged={refreshAll}
+            onShowTranscript={showTranscript}
+          />
+
+          <div ref={transcriptRef} className="scroll-mt-6">
+            <Card title="Transcript">
+              <TranscriptView
+                attempts={attempts}
+                selected={selected}
+                onSelect={setPicked}
+                refreshKey={attempts.find((a) => a.id === selected)?.updated_at ?? undefined}
+              />
+            </Card>
+          </div>
         </div>
       </div>
+
+      <StartCallsDialog
+        targets={calling ? [{ id: c.id, name: c.name }] : null}
+        onClose={() => setCalling(false)}
+        onStarted={() => {
+          calls.calls.reload();
+          overview.reload();
+        }}
+      />
+      <ConfirmDialog
+        open={confirm === "opt_out"}
+        title="Mark as opted out?"
+        confirmLabel="Mark opted out"
+        danger
+        busy={busy}
+        onConfirm={onOptOut}
+        onClose={() => setConfirm(null)}
+      >
+        {c.name} will never be called again, and scheduled calls are cancelled. This can&apos;t be
+        undone.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirm === "delete"}
+        title={`Delete ${c.name}?`}
+        confirmLabel="Delete"
+        danger
+        busy={busy}
+        onConfirm={onDelete}
+        onClose={() => setConfirm(null)}
+      >
+        They are hidden from lists and never called. Their call history is kept.
+      </ConfirmDialog>
     </>
+  );
+}
+
+function SheetSyncCard({
+  overview,
+  onSyncNow,
+}: {
+  overview: CandidateOverview | undefined;
+  onSyncNow: () => void;
+}) {
+  if (!overview) return null;
+  const sync = overview.sheet_sync;
+  const text = !overview.sheets_configured
+    ? "Google Sheets isn't set up"
+    : sync.status === "failed"
+      ? "Sync failed"
+      : sync.status === "pending"
+        ? "Waiting to sync"
+        : sync.synced_at
+          ? `Synced ${timeAgo(sync.synced_at)}`
+          : "Not synced yet";
+  return (
+    <Card
+      title="Google Sheet"
+      action={
+        overview.sheets_configured && (
+          <Button variant="secondary" onClick={onSyncNow}>
+            Sync now
+          </Button>
+        )
+      }
+    >
+      <p
+        className={`text-sm ${sync.status === "failed" ? "text-red-300" : "text-zinc-300"}`}
+        role="status"
+      >
+        {text}
+      </p>
+      {sync.error && <p className="mt-1 text-xs text-zinc-500">{sync.error}</p>}
+      {sync.status === "failed" && sync.next_attempt_at && (
+        <p className="mt-1 text-xs text-zinc-500">Retrying {timeAgo(sync.next_attempt_at)}</p>
+      )}
+    </Card>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="space-y-4" role="status" aria-label="Loading">
+      <Skeleton className="h-12 w-1/3" />
+      <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+        <Skeleton className="h-80" />
+        <Skeleton className="h-80" />
+      </div>
+    </div>
   );
 }
 
@@ -350,16 +498,4 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string | null; tone?: string }) {
-  return (
-    <div className="rounded-2xl bg-[#202226] p-4">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className={`mt-1 text-sm font-medium break-words ${tone ?? "text-white"}`}>
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
-
 const years = (v: number | null) => (v == null ? null : `${v} yrs`);
-const lpa = (v: number | null) => (v == null ? null : `${v} LPA`);

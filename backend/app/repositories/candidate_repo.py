@@ -8,7 +8,7 @@ from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Candidate
+from app.database.models import CallAttempt, Candidate
 
 SORT_COLUMNS = {
     "created_at": Candidate.created_at,
@@ -17,7 +17,7 @@ SORT_COLUMNS = {
 }
 
 
-def _escape_like(value: str) -> str:
+def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
@@ -44,15 +44,30 @@ async def ids_by_phone(session: AsyncSession, phones: Sequence[str]) -> dict[str
     return {phone: str(cid) for phone, cid in (await session.execute(stmt)).all()}
 
 
+NOT_CALLED = "not_called"  # call_status filter: no attempt yet
+
+
+def latest_call_status() -> Any:
+    """The candidate's newest attempt's status (correlated scalar subquery)."""
+    return (
+        select(CallAttempt.call_status)
+        .where(CallAttempt.candidate_id == Candidate.id)
+        .order_by(CallAttempt.attempt_number.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
 def _filtered(
     q: str | None,
     screening_status: str | None,
     job_id: uuid.UUID | None,
     interested: bool | None,
+    call_status: str | None = None,
 ) -> Select[Candidate]:
     stmt = select(Candidate).where(Candidate.deleted_at.is_(None))
     if q:
-        pattern = f"%{_escape_like(q.strip())}%"
+        pattern = f"%{escape_like(q.strip())}%"
         conditions: list[ColumnElement[bool]] = [
             Candidate.name.ilike(pattern, escape="\\"),
             Candidate.email.ilike(pattern, escape="\\"),
@@ -68,6 +83,12 @@ def _filtered(
         stmt = stmt.where(Candidate.job_id == job_id)
     if interested is not None:
         stmt = stmt.where(Candidate.interested.is_(interested))
+    if call_status == NOT_CALLED:
+        stmt = stmt.where(
+            ~select(CallAttempt.id).where(CallAttempt.candidate_id == Candidate.id).exists()
+        )
+    elif call_status:
+        stmt = stmt.where(latest_call_status() == call_status)
     return stmt
 
 
@@ -81,8 +102,9 @@ async def search(
     sort: str,
     page: int,
     page_size: int,
+    call_status: str | None = None,
 ) -> tuple[list[Candidate], int]:
-    stmt = _filtered(q, screening_status, job_id, interested)
+    stmt = _filtered(q, screening_status, job_id, interested, call_status)
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
 
     descending = sort.startswith("-")

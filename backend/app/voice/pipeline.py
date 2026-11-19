@@ -250,6 +250,16 @@ class CallSession:
             self.inbound.close()
             self._post(TurnEvent.CALLER_HANGUP, reason)
 
+    def end_by_recruiter(self) -> bool:
+        """The recruiter's "End call" (phase-08 safety control): the agent says its closing
+        line and hangs up, as at the time limit. False if the call is already ending."""
+        if self.caller_gone or self.turns.state is TurnState.ENDED or self.manager.state.ended:
+            return False
+        self.failure_reason = self.failure_reason or "ended_by_recruiter"
+        self.log.info("session_ended_by_recruiter")
+        self._post(TurnEvent.TIME_UP, "recruiter")
+        return True
+
     async def run(self) -> SessionOutcome:
         structlog.contextvars.bind_contextvars(session_id=self.id)
         self.log.info("session_started", vad=self.vad.name)

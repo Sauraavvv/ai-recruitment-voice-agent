@@ -142,7 +142,11 @@ class Settings(BaseSettings):
     google_sheet_tab: str = "Candidates"
     google_sheets_timeout_s: float = Field(default=20.0, gt=0, le=120)
 
-    # Calling
+    # Calling. The Settings page (app_settings, phase-08) can lower the concurrency, change the
+    # window and retries and pause calling; these values are the defaults and the hard limits.
+    calling_enabled: bool = True  # false = nothing dials, whatever the Settings page says
+    organization_name: str | None = None  # Settings page only
+    agent_introduction: str | None = None  # Settings page only; None = built-in introduction
     max_concurrent_calls: int = Field(default=1, ge=1, le=2)
     max_call_attempts: int = Field(default=3, ge=1, le=10)
     retry_interval_days: int = Field(default=2, ge=2, le=4)

@@ -7,10 +7,12 @@ the same transaction; the API queues the sync after the commit.
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Candidate, ConsentSource, ScreeningStatus
+from app.agent.schemas import FieldName
+from app.database.models import Candidate, ConsentSource, Conversation, ScreeningStatus
 from app.repositories import candidate_repo
 from app.schemas.candidate import CandidateCreate, CandidateUpdate
 from app.services import job_service, sync_service
@@ -19,6 +21,7 @@ from app.utils.log import get_logger
 
 logger = get_logger(__name__)
 MAX_PAGE_SIZE = 100
+STANDARD_FIELDS = frozenset(f.value for f in FieldName)
 
 
 async def _ensure_phone_free(
@@ -84,6 +87,7 @@ async def search(
     sort: str = "-created_at",
     page: int = 1,
     page_size: int = 25,
+    call_status: str | None = None,
 ) -> tuple[list[Candidate], int]:
     return await candidate_repo.search(
         session,
@@ -91,6 +95,7 @@ async def search(
         screening_status=screening_status,
         job_id=job_id,
         interested=interested,
+        call_status=call_status,
         sort=sort,
         page=max(page, 1),
         page_size=min(max(page_size, 1), MAX_PAGE_SIZE),
@@ -134,3 +139,88 @@ async def soft_delete(session: AsyncSession, candidate_id: uuid.UUID) -> None:
     candidate.deleted_at = datetime.now(UTC)
     await session.commit()
     logger.info("candidate_deleted", candidate_id=str(candidate_id))
+
+
+async def resolve_conflict(
+    session: AsyncSession,
+    candidate_id: uuid.UUID,
+    field: str,
+    choice: str,
+    *,
+    user_id: uuid.UUID,
+) -> Candidate:
+    """Settle a data conflict from the final pass (phase-08, decided with the user).
+
+    keep: the stored value stays. use: the other value (the final pass's, with its quote)
+    replaces it. Either way the conflict is marked resolved (who, when, choice) on the field's
+    meta and in that call's `final.conflicts`, and the sheet row is updated (outbox row).
+    """
+    candidate = await candidate_repo.get(session, candidate_id)
+    if candidate is None:
+        raise not_found("candidate_not_found", "Candidate not found")
+    await session.refresh(candidate, with_for_update=True)
+    meta = dict(candidate.screening_field_meta or {})
+    entry = dict(meta.get(field) or {})
+    conflict_info = entry.get("conflict")
+    if not isinstance(conflict_info, dict):
+        raise conflict("no_conflict", "This field has no open conflict")
+
+    now = datetime.now(UTC)
+    standard = hasattr(Candidate, field) and field in STANDARD_FIELDS
+    stored = getattr(candidate, field) if standard else entry.get("value")
+    resolution = {
+        "choice": choice,
+        "by": str(user_id),
+        "at": now.isoformat(),
+        "stored_value": stored,
+        "other_value": conflict_info.get("final_value"),
+        "reason": conflict_info.get("reason"),
+    }
+    if choice == "use":
+        value = conflict_info.get("final_value")
+        if standard:
+            setattr(candidate, field, value)
+        entry["previous"] = [
+            *(entry.get("previous") or []),
+            {"value": stored, "raw_text": entry.get("raw_text"), "seq": entry.get("seq")},
+        ]
+        entry.update(
+            value=value,
+            raw_text=conflict_info.get("quote"),
+            seq=conflict_info.get("seq"),
+            status="answered",
+            source="recruiter",
+        )
+    entry["conflict"] = None
+    entry["conflict_resolution"] = resolution
+    meta[field] = entry
+    candidate.screening_field_meta = meta
+
+    # The call's own record of the conflict
+    attempt_id = entry.get("call_attempt_id")
+    if attempt_id:
+        conv = (
+            await session.execute(
+                select(Conversation)
+                .where(Conversation.call_attempt_id == uuid.UUID(str(attempt_id)))
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        final = dict((conv.extracted_data or {}).get("final") or {}) if conv else {}
+        conflicts = dict(final.get("conflicts") or {})
+        if conv is not None and field in conflicts:
+            conflicts[field] = {**(conflicts[field] or {}), "resolved": resolution}
+            final["conflicts"] = conflicts
+            conv.extracted_data = dict(conv.extracted_data or {}) | {"final": final}
+
+    sync_service.record_change(session, candidate.id)
+    await session.commit()
+    await session.refresh(candidate)
+    logger.info(
+        "conflict_resolved",
+        candidate_id=str(candidate.id),
+        field=field,
+        choice=choice,
+        user_id=str(user_id),
+    )
+    return candidate

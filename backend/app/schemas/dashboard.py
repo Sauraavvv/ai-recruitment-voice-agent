@@ -1,7 +1,11 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+from app.database.models.enums import CallEndReason, CallStatus
+from app.schemas.candidate import Conflict
 
 
 class DashboardKpis(BaseModel):
@@ -72,3 +76,70 @@ class DashboardSummary(BaseModel):
     latest_conversation: LatestConversation | None
     interview_availability: list[InterviewAvailability]
     generated_at: datetime
+
+
+class DashboardStats(BaseModel):
+    range: str
+    total_candidates: int
+    calls_completed: int
+    calls_pending: int
+    calls_in_progress: int
+    unanswered_calls: int
+    failed_calls: int
+    interested_candidates: int
+    screening_completed: int
+    scheduled_retries: int
+    definitions: dict[str, str]  # tooltip text per metric
+    generated_at: datetime
+
+
+class ActivityItem(BaseModel):
+    call_attempt_id: uuid.UUID
+    candidate_id: uuid.UUID
+    candidate_name: str
+    attempt_number: int
+    call_status: CallStatus
+    end_reason: CallEndReason | None
+    at: datetime
+
+
+AttentionReason = Literal[
+    "callback_due",
+    "data_conflict",
+    "unanswered_question",
+    "vague_callback",
+    "technical_failure",
+    "partially_completed",
+    "wrong_person",
+    "attempts_exhausted",
+    "sheets_sync_failed",
+]
+
+
+class AttentionItem(BaseModel):
+    candidate_id: uuid.UUID
+    candidate_name: str
+    reason: AttentionReason
+    at: datetime | None
+    call_attempt_id: uuid.UUID | None
+    detail: str | None
+    conflict: Conflict | None  # data_conflict: both values and the quotes
+
+
+class QuickStartCandidate(BaseModel):
+    candidate_id: uuid.UUID
+    name: str
+    applied_role: str
+
+
+class QuickStart(BaseModel):
+    """Eligible candidates never called (for "Call new candidates")."""
+
+    candidates: list[QuickStartCandidate]
+    total: int  # all eligible never-called candidates (the dialog starts at most `limit`)
+    limit: int
+    calling_now: bool  # inside the calling window and not paused
+    blocked_reason: str | None  # why nobody can be called right now
+    blocked_message: str | None
+    max_concurrent_calls: int
+    live_calls: int

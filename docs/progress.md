@@ -1,5 +1,60 @@
 # Progress
 
+## Phase 8 exit report (2026-11-19) — built, waiting for the user's review and a real call from the UI
+
+**Implemented:** the recruiter UI from plan.md §7 on real database values, call controls, settings with provider status and a global pause, and the three decisions from Phase 7 (Sheets on Settings with an admin-only sheet change, conflict Keep/Use, summary of the latest call with data). Deviations and the open decisions as taken: [phase-08 §13](phases/phase-08-dashboard.md#13-as-built-2026-11-19).
+- Dashboard: nine stat tiles with tooltips and a Today / 7 days / All range; calling progress + "Call N now" quick start (eligible never-called, ≤ 20, confirmation); needs attention (9 reasons, conflicts resolvable in place); recent activity; the Phase 1 charts below.
+- Candidates: call status column + filter (incl. "not called yet"), last call, View / Transcript / Call / Retry with the disabled reason from the API, bulk select (max 20) → confirmation dialog (dry run: who is called, who is skipped and why, calling hours, concurrency).
+- Candidate page: summary card (missing info, callback request, note when a later call had no data), screening answers with status chips (answered, confirmed, declined, unclear, missing, conflict) and the candidate's words, conflicts with Keep / Use / Open transcript, sheet sync status + Sync now, call history (type, status, start, length, end reason, next try; Retry / Cancel / End call, each confirmed), transcript with an attempt selector, timestamps and interrupted markers. `?call=<id>` opens a call's transcript.
+- Calls page: every attempt, filters (status, candidate search, date range), transcript links.
+- Settings page: calling on/off (confirmed), days and hours, calls at once (≤ `MAX_CONCURRENT_CALLS`), organization name, agent introduction template with a live preview, retry configuration (used by P9), provider status (OpenAI, Deepgram, Exotel, voice; cached 60 s, re-check), Google Sheets card (state, Open sheet, service account + Copy, last sync, waiting/failed, Check again, Sync all; admin: link → Check access → Save → backfill).
+- Live refresh: every 3 s while a visible call is queued/dialing/on the line, 30 s otherwise, paused in a hidden tab. Banner when the backend is unreachable; skeletons, empty states with the next step, inline errors with retry, toasts.
+- Backend: `/dashboard/stats|activity|attention|quick-start`; `/calls` filters + names, `/transcript`, `/retry`, `/cancel`, `/hangup`, `dry_run` on start; candidate rows with `eligibility` and `last_call`, `/candidates/{id}/overview`, conflict resolution; `/settings`, `/settings/status`; Sheets `backfill`, `check`, `PUT sheet` (admin). Global pause in eligibility (API and worker). `users.role`. `recording_url` no longer sent to the browser.
+
+**Files created / changed:**
+- Backend, new: `api/v1/settings.py`; `services/settings_service.py`, `provider_status_service.py`, `candidate_view_service.py`; `schemas/settings.py`; migration `0006_user_roles.py`; `scripts/dashboard_check.py`; tests `integration/test_phase8_calls.py`, `test_phase8_dashboard.py`.
+- Backend, changed: `api/deps.py` (`AdminUser`, `EffectiveSettingsDep`), `api/v1/calls.py`, `candidates.py`, `dashboard.py`, `integrations.py`, `__init__.py`; `services/call_service.py` (pause, batch eligibility, retry, cancel, dry run), `candidate_service.py` (`resolve_conflict`, call-status search), `dashboard_service.py`, `summary_service.py` (`pick_summary_conversation`), `sync_service.py` (summary rule, `backfill`, `request_sync` checks only the key), `sheets_service.py` (`configure`); `repositories/call_repo.py`, `candidate_repo.py`; schemas `auth`, `call`, `candidate`, `dashboard`, `integrations`; `workers/call_worker.py`, `sync_worker.py` (effective settings); `voice/pipeline.py` (`end_by_recruiter`), `websocket_handler.py` + `agent/prompts.py` (introduction template); `config.py` (`CALLING_ENABLED`); models `user.py`, `enums.py`; `scripts/create_user.py` (`--role`), `sheets_tool.py`.
+- Frontend, new: `app/(recruiter)/calls/`, `settings/page.tsx`, `settings-view.tsx`, `provider-cards.tsx`, `sheets-card.tsx`, `dashboard/overview-sections.tsx`; `components/status-badge`, `stat-tile`, `confirm-dialog`, `states`, `toast`, `backend-banner`, `start-calls-dialog`, `transcript-view`, `summary-card`, `screening-answers`; `hooks/use-polling.ts`; `services/settings.ts`; tests `tests/unit/status-and-actions.test.tsx`, `tests/e2e/recruiter-flow.spec.ts`, `start-backend.sh`, `seed.py`; `vitest.config.mts`, `playwright.config.ts`.
+- Frontend, changed: dashboard view, candidate list, candidate page + calls panel, sidebar (Calls, Settings), layout (toasts, banner), `lib/labels.ts`, services, regenerated types.
+- Dev dependencies (frontend, additions only, exact versions): `vitest` 4.1.12 (5.x needs `@types/node` ≥ 22), `@testing-library/react` 16.3.3, `@testing-library/dom` 10.4.2, `jsdom` 31.0.1, `@vitejs/plugin-react` 6.3.0, `@playwright/test` 1.65.1 (Chromium headless shell downloaded to the Playwright cache).
+- Makefile: `dashboard-check`, `test-frontend`, `test-e2e`; `create-user … role=admin`.
+- Docs: `api.md`, `phases/phase-08` §13.
+
+**Tests run:**
+- `make test` → **689 passed**, 1 skipped (24 new). Ruff, mypy (strict), eslint, tsc clean.
+- Backend: every stat against a dataset with known counts (+ range, deleted candidates excluded, SQL cross-check); empty database → zeros; activity order; all 9 attention reasons (+ opted-out excluded); conflict keep/use (value, meta, the call's `final.conflicts`, outbox row, gone from attention, second resolve 409); summary rule on the candidate and in the sheet row; quick start (+ paused); dry run; retry and cancel eligibility; hangup (needs a live session); call filters and transcript; list eligibility; **pause blocks start, retry, list and the worker**; window from Settings; settings validation (8 bad bodies) and template; **status response contains no configured secret** (incl. a provider echoing the key); admin-only sheet change (recruiter 403, bad link 422, no access 409, saved → effective settings → backfill).
+- `make test-frontend` → **10 passed** (StatusBadge mapping, filter options, disabled Call/Retry with the API's reason, field chips with conflict and quotes, introduction preview).
+- `make test-e2e` → **1 passed**: isolated stack (DB `recruitment_ai_e2e` recreated, Redis db 1, no provider keys, ports 8011/3011): login → empty dashboard all zeros → job via API → upload CSV → candidates (disabled Call says "Telephony is not configured", filter) → detail → calls → settings (pause, intro preview, providers "not set") → pause shown on the list → seeded finished call (`tests/e2e/seed.py`): attention conflict, summary, quotes, transcript with interrupted marker, **Use 60 days** resolves it, older attempt "no conversation", calls page. Screenshots in `frontend/test-results/screens/` (gitignored).
+- `make dashboard-check` on the dev database → **9 metrics, 0 differences**.
+
+**Acceptance criteria:**
+- P8-AC1 ✅ `make dashboard-check` (dev data) and the dataset test; the E2E reads the tiles from the API.
+- P8-AC2 ⏳ built (start from list/detail/dashboard with confirmation, 3 s polling) and tested without a phone. **Not yet shown on a real call** (needs `make tunnel` and the tester's phone).
+- P8-AC3 ✅ on seeded data in the E2E (answers, transcript, summary). Looking at the real Phase 6/7 calls in the UI is left for the user (see below).
+- P8-AC4 ✅ automated (API, component tests, E2E).
+- P8-AC5 ✅ empty database → zeros (API test and E2E); tiles render only API values.
+- P8-AC6 ✅ secrets test; Settings screenshot on the E2E stack. With the real keys: user's visual check.
+- P8-AC7 ✅ automated (start, retry, list, worker).
+
+**Needs the user:**
+- Review the pages on the dev stack (http://localhost:3010; your account is now **admin**). I tried to create a login session for your account in the dev Redis to screenshot your real calls; the permission was denied, so that view hasn't been checked by me.
+- A real call from the UI (P8-AC2): `make tunnel`, Candidates → Call → watch status, transcript and summary appear.
+- Still open from Phase 7: real partial call, revoke → restore drill, delete the captured call audio in `backend/artifacts/calls/`, check the old service-account key is gone.
+
+**Deferred or not done:**
+- Recording playback (recording is off; would need an authenticated proxy and the disclosure in the introduction).
+- Activity is "latest attempts by change time", not a per-change log.
+- Callback-due from scheduled attempts depends on Phase 9 setting `next_retry_at`; until then callbacks come from the conversation's requested time.
+- STT city names (P7 item) not addressed.
+
+**Risks or surprises discovered:**
+- The API returned the provider's `recording_url` to the browser (since P5); now replaced by `has_recording`.
+- `request_sync` used to skip when `GOOGLE_SHEET_ID` was empty; with the sheet in `app_settings` it now only needs the key file, and the drain checks the effective settings.
+- Running the E2E against the dev stack would have copied test candidates into the real team sheet: hence the isolated stack.
+- **Settings page took ~20 s** (found after the first review): it asks `/settings/status` and `/integrations/google-sheets/status` at once, and both ran the Sheets check in parallel threads on one shared httplib2 client (not thread-safe) until the 20 s timeout. Fixed: one check at a time per process (`SheetsService.lock`, also around upserts), and a request that waited reuses the result it waited for. Live: two parallel checks 1.7 s. Regression test added.
+
+**Decisions made (mine, open to review):** listed in [phase-08 §13](phases/phase-08-dashboard.md#13-as-built-2026-11-19) — no TanStack/shadcn, settings in the existing key/value table, existing accounts became admin, activity definition, timezone read-only, hangup via the agent's closing line.
+
 ## Phase 7 exit report (2026-11-19) — closed by the user; real partial call and revoke drill deferred
 
 **Implemented:** post-call finalization and the Google Sheets sync. Sheets design, setup and operations: [google-sheets.md](google-sheets.md). Deviations from the plan: [phase-07 §13](phases/phase-07-data-and-sheets.md#13-as-built-2026-11-19).
@@ -44,9 +99,16 @@
 **Deferred or not done (for Phase 8 and later):**
 - STT misses Indian city names on real lines (Phase 6: "Deli", now "Gurugram" → "Would it all" / "Go to now"). Proposed, not built: common city names as Deepgram keyterms (`DEEPGRAM_STT_KEYTERMS` / per-call terms), maybe also reading location and company back.
 - STT clips the end of free-text answers (call 1: reason for change stored as "Just for one."). Not fixable in finalization: it only has what STT heard.
-- **Call Summary shows the latest finalized call's summary even when that call collected nothing** (after call 2 the sheet and the candidate show an all-"not provided" summary next to call 1's complete data). Plan rule as written; for P8 decide: latest summary *with data*, or a summary of the candidate record. Ask the user.
-- Sheets settings in the UI (sheet link, service-account email, Check access) and moving `GOOGLE_SHEET_ID` from `.env` to `app_settings`: discussed with the user, P8 settings page. Conflicts are stored for P8's "needs attention".
+- **Call Summary shows the latest finalized call's summary even when that call collected nothing** (after call 2 the sheet and the candidate show an all-"not provided" summary next to call 1's complete data). Decided for P8: see below.
 - Captured call audio `backend/artifacts/calls/fbde41ca…`, `38cb60d5…` (tester's voice): delete after review.
+
+**Decided with the user for Phase 8 (2026-11-19):**
+1. **Google Sheets on the Settings page: status card + editable sheet link.**
+   - Status card from `GET /integrations/google-sheets/status`: state (connected / temporary failures / error / not configured) with the recruiter-facing message, sheet name + "Open sheet", service-account email with Copy, last sync, waiting and failed counts, "Check again" (`?refresh=true`) and "Sync all" (backfill). No secret values.
+   - Candidate page: sheet sync status line ("synced 2 min ago" / "failed") with **Sync now** (`POST /integrations/google-sheets/sync/{id}`).
+   - **Admin only** can change the sheet: paste a link → the ID is taken from `/d/<id>/` → **Check access** (reachable, header ok/empty/mismatch) → **Save**. Move `GOOGLE_SHEET_ID` / `GOOGLE_SHEET_TAB` from `.env` into `app_settings` (env values stay as the default); after a change, backfill the new sheet. The old sheet keeps its data. Needs a role (admin vs recruiter) if there isn't one yet. Reason: anyone could otherwise point candidates' personal data at their own sheet.
+2. **Conflicts in "Needs attention" with one-click resolution.** Each conflict shows the stored value, the other value and the candidate's quote + transcript line, with **Keep <stored>** / **Use <other>** / **Open transcript**. Either button writes through `candidate_service` (outbox row → sheet updates), marks the conflict resolved (who, when, choice) in the field's meta and `final.conflicts`, and removes it from the list. Field chips on the candidate page include `conflict`, with the quotes on hover.
+3. **Summary shown for a candidate = the latest finalized conversation that collected data** (any field with a value), falling back to the latest one. Applies to the candidate page, the dashboard and the sheet's Call Summary column (change `sync_service.build_rows`). A call with no data keeps its own summary in its conversation history.
 
 **Risks or surprises discovered:**
 - **Out-of-order finalization.** On its first run the new `reconcile_finalize` cron finalized the 7 stored Phase 6 calls of the dev tester candidate in parallel; the candidate ended with an older call's status (`callback_requested` from call 17). Fixed (a superseded call only fills empty fields), tested, and the dev candidate was re-finalized in call order (dev data only; the existing summaries were kept).

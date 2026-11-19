@@ -99,6 +99,9 @@ class JobConfig:
     required_experience: str = ""
     skills: list[str] = field(default_factory=list)
     agent_instructions: str = ""
+    # From the Settings page (phase-08): an introduction template and the organization name
+    introduction_template: str = ""
+    organization: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "JobConfig":
@@ -118,6 +121,8 @@ class JobConfig:
             skills=list(data.get("skills", [])),
             questions=[QuestionSpec.model_validate(q) for q in questions],
             agent_instructions=data.get("agent_instructions", ""),
+            introduction_template=data.get("introduction_template") or "",
+            organization=data.get("organization") or "",
         )
 
     @classmethod
@@ -273,6 +278,16 @@ def greeting(candidate: CandidateContext) -> str:
 
 
 def introduction(candidate: CandidateContext, job: JobConfig) -> str:
+    if job.introduction_template:
+        from app.services.settings_service import render_introduction
+
+        return render_introduction(
+            job.introduction_template,
+            first_name=candidate.first_name,
+            company=job.company_name,
+            job_title=job.job_title,
+            organization=job.organization or None,
+        )
     article = "an" if job.job_title[:1].lower() in "aeiou" else "a"
     return (
         f"Hi {candidate.first_name}, I'm an AI recruitment assistant calling on behalf of "

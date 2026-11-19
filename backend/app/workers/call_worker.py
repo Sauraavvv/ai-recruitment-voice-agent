@@ -1,7 +1,8 @@
 """Call jobs (phase-05 P5-T4): `initiate_call` and the stuck-attempt reconciler.
 
 initiate_call(attempt_id):
-  queued only → concurrency slot (none free → retry in 15 s) → re-check eligibility →
+  queued only → concurrency slot (none free → retry in 15 s) → re-check eligibility (incl. the
+  global pause: a paused attempt is cancelled with failure_reason ineligible:calling_paused) →
   initiating → provider → store provider_call_id.
   A provider timeout leaves the attempt `initiating` with failure_reason=initiate_timeout; the
   reconciler then asks the provider whether the call exists. Never retried blindly.
@@ -24,7 +25,7 @@ from app.providers.telephony.base import (
     TelephonyTimeoutError,
 )
 from app.repositories import call_repo, candidate_repo
-from app.services import call_service, call_slots, call_state, sync_service
+from app.services import call_service, call_slots, call_state, settings_service, sync_service
 from app.utils.log import get_logger
 from app.utils.redis import get_redis
 
@@ -51,7 +52,8 @@ async def _fail(session: Any, attempt: CallAttempt, reason: str, end_reason: str
 
 
 async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: bool = False) -> str:
-    settings: Settings = ctx.get("settings") or get_settings()
+    # The Settings page's values (pause, window, concurrency) apply to calls already queued
+    settings = await settings_service.effective_new_session(ctx.get("settings") or get_settings())
     redis = get_redis()
     aid = uuid.UUID(attempt_id)
     async with get_sessionmaker()() as session:

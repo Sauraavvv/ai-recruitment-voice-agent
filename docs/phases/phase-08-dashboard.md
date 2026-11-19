@@ -7,6 +7,9 @@
 | Unlocks | P9 UI pieces, P10 |
 | Size / risk | L / Low–Medium |
 
+
+> **Decisions from Phase 7 (2026-11-19, with the user):** Sheets status card **and** an admin-only editable sheet link on the Settings page; conflicts in "needs attention" with **Keep / Use** buttons that write through `candidate_service`; the candidate's summary is the latest finalized conversation **that collected data**. Details: Phase 7 exit report in [progress.md](../progress.md).
+
 ## 1. Goal
 
 The recruiter UI from plan.md §7, driven entirely by real database values: dashboard, candidates with call controls, candidate detail with transcript and summary, a calls list, and settings with provider status. Status changes appear without a manual refresh.
@@ -181,3 +184,22 @@ None.
 ## 12. Exit
 
 [Phase exit report](README.md#phase-exit-report) with screenshots of each page.
+
+## 13. As built (2026-11-19)
+
+Deviations from the plan above, and the open decisions as taken:
+
+| Plan | As built | Why |
+|---|---|---|
+| Migration `0004_app_settings` (single row, JSONB sections) | No new settings table: two rows in the existing `app_settings` key/value table (0003): `general`, `google_sheets`. Migration **0006** adds `users.role` | 0003 already existed; 0004/0005 were taken |
+| TanStack Query, shadcn/ui **[Decision]** | Neither. The existing `useLoad` hook + `hooks/use-polling.ts`; Tailwind components in `components/` (StatusBadge, StatTile, ConfirmDialog on native `<dialog>`, states, toast) | The UI already had its own grey/black components; no new runtime dependency |
+| Metric definitions **[Decision]** | As in §5.1, returned by the API as `definitions` and shown as tooltips. `range` applies to completed / unanswered / failed only; pending, in progress and scheduled are "now" | |
+| Activity: last 20 status *changes* | Last 20 attempts by `updated_at` (each at its current status) | Attempts keep no status history; a per-change log wasn't worth a table |
+| Calling window timezone editable | Read-only (`APP_TIMEZONE`) | Every date in the app and the sheet uses it |
+| `hangup` [Proposed] | Built: the agent says its closing line (the time-limit path) and hangs up; only for a call handled by this backend process | A clean goodbye instead of cutting the line |
+| `recording` [Proposed] | Not built (recording is off). The API no longer sends `recording_url`, only `has_recording` | Recording links must not reach the browser |
+| Sheets on Settings (P7 decision) | Status card + admin-only Check access / Save; first account(s) became `admin` in 0006, new accounts default to `recruiter` (`make create-user … role=admin`) | |
+| Summary rule (P7 decision) | `summary_service.pick_summary_conversation`: candidate page and the sheet's Call Summary column | |
+| Global pause | `calling_enabled` in Settings and env `CALLING_ENABLED` (both must be on). `start`/`retry` → `calling_paused`; the worker cancels a queued attempt with `ineligible:calling_paused` | P9's dispatcher must call `check_eligibility` with the effective settings |
+
+Effective settings: `settings_service.effective()` copies `Settings` with the stored values; the API (`EffectiveSettingsDep`), the call worker and the Sheets worker use it, so changes apply without a restart.

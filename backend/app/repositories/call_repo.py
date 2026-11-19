@@ -5,11 +5,12 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import distinct_on, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import LIVE_CALL_STATUSES, CallAttempt, WebhookEvent
+from app.database.models import LIVE_CALL_STATUSES, CallAttempt, Candidate, WebhookEvent
+from app.repositories.candidate_repo import escape_like
 
 
 async def get(
@@ -60,22 +61,54 @@ async def search(
     session: AsyncSession,
     *,
     candidate_id: uuid.UUID | None,
-    status: str | None,
+    status: str | Sequence[str] | None,
     page: int,
     page_size: int,
-) -> tuple[list[CallAttempt], int]:
-    stmt = select(CallAttempt)
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    q: str | None = None,
+) -> tuple[list[tuple[CallAttempt, str, str]], int]:
+    """Attempts newest first, with the candidate's name and applied role."""
+    stmt = select(CallAttempt, Candidate.name, Candidate.applied_role).join(
+        Candidate, Candidate.id == CallAttempt.candidate_id
+    )
     if candidate_id:
         stmt = stmt.where(CallAttempt.candidate_id == candidate_id)
-    if status:
+    if isinstance(status, str):
         stmt = stmt.where(CallAttempt.call_status == status)
+    elif status:
+        stmt = stmt.where(CallAttempt.call_status.in_(list(status)))
+    if created_from:
+        stmt = stmt.where(CallAttempt.created_at >= created_from)
+    if created_to:
+        stmt = stmt.where(CallAttempt.created_at < created_to)
+    if q:
+        like = f"%{escape_like(q.strip())}%"
+        stmt = stmt.where(
+            or_(Candidate.name.ilike(like, escape="\\"), Candidate.phone.ilike(like, escape="\\"))
+        )
     total = int(
         (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     )
     rows = await session.execute(
         stmt.order_by(CallAttempt.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     )
-    return list(rows.scalars()), total
+    return [(a, name, role) for a, name, role in rows.all()], total
+
+
+async def latest_for_candidates(
+    session: AsyncSession, candidate_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, CallAttempt]:
+    """Each candidate's newest attempt (highest attempt number)."""
+    if not candidate_ids:
+        return {}
+    stmt = (
+        select(CallAttempt)
+        .where(CallAttempt.candidate_id.in_(list(candidate_ids)))
+        .ext(distinct_on(CallAttempt.candidate_id))
+        .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())
+    )
+    return {a.candidate_id: a for a in (await session.execute(stmt)).scalars()}
 
 
 async def insert_webhook_event(

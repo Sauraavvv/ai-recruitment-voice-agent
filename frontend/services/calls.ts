@@ -1,15 +1,67 @@
 import { apiFetch, send } from "@/lib/api";
-import type { CallAttempt, StartCallResult } from "@/types";
+import type { CallAttempt, CallListItem, CallTranscript, PageMeta, StartCallResult } from "@/types";
 
-/** Queue a screening call. The result says why not if the candidate can't be called now. */
-export async function startCall(candidateId: string) {
+/** Queue screening calls. Each candidate gets its own result (ok, or why not). `dryRun`: only
+ *  check who could be called (the confirmation dialog); nothing is queued. */
+export async function startCalls(candidateIds: string[], dryRun = false) {
   const { data } = await send<StartCallResult[]>("POST", "/api/v1/calls/start", {
-    candidate_ids: [candidateId],
+    candidate_ids: candidateIds,
+    dry_run: dryRun,
   });
-  return data[0];
+  return data;
+}
+
+/** Queue one screening call. The result says why not if the candidate can't be called now. */
+export async function startCall(candidateId: string) {
+  return (await startCalls([candidateId]))[0];
+}
+
+export type CallQuery = {
+  candidate_id?: string;
+  call_status?: string[];
+  q?: string;
+  created_from?: string;
+  created_to?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export async function searchCalls(query: CallQuery) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === "") continue;
+    if (Array.isArray(value)) value.forEach((v) => params.append(key, v));
+    else params.set(key, String(value));
+  }
+  const { data, meta } = await apiFetch<CallListItem[]>(`/api/v1/calls?${params}`, {
+    cache: "no-store",
+  });
+  return { items: data, meta: meta as PageMeta };
 }
 
 export async function listCalls(candidateId: string) {
-  const params = new URLSearchParams({ candidate_id: candidateId, page_size: "10" });
-  return (await apiFetch<CallAttempt[]>(`/api/v1/calls?${params}`, { cache: "no-store" })).data;
+  return (await searchCalls({ candidate_id: candidateId, page_size: 50 })).items;
+}
+
+export async function getTranscript(attemptId: string) {
+  return (
+    await apiFetch<CallTranscript>(`/api/v1/calls/${attemptId}/transcript`, { cache: "no-store" })
+  ).data;
+}
+
+export async function retryCall(attemptId: string) {
+  return (await send<StartCallResult>("POST", `/api/v1/calls/${attemptId}/retry`)).data;
+}
+
+export async function cancelCall(attemptId: string) {
+  return (await send<CallAttempt>("POST", `/api/v1/calls/${attemptId}/cancel`)).data;
+}
+
+export async function hangupCall(attemptId: string) {
+  return (
+    await send<{ call_attempt_id: string; ending: boolean }>(
+      "POST",
+      `/api/v1/calls/${attemptId}/hangup`,
+    )
+  ).data;
 }

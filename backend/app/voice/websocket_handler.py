@@ -36,7 +36,7 @@ from app.providers.llm.base import LLMError, LLMProvider
 from app.providers.stt import create_stt_provider
 from app.providers.telephony import exotel_models as em
 from app.providers.tts.base import TTSProvider
-from app.services import call_service, screening_store, transcript_service
+from app.services import call_service, screening_store, settings_service, transcript_service
 from app.utils.log import get_logger
 from app.utils.queue import enqueue_finalize_call
 from app.utils.redis import KEY_PREFIX, get_redis
@@ -154,7 +154,9 @@ def sanitize(message: Any) -> Any:
 # --- Building the conversation ----------------------------------------------------------------
 
 
-def job_config(job: Job) -> JobConfig:
+def job_config(job: Job, settings: Settings | None = None) -> JobConfig:
+    """The job as the agent uses it; `settings` (effective) adds the Settings page's
+    introduction template and organization name."""
     return JobConfig.from_dict(
         {
             "id": str(job.id),
@@ -166,11 +168,15 @@ def job_config(job: Job) -> JobConfig:
             "skills": job.skills,
             "screening_questions": job.screening_questions,
             "agent_instructions": job.agent_instructions,
+            "introduction_template": settings.agent_introduction if settings else None,
+            "organization": settings.organization_name if settings else None,
         }
     )
 
 
-async def load_context(attempt_id: uuid.UUID, provider_call_id: str | None) -> CallContext:
+async def load_context(
+    attempt_id: uuid.UUID, provider_call_id: str | None, settings: Settings
+) -> CallContext:
     async with get_sessionmaker()() as db:
         attempt = await db.get(CallAttempt, attempt_id)
         assert attempt is not None
@@ -178,9 +184,10 @@ async def load_context(attempt_id: uuid.UUID, provider_call_id: str | None) -> C
         assert candidate is not None
         job = await db.get(Job, candidate.job_id)
         assert job is not None
+        effective = await settings_service.effective(db, settings)
     return CallContext(
         attempt_id=str(attempt_id),
-        job=job_config(job),
+        job=job_config(job, effective),
         candidate=CandidateContext(
             name=candidate.name, candidate_id=str(candidate.id), call_id=str(attempt_id)
         ),
@@ -246,7 +253,7 @@ async def build_conversation(
         llm = create_llm_provider(settings)
     except LLMError:
         return "llm_not_configured"
-    ctx = await load_context(uuid.UUID(attempt_id), provider_call_id)
+    ctx = await load_context(uuid.UUID(attempt_id), provider_call_id, settings)
     manager = ConversationManager(ctx.job, ctx.candidate, llm, timeout_s=settings.openai_timeout_s)
     await transcript_service.open_conversation(uuid.UUID(attempt_id))
     session = CallSession(

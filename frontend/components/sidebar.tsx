@@ -67,6 +67,15 @@ const ICONS = {
       <path d="M3 13h18" />
     </>,
   ),
+  calls: icon(
+    <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />,
+  ),
+  settings: icon(
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+    </>,
+  ),
   logout: icon(
     <>
       <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
@@ -103,9 +112,11 @@ const LINKS = [
     // The list, a candidate's page and adding one; the upload flow has its own link
     isActive: (p: string) => p === "/candidates" || /^\/candidates\/(?!upload)/.test(p),
   },
+  { href: "/calls", label: "Calls", icon: ICONS.calls },
   { href: "/candidates/upload", label: "Upload", icon: ICONS.upload },
   { href: "/settings/job", label: "Job settings", icon: ICONS.job },
   { href: "/default-questions", label: "Default questions", icon: ICONS.questions },
+  { href: "/settings", label: "Settings", icon: ICONS.settings },
 ];
 
 // The collapsed choice lives in localStorage; components re-read it when it changes.

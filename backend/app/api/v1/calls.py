@@ -1,21 +1,44 @@
-"""Call attempts (plan.md Module F). Recruiter-only. The candidate page starts a call; the
-call list and transcripts come with the Phase 8 dashboard."""
+"""Call attempts (plan.md Module F, phase-08 §5.3). Recruiter-only.
+
+start (and dry run) · list with filters · detail · transcript · retry · cancel · hangup.
+Starting and retrying use the effective settings: the Settings page's calling window and the
+global pause apply at once.
+"""
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request, status
+from sqlalchemy import func, select
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import CurrentUser, EffectiveSettingsDep, RedisDep, SessionDep
 from app.api.responses import ok
-from app.database.models import CallAttemptType, CallStatus
+from app.config import Settings
+from app.database.models import CallAttemptType, CallStatus, Conversation
 from app.repositories import call_repo
-from app.schemas.call import CallAttemptOut, StartCallResult, StartCallsRequest
+from app.schemas.call import (
+    CallAttemptOut,
+    CallListItem,
+    CallTranscript,
+    HangupResult,
+    StartCallResult,
+    StartCallsRequest,
+)
 from app.schemas.common import DataResponse, PageResponse
 from app.services import call_service, sync_service
+from app.services.errors import conflict, not_found
 from app.utils.queue import enqueue_initiate_call
+from app.voice.session_registry import REGISTRY
 
 router = APIRouter(prefix="/calls", tags=["calls"])
+
+
+def voice_ready(request: Request, settings: Settings) -> bool:
+    """Calls need the AI voice loaded in this process (it speaks on the stream).
+    tts_preload off = tests: there is no voice to wait for."""
+    tts = getattr(request.app.state, "tts", None)
+    return not settings.tts_preload or bool(tts and tts.status().ready)
 
 
 @router.post(
@@ -24,43 +47,163 @@ router = APIRouter(prefix="/calls", tags=["calls"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def start_calls(
-    body: StartCallsRequest, session: SessionDep, settings: SettingsDep, request: Request
+    body: StartCallsRequest, session: SessionDep, settings: EffectiveSettingsDep, request: Request
 ) -> dict[str, Any]:
     """Queue a screening call per candidate. Each candidate gets its own result (ok or a
-    reason). Calls need the AI voice loaded in this process (it speaks on the stream)."""
-    tts = getattr(request.app.state, "tts", None)
+    reason). `dry_run`: only the results, nothing queued (the confirmation dialog)."""
     results = await call_service.start_calls(
         session,
         body.candidate_ids,
         settings,
         enqueue_initiate_call,
         attempt_type=CallAttemptType.MANUAL,
-        # tts_preload off = tests: there is no voice to wait for
-        voice_ready=not settings.tts_preload or bool(tts and tts.status().ready),
+        voice_ready=voice_ready(request, settings),
+        dry_run=body.dry_run,
     )
     if any(r.attempt_id for r in results):
         await sync_service.request_sync(settings)
     return ok([r.as_dict() for r in results])
 
 
-@router.get("", response_model=PageResponse[CallAttemptOut])
+@router.get("", response_model=PageResponse[CallListItem])
 async def list_calls(
     session: SessionDep,
     candidate_id: uuid.UUID | None = None,
-    call_status: CallStatus | None = None,
+    call_status: Annotated[list[CallStatus] | None, Query()] = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    q: Annotated[str | None, Query(max_length=200, description="Candidate name or phone")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
-    items, total = await call_repo.search(
+    rows, total = await call_repo.search(
         session,
         candidate_id=candidate_id,
-        status=call_status.value if call_status else None,
+        status=[s.value for s in call_status] if call_status else None,
+        created_from=created_from,
+        created_to=created_to,
+        q=q,
         page=page,
         page_size=page_size,
     )
+    ids = [a.id for a, _, _ in rows]
+    with_transcript = set(
+        (
+            await session.execute(
+                select(Conversation.call_attempt_id).where(
+                    Conversation.call_attempt_id.in_(ids),
+                    func.jsonb_array_length(Conversation.transcript) > 0,
+                )
+            )
+        ).scalars()
+    )
+    items = [
+        CallAttemptOut.model_validate(a).model_dump()
+        | {"candidate_name": name, "applied_role": role, "has_transcript": a.id in with_transcript}
+        for a, name, role in rows
+    ]
     return ok(items, {"page": page, "page_size": page_size, "total": total})
 
 
 @router.get("/{call_attempt_id}", response_model=DataResponse[CallAttemptOut])
 async def get_call(call_attempt_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
     return ok(await call_service.get(session, call_attempt_id))
+
+
+def _entry(e: dict[str, Any]) -> dict[str, Any] | None:
+    text = e.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    speaker = "assistant" if e.get("speaker") in ("assistant", "agent") else "candidate"
+    return {
+        "seq": e.get("seq"),
+        "speaker": speaker,
+        "text": text,
+        "timestamp": e.get("timestamp"),
+        "interrupted": bool(e.get("interrupted")),
+        "heard_text": e.get("heard_text"),
+    }
+
+
+@router.get("/{call_attempt_id}/transcript", response_model=DataResponse[CallTranscript])
+async def get_transcript(call_attempt_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
+    """The call's transcript (empty for a call nobody answered), and its summary."""
+    attempt = await call_service.get(session, call_attempt_id)
+    conv = (
+        await session.execute(
+            select(Conversation).where(Conversation.call_attempt_id == attempt.id)
+        )
+    ).scalar_one_or_none()
+    entries = [x for e in (conv.transcript if conv else []) if (x := _entry(e))]
+    return ok(
+        {
+            "call_attempt_id": attempt.id,
+            "candidate_id": attempt.candidate_id,
+            "attempt_number": attempt.attempt_number,
+            "call_status": attempt.call_status,
+            "end_reason": attempt.end_reason,
+            "start_time": attempt.start_time,
+            "duration_seconds": attempt.duration_seconds,
+            "entries": entries,
+            "summary": conv.summary if conv else None,
+            "finalized": bool(conv and conv.finalized_at),
+        }
+    )
+
+
+@router.post(
+    "/{call_attempt_id}/retry",
+    response_model=DataResponse[StartCallResult],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_call(
+    call_attempt_id: uuid.UUID,
+    session: SessionDep,
+    settings: EffectiveSettingsDep,
+    request: Request,
+) -> dict[str, Any]:
+    """Call this attempt's candidate again (a new `manual` attempt) when eligible."""
+    result = await call_service.retry(
+        session,
+        call_attempt_id,
+        settings,
+        enqueue_initiate_call,
+        voice_ready=voice_ready(request, settings),
+    )
+    if result.attempt_id:
+        await sync_service.request_sync(settings)
+    return ok(result.as_dict())
+
+
+@router.post("/{call_attempt_id}/cancel", response_model=DataResponse[CallAttemptOut])
+async def cancel_call(
+    call_attempt_id: uuid.UUID,
+    session: SessionDep,
+    redis: RedisDep,
+    settings: EffectiveSettingsDep,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    """Cancel a call that hasn't dialed yet (pending, queued, retry or callback scheduled)."""
+    attempt = await call_service.cancel(session, redis, call_attempt_id, settings, user_id=user.id)
+    await sync_service.request_sync(settings)
+    return ok(attempt)
+
+
+@router.post("/{call_attempt_id}/hangup", response_model=DataResponse[HangupResult])
+async def hangup_call(
+    call_attempt_id: uuid.UUID, session: SessionDep, user: CurrentUser
+) -> dict[str, Any]:
+    """Safety control: end a call in progress. The agent says its closing line and hangs up
+    (the flow's Hangup step ends the call). Only a call this server is handling."""
+    attempt = await call_service.get(session, call_attempt_id)
+    if attempt.call_status != CallStatus.IN_PROGRESS:
+        raise conflict(
+            "call_not_in_progress",
+            "Only a call in progress can be ended",
+            {"call_status": attempt.call_status},
+        )
+    live = REGISTRY.get(str(attempt.id))
+    end = getattr(live, "end_by_recruiter", None)
+    if end is None:
+        raise not_found("call_session_not_found", "This call isn't connected to the AI right now")
+    return ok({"call_attempt_id": attempt.id, "ending": bool(end())})

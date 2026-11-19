@@ -37,6 +37,7 @@ from app.database.models import (
 )
 from app.services.sheet_mapping import Cell, counts_as_attempt, to_sheet_row
 from app.services.sheets_service import SheetsError, UpsertResult
+from app.services.summary_service import pick_summary_conversation
 from app.utils.log import get_logger
 from app.utils.redis import KEY_PREFIX
 
@@ -83,6 +84,19 @@ def record_change(session: AsyncSession, candidate_id: uuid.UUID) -> SyncLog:
     return row
 
 
+async def backfill(session: AsyncSession) -> int:
+    """An outbox row for every active candidate (first fill of a new sheet), committed.
+    Returns how many were queued."""
+    ids = list(
+        (
+            await session.execute(select(Candidate.id).where(Candidate.deleted_at.is_(None)))
+        ).scalars()
+    )
+    record_changes(session, ids)
+    await session.commit()
+    return len(ids)
+
+
 def record_changes(session: AsyncSession, candidate_ids: Iterable[uuid.UUID]) -> None:
     for cid in dict.fromkeys(candidate_ids):
         record_change(session, cid)
@@ -94,8 +108,9 @@ class JobPool(Protocol):
 
 async def request_sync(settings: Settings, pool: JobPool | None = None) -> bool:
     """Queue a drain after a commit. Best effort: the reconciler catches anything missed.
-    Returns whether a job was queued."""
-    if not settings.sheets_configured:
+    Returns whether a job was queued. Only the key file is checked here: the sheet itself may
+    be set on the Settings page (the drain checks the effective settings)."""
+    if not settings.google_service_account_json:
         return False
     try:
         if pool is None:
@@ -183,9 +198,11 @@ async def build_rows(
         .where(CallAttempt.candidate_id.in_(candidate_ids), Conversation.finalized_at.is_not(None))
         .order_by(Conversation.finalized_at)
     )
-    last_conv: dict[uuid.UUID, Conversation] = {}
+    by_candidate: dict[uuid.UUID, list[Conversation]] = {}
     for conv, cid in conversations:
-        last_conv[cid] = conv
+        by_candidate.setdefault(cid, []).append(conv)
+    # Call Summary: the latest call that collected data (phase-08 decision), else the latest
+    last_conv = {cid: pick_summary_conversation(convs) for cid, convs in by_candidate.items()}
     return {
         str(c.id): to_sheet_row(
             c,

@@ -66,14 +66,16 @@ The full schema is at `/docs` and `/openapi.json`; the frontend's types are gene
 |---|---|---|
 | POST | `/api/v1/auth/login` | `{email, password}` → user; sets the session cookie |
 | POST | `/api/v1/auth/logout` | Ends the session |
-| GET | `/api/v1/auth/me` | Current user |
+| GET | `/api/v1/auth/me` | Current user, with `role`: `admin` or `recruiter` (Phase 8; only an admin may change the Google Sheet) |
 
 ### Candidates
 
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/v1/candidates` | Requires `consent_attested: true`. Phone normalized to E.164. `job_id` defaults to the active job. 409 `duplicate_phone` with `details.existing_candidate_id` |
-| GET | `/api/v1/candidates` | `q` (name/phone/email), `screening_status`, `job_id`, `interested`, `sort` (`created_at`, `name`, `updated_at`, prefix `-` for descending; default `-created_at`), `page`, `page_size` |
+| GET | `/api/v1/candidates` | `q` (name/phone/email), `screening_status`, `call_status` (the latest call's status, or `not_called`), `job_id`, `interested`, `sort` (`created_at`, `name`, `updated_at`, prefix `-` for descending; default `-created_at`), `page`, `page_size`. Rows add `eligibility {can_call, reason, message}`, `last_call {id, attempt_number, call_status, end_reason, at, terminal}`, `last_call_has_transcript`, `open_conflicts` |
+| GET | `/api/v1/candidates/{id}/overview` | `{eligibility, summary, sheet_sync, sheets_configured, conflicts}`. `summary`: the latest finalized call that collected data, else the latest (`newer_call_without_data` says when a later call had nothing) |
+| POST | `/api/v1/candidates/{id}/conflicts/{field}/resolve` | `{choice: "keep" \| "use"}`: keep the stored value or take the other one. Marks the conflict resolved (who, when, choice) on the field's meta and in the call's `final.conflicts`; Sheets outbox row. `409 no_conflict` |
 | GET | `/api/v1/candidates/{id}` | Profile and screening fields |
 | PATCH | `/api/v1/candidates/{id}` | Partial update; `null` clears an optional field. Changing the phone re-checks duplicates. `opted_out` can't go back to `false` (409 `opt_out_irreversible`) |
 | DELETE | `/api/v1/candidates/{id}` | Soft delete. The phone stays reserved, so re-adding it returns 409 with `details.deleted: true` |
@@ -115,17 +117,39 @@ Row status: `valid`, `invalid`, `duplicate_in_file` (the first row with a phone 
 
 `screening_questions` is an ordered list of `{key, prompt, required, type: string|number|boolean, unit}`. The ten standard keys (`current_location` … `interview_availability`) keep their fixed types; other keys are custom questions.
 
-### Calls (Phase 5)
+### Calls (Phase 5, completed in Phase 8)
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/v1/calls/start` | `{"candidate_ids": [...]}` (1–100) → `202` with one result per candidate: `{candidate_id, ok, call_attempt_id, error: {code, message}}`. Each accepted candidate gets a `queued` attempt and an `initiate_call` job |
-| GET | `/api/v1/calls` | Attempts, newest first; filters `candidate_id`, `call_status`; paginated |
-| GET | `/api/v1/calls/{id}` | One attempt: `call_status`, `provider_status`, `end_reason`, times, `duration_seconds`, `failure_reason` |
+| POST | `/api/v1/calls/start` | `{"candidate_ids": [...], "dry_run": false}` (1–100) → `202` with one result per candidate: `{candidate_id, ok, call_attempt_id, error: {code, message}}`. Each accepted candidate gets a `queued` attempt and an `initiate_call` job. `dry_run: true` only checks (the confirmation dialog) |
+| GET | `/api/v1/calls` | Attempts, newest first, with `candidate_name`, `applied_role`, `has_transcript`. Filters `candidate_id`, `call_status` (repeatable), `q` (candidate name/phone), `created_from`, `created_to`; paginated |
+| GET | `/api/v1/calls/{id}` | One attempt: `call_status`, `provider_status`, `end_reason`, times, `duration_seconds`, `failure_reason`, `next_retry_at`, `has_recording` (the provider's recording URL is never sent) |
+| GET | `/api/v1/calls/{id}/transcript` | `{entries: [{seq, speaker, text, timestamp, interrupted, heard_text}], summary, finalized, …}`; empty entries for an unanswered call |
+| POST | `/api/v1/calls/{id}/retry` | A new `manual` attempt for the candidate under the start rules; same result shape as one `start` item |
+| POST | `/api/v1/calls/{id}/cancel` | Only `pending`, `queued`, `retry_scheduled`, `callback_requested` → `cancelled` (`failure_reason: cancelled_by_recruiter:<user>`); else `409 call_not_cancellable` |
+| POST | `/api/v1/calls/{id}/hangup` | Ends a call `in_progress` on this server: the agent says its closing line and hangs up (`failure_reason: ended_by_recruiter`). `409 call_not_in_progress`, `404 call_session_not_found` |
 
-Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`, `consent_missing`, `phone_invalid`, `job_inactive`, `call_already_active`, `outside_calling_window` (Mon–Sat 10:00–19:00 IST by default), `telephony_not_configured`; `enqueue_failed` if the job queue is down.
+Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`, `consent_missing`, `phone_invalid`, `job_inactive`, `call_already_active`, `calling_paused` (Settings page), `outside_calling_window` (Settings page; Mon–Sat 10:00–19:00 IST by default), `telephony_not_configured`, `voice_unavailable`; `enqueue_failed` if the job queue is down.
 
-`call_status`: `queued → initiating → (ringing) → in_progress → completed`, or `failed | no_answer | busy | cancelled` from any live state. `end_reason`: `agent_completed`, `candidate_hangup`, `no_answer`, `busy`, `provider_failed`, `technical_failure`, `cancelled`, `invalid_number`.
+`call_status`: `queued → initiating → (ringing) → in_progress → completed`, or `failed | no_answer | busy | cancelled` from any live state. `end_reason`: `agent_completed`, `candidate_hangup`, `no_answer`, `busy`, `provider_failed`, `technical_failure`, `cancelled`, `invalid_number`, and the conversation's own reasons (`declined`, `opted_out`, `callback_scheduled`, `wrong_person`, `silence_timeout`, `max_duration`, `escalated`).
+
+### Dashboard (Phase 8)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/dashboard/stats?range=today\|7d\|all` | The nine tiles (phase-08 §5.1) plus `definitions` (tooltip text). `range` limits completed / unanswered / failed by when the call was placed. An empty database gives zeros |
+| GET | `/api/v1/dashboard/activity` | The 20 most recently changed attempts with candidate name and status |
+| GET | `/api/v1/dashboard/attention` | `[{candidate_id, candidate_name, reason, at, call_attempt_id, detail, conflict}]`; reasons `callback_due`, `data_conflict`, `unanswered_question`, `vague_callback`, `technical_failure`, `partially_completed`, `wrong_person`, `attempts_exhausted`, `sheets_sync_failed` (most urgent first) |
+| GET | `/api/v1/dashboard/quick-start` | Eligible candidates never called (first 20), total, whether calling is open now, why not (`blocked_reason`), lines in use |
+| GET | `/api/v1/dashboard/summary` | Phase 1 charts, live calls, latest transcript |
+
+### Settings (Phase 8)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/settings` | `{general: {organization_name, agent_introduction, calling: {days, start_hour, end_hour}, max_concurrent_calls, retry: {max_attempts, interval_days}, calling_enabled}, limits: {max_concurrent_calls, timezone, calling_enabled_env}, introduction: {text, …}, calling_now}` |
+| PATCH | `/api/v1/settings` | Any subset of `general`. The introduction may use `{first_name}`, `{company}`, `{job_title}`, `{organization}`, must contain "AI" and end with "?"; `null` = built-in line. Concurrency is capped by `MAX_CONCURRENT_CALLS`. Logged with the user id |
+| GET | `/api/v1/settings/status?refresh=` | `{providers: [{name, label, configured, reachable, message, detail, last_checked}], google_sheets}`; checks cached 60 s; never contains a key |
 
 ### Google Sheets (Phase 7)
 
@@ -133,6 +157,11 @@ Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`
 |---|---|---|
 | GET | `/api/v1/integrations/google-sheets/status` | `{configured, tab, state, message, reachable, header, service_account_email, last_success_at, last_error_at, pending_candidates, failed_candidates, checked_at}`. `state`: `ok`, `degraded` (temporary failures, retrying), `error` (needs fixing), `unknown`, `not_configured`. `reachable`/`header` come from a live check cached 60 s; `?refresh=true` forces it |
 | POST | `/api/v1/integrations/google-sheets/sync/{candidate_id}` | `202 {candidate_id, sync_log_id, sync_status: "pending", queued}`. Also retries a row that failed for good. `404 candidate_not_found`, `409 sheets_not_configured` |
+| POST | `/api/v1/integrations/google-sheets/backfill` | "Sync all": every active candidate queued |
+| POST | `/api/v1/integrations/google-sheets/check` | **Admin.** `{link, tab?}` → `{sheet_id, sheet_url, tab, reachable, header, message, service_account_email, can_save}` for that sheet (nothing saved) |
+| PUT | `/api/v1/integrations/google-sheets/sheet` | **Admin.** Same body; checked again, saved in `app_settings` (`.env` stays the default), every active candidate queued for the new sheet. The old sheet keeps its rows. `403 admin_required`, `409 sheet_not_usable` |
+
+Status (Phase 8) also has `sheet_id`, `sheet_url`, `sheet_source` (`settings` or `env`), `sheet_changed_at`, `can_edit`, `key_configured`.
 
 Every candidate change (create, edit, import, call queued or ended, finalization, summary) adds a Sheets outbox row in the same transaction. Details: [google-sheets.md](google-sheets.md).
 

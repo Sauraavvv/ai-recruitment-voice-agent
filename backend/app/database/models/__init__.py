@@ -14,6 +14,7 @@ from app.database.models.enums import (
     ImportBatchStatus,
     ScreeningStatus,
     SyncStatus,
+    UserRole,
 )
 from app.database.models.import_batch import ImportBatch
 from app.database.models.job import Job
@@ -39,5 +40,6 @@ __all__ = [
     "SyncLog",
     "SyncStatus",
     "User",
+    "UserRole",
     "WebhookEvent",
 ]

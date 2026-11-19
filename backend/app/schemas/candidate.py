@@ -11,7 +11,7 @@ from pydantic import (
     field_validator,
 )
 
-from app.database.models.enums import ScreeningStatus
+from app.database.models.enums import CallEndReason, CallStatus, ScreeningStatus
 from app.utils import candidate_fields as rules
 from app.utils.phone import PHONE_ERROR_MESSAGES, normalize_phone
 
@@ -136,3 +136,73 @@ class CandidateOut(BaseModel):
 
 
 CandidateSort = Literal["created_at", "-created_at", "name", "-name", "updated_at", "-updated_at"]
+
+
+class Eligibility(BaseModel):
+    can_call: bool
+    reason: str | None  # call_service.Ineligible code
+    message: str | None  # recruiter-facing text for a disabled button
+
+
+class LastCall(BaseModel):
+    id: uuid.UUID
+    attempt_number: int
+    call_status: CallStatus
+    end_reason: CallEndReason | None
+    at: datetime
+    terminal: bool
+
+
+class CandidateListItem(CandidateOut):
+    eligibility: Eligibility
+    last_call: LastCall | None
+    last_call_has_transcript: bool
+    open_conflicts: int
+
+
+class Conflict(BaseModel):
+    field: str
+    stored_value: Any
+    stored_quote: str | None
+    stored_seq: int | None
+    other_value: Any
+    other_quote: str | None
+    other_seq: int | None
+    reason: str | None
+    call_attempt_id: str | None
+
+
+class CandidateSummary(BaseModel):
+    call_attempt_id: uuid.UUID
+    attempt_number: int | None
+    text: str | None
+    generated_by: str | None
+    missing_information: list[str]
+    callback: str | None
+    callback_request: dict[str, Any] | None
+    finalized_at: datetime | None
+    collected_data: bool
+    newer_call_without_data: bool
+
+
+class SheetSyncState(BaseModel):
+    status: Literal["never", "pending", "success", "failed"]
+    synced_at: datetime | None
+    error: str | None
+    next_attempt_at: datetime | None
+
+
+class CandidateOverview(BaseModel):
+    """Everything on the candidate page besides the candidate and its calls."""
+
+    eligibility: Eligibility
+    summary: CandidateSummary | None
+    sheet_sync: SheetSyncState
+    sheets_configured: bool
+    conflicts: list[Conflict]
+
+
+class ConflictResolution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    choice: Literal["keep", "use"]

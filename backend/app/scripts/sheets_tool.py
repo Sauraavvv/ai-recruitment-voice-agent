@@ -15,10 +15,10 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.database.connection import dispose_engine, get_sessionmaker, init_engine
 from app.database.models import Candidate
-from app.services import sync_service
+from app.services import settings_service, sync_service
 from app.services.sheet_mapping import HEADERS, LAST_COLUMN
 from app.services.sheets_service import SheetsService
 from app.utils.redis import close_redis, get_redis, init_redis
@@ -31,8 +31,7 @@ def _cell(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-async def _compare(service: SheetsService) -> int:
-    settings = get_settings()
+async def _compare(service: SheetsService, settings: Settings) -> int:
     client = await asyncio.to_thread(service._get_client)
     body = await asyncio.to_thread(
         client._sheets.spreadsheets()
@@ -85,11 +84,17 @@ async def _compare(service: SheetsService) -> int:
 
 async def main(command: str) -> int:
     settings = get_settings()
-    if not settings.sheets_configured:
-        print("Set GOOGLE_SERVICE_ACCOUNT_JSON (path) and GOOGLE_SHEET_ID first")
-        return 2
     init_engine(settings.database_url.get_secret_value())
     init_redis(settings.redis_url.get_secret_value())
+    # the sheet chosen on the Settings page, else GOOGLE_SHEET_ID
+    settings = await settings_service.effective_new_session(settings)
+    if not settings.sheets_configured:
+        print(
+            "Set GOOGLE_SERVICE_ACCOUNT_JSON (path) and a sheet (Settings page or GOOGLE_SHEET_ID)"
+        )
+        await close_redis()
+        await dispose_engine()
+        return 2
     service = SheetsService(settings)
     try:
         if command == "check":
@@ -107,21 +112,13 @@ async def main(command: str) -> int:
             return 0 if outcome.outcome in ("done", "idle", "more") else 1
         if command == "backfill":
             async with get_sessionmaker()() as session:
-                ids = list(
-                    (
-                        await session.execute(
-                            select(Candidate.id).where(Candidate.deleted_at.is_(None))
-                        )
-                    ).scalars()
-                )
-                sync_service.record_changes(session, ids)
-                await session.commit()
-            print(f"queued {len(ids)} candidates; running the sync")
+                queued = await sync_service.backfill(session)
+            print(f"queued {queued} candidates; running the sync")
             outcome = await sync_service.drain(get_sessionmaker(), service, get_redis(), settings)
             print(f"{outcome.outcome}: {outcome.synced} synced, {outcome.failed} failed")
             return 0
         if command == "compare":
-            return await _compare(service)
+            return await _compare(service, settings)
         return 2
     finally:
         await close_redis()

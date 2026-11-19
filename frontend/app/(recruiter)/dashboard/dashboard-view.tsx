@@ -3,18 +3,27 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { ErrorState, Skeleton } from "@/components/states";
 import { Card } from "@/components/ui";
-import { errorMessage } from "@/lib/api";
+import { usePolling } from "@/hooks/use-polling";
 import { useLoad } from "@/lib/use-load";
-import { getDashboardSummary } from "@/services/dashboard";
+import {
+  getActivity,
+  getAttention,
+  getDashboardSummary,
+  getQuickStart,
+  getStats,
+} from "@/services/dashboard";
 import type { DashboardSummary } from "@/types";
 
 import { CallsByDayChart, type BarRow, HorizontalBars, STATUS } from "./charts";
-
-const REFRESH_MS = 15_000;
-
-const percent = (rate: number | null | undefined) =>
-  rate === null || rate === undefined ? "—" : `${Math.round(rate * 100)}%`;
+import {
+  ActivityList,
+  AttentionList,
+  CallingProgress,
+  type Range,
+  StatTiles,
+} from "./overview-sections";
 
 function duration(seconds: number | null | undefined) {
   if (seconds === null || seconds === undefined) return "—";
@@ -38,18 +47,6 @@ const initials = (name: string) =>
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
-
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="rounded-3xl bg-[#18191c] p-5">
-      <div className="text-xs font-medium tracking-wide text-zinc-500 uppercase">{label}</div>
-      <div className="font-display mt-2 text-3xl font-semibold text-white tabular-nums">
-        {value}
-      </div>
-      {hint && <div className="mt-1 text-xs text-zinc-500">{hint}</div>}
-    </div>
-  );
-}
 
 const LIVE_LABELS: Record<string, string> = {
   queued: "Queued",
@@ -186,27 +183,69 @@ function outcomeRows(outcomes: Record<string, number>): BarRow[] {
 }
 
 export function DashboardView() {
-  const { data, error, reload } = useLoad("dashboard-summary", getDashboardSummary);
+  const [range, setRange] = useState<Range>("all");
+  const stats = useLoad(`dashboard-stats:${range}`, () => getStats(range));
+  const summary = useLoad("dashboard-summary", getDashboardSummary);
+  const activity = useLoad("dashboard-activity", getActivity);
+  const attention = useLoad("dashboard-attention", getAttention);
+  const quick = useLoad("dashboard-quick-start", getQuickStart);
   const [now, setNow] = useState(() => Date.now());
 
+  const reloads = [stats.reload, summary.reload, activity.reload, attention.reload, quick.reload];
+  const refreshAll = () => reloads.forEach((reload) => reload());
+  const active = Boolean(stats.data && stats.data.calls_in_progress + stats.data.calls_pending > 0);
+  usePolling(refreshAll, active); // 3 s while a call is live, 30 s otherwise
+
   useEffect(() => {
-    const refresh = setInterval(reload, REFRESH_MS);
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      clearInterval(refresh);
-      clearInterval(tick);
-    };
-  }, [reload]);
+    return () => clearInterval(tick);
+  }, []);
 
-  if (!data) {
-    return (
-      <div className="rounded-3xl bg-[#18191c] p-6 text-sm text-zinc-500">
-        {error ? `Couldn't load the dashboard: ${errorMessage(error)}` : "Loading…"}
+  const data = summary.data;
+  return (
+    <div className="space-y-4">
+      {stats.error && !stats.data && <ErrorState error={stats.error} onRetry={stats.reload} />}
+      <StatTiles stats={stats.data} range={range} onRange={setRange} />
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <CallingProgress stats={stats.data} quick={quick.data} onStarted={refreshAll} />
+        {/* The calling progress card sets the row's height; the attention list scrolls inside */}
+        <div className="relative xl:col-span-2">
+          <AttentionList
+            items={attention.data}
+            error={attention.error}
+            onRetry={attention.reload}
+            onChanged={refreshAll}
+          />
+        </div>
       </div>
-    );
-  }
 
-  const k = data.kpis;
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card
+          title="Active AI calls"
+          action={
+            data && (
+              <span className="text-xs text-zinc-500 tabular-nums">
+                {data.live_calls.length} live
+              </span>
+            )
+          }
+        >
+          {data ? <LiveCalls data={data} now={now} /> : <Skeleton className="h-40" />}
+        </Card>
+        <ActivityList items={activity.data} error={activity.error} onRetry={activity.reload} />
+        <Card title="Latest call transcript">
+          {data ? <Transcript data={data} now={now} /> : <Skeleton className="h-40" />}
+        </Card>
+      </div>
+
+      {summary.error && !data && <ErrorState error={summary.error} onRetry={summary.reload} />}
+      {data && <Charts data={data} />}
+    </div>
+  );
+}
+
+function Charts({ data }: { data: DashboardSummary }) {
   const f = data.funnel;
   const outcomes = outcomeRows(data.outcomes);
   const outcomeTotal = outcomes.reduce((sum, row) => sum + row.value, 0);
@@ -225,44 +264,7 @@ export function DashboardView() {
   }));
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <Kpi
-          label="Candidates"
-          value={String(k.candidates_total)}
-          hint={`${k.opted_out} opted out`}
-        />
-        <Kpi label="Screened" value={String(k.screened)} hint="screening completed" />
-        <Kpi
-          label="Interested"
-          value={percent(k.interested_rate)}
-          hint={`${k.interested} of ${k.screened} screened`}
-        />
-        <Kpi label="Calls placed" value={String(k.calls_total)} hint={`${k.calls_today} today`} />
-        <Kpi
-          label="Connect rate"
-          value={percent(k.connect_rate)}
-          hint={`${k.calls_connected} answered`}
-        />
-        <Kpi label="Avg call" value={duration(k.avg_call_seconds)} hint="answered calls" />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card
-          title="Active AI calls"
-          action={
-            <span className="text-xs text-zinc-500 tabular-nums">
-              {data.live_calls.length} live
-            </span>
-          }
-        >
-          <LiveCalls data={data} now={now} />
-        </Card>
-        <Card title="Latest call transcript" className="xl:col-span-2">
-          <Transcript data={data} now={now} />
-        </Card>
-      </div>
-
+    <>
       <div className="grid gap-4 xl:grid-cols-3">
         <Card title="Calls · last 14 days" className="xl:col-span-2">
           <CallsByDayChart days={data.calls_by_day} />
@@ -319,6 +321,6 @@ export function DashboardView() {
           )}
         </Card>
       </div>
-    </div>
+    </>
   );
 }

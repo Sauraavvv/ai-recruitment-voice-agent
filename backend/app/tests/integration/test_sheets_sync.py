@@ -299,7 +299,7 @@ async def test_status_endpoint(
     async def check(self: SheetsService) -> SheetCheck:
         return SheetCheck(True, "ok", None, "sync@test.iam.gserviceaccount.com")
 
-    monkeypatch.setattr(SheetsService, "check", check)
+    monkeypatch.setattr(SheetsService, "check_unlocked", check)
     await create(authed, "+91 90000 09108")
     body = (await authed.get("/api/v1/integrations/google-sheets/status")).json()["data"]
     assert body["configured"] and body["reachable"] and body["header"] == "ok"

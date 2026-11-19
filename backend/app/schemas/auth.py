@@ -2,6 +2,8 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.database.models.enums import UserRole
+
 
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -16,3 +18,4 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     name: str
+    role: UserRole

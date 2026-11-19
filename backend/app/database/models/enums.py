@@ -84,6 +84,13 @@ class ImportBatchStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class UserRole(StrEnum):
+    """Admins may also change integration settings (the Google Sheet), phase-08."""
+
+    ADMIN = "admin"
+    RECRUITER = "recruiter"
+
+
 class ConsentSource(StrEnum):
     RECRUITER_ATTESTED_IMPORT = "recruiter_attested_import"
     MANUAL = "manual"

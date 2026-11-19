@@ -11,7 +11,7 @@ from typing import Any
 
 from app.config import Settings, get_settings
 from app.database.connection import get_sessionmaker
-from app.services import sync_service
+from app.services import settings_service, sync_service
 from app.services.sheets_service import SheetsService
 from app.utils.log import get_logger
 from app.utils.redis import get_redis
@@ -24,11 +24,12 @@ def _sheets(ctx: dict[str, Any], settings: Settings) -> SheetsService:
     if service is None:
         service = SheetsService(settings)
         ctx["sheets"] = service
-    return service
+    return service.configure(settings)
 
 
 async def sync_sheets(ctx: dict[str, Any]) -> str:
-    settings: Settings = ctx.get("settings") or get_settings()
+    # The sheet may be set on the Settings page (app_settings) instead of .env
+    settings = await settings_service.effective_new_session(ctx.get("settings") or get_settings())
     result = await sync_service.drain(
         get_sessionmaker(), _sheets(ctx, settings), get_redis(), settings
     )
@@ -38,7 +39,7 @@ async def sync_sheets(ctx: dict[str, Any]) -> str:
 
 
 async def reconcile_sync(ctx: dict[str, Any], *, now: datetime | None = None) -> int:
-    settings: Settings = ctx.get("settings") or get_settings()
+    settings = await settings_service.effective_new_session(ctx.get("settings") or get_settings())
     if not settings.sheets_configured:
         return 0
     async with get_sessionmaker()() as session:

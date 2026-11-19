@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.responses import AppError
 from app.config import Settings, get_settings
 from app.database.connection import get_session
-from app.database.models import User
+from app.database.models import User, UserRole
 from app.repositories import user_repo
 from app.services import auth_service
 from app.utils.redis import get_redis
@@ -51,3 +51,22 @@ async def require_user(request: Request, session: SessionDep, redis: RedisDep) -
 
 
 CurrentUser = Annotated[User, Depends(require_user)]
+
+
+async def require_admin(user: CurrentUser) -> User:
+    if user.role != UserRole.ADMIN:
+        raise AppError(403, "admin_required", "Only an admin can change this")
+    return user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]
+
+
+async def effective_settings(session: SessionDep, settings: SettingsDep) -> Settings:
+    """The environment settings with the Settings page's values applied (phase-08)."""
+    from app.services import settings_service
+
+    return await settings_service.effective(session, settings)
+
+
+EffectiveSettingsDep = Annotated[Settings, Depends(effective_settings)]
