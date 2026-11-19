@@ -146,8 +146,14 @@ bench-stt:  ## STT benchmark (about 10 minutes, ~$0.50): make bench-stt [args='-
 
 # --- Phase 5: telephony ---------------------------------------------------------------------
 
-tunnel:  ## Public HTTPS/WSS URL for Exotel (Cloudflare quick tunnel; the URL changes every run)
-	cloudflared tunnel --no-autoupdate --url http://localhost:8010
+tunnel:  ## Public HTTPS/WSS URL for Exotel: ngrok's fixed NGROK_DOMAIN from .env (paste into Exotel once), else a Cloudflare quick tunnel (new URL every run). Keeps the Mac awake while running.
+	@set -a && . ./.env && set +a && \
+	if [ -n "$$NGROK_DOMAIN" ]; then \
+	  echo "ngrok -> https://$$NGROK_DOMAIN (fixed; PUBLIC_BACKEND_URL should be this)"; \
+	  caffeinate -i ngrok http 8010 --url="https://$$NGROK_DOMAIN" --log=stdout --log-level=warn; \
+	else \
+	  caffeinate -i cloudflared tunnel --no-autoupdate --url http://localhost:8010; \
+	fi
 
 exotel-urls:  ## URLs to paste into the Exotel flow (they contain secrets: don't share them)
 	docker compose exec -T backend python -m app.scripts.exotel_urls
