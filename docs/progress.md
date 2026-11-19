@@ -1,5 +1,63 @@
 # Progress
 
+## Phase 6 exit report (2026-11-19)
+
+**Implemented:** real screening calls end to end. Design: [voice-pipeline.md](voice-pipeline.md). Deviations from the plan: [phase-06 §13](phases/phase-06-voice-conversation.md#13-as-built-2026-11-19). Real-call log, latency table and AC evidence: [test-calls/phase-06.md](test-calls/phase-06.md).
+- `voice/pipeline.py` `CallSession`: one per call; every input becomes a turn event; one driver applies `turn_manager.TABLE`. Tasks in one TaskGroup; failures → apology → `technical_failure`.
+- End of turn by local VAD (`vad.py`: webrtcvad + energy gate, raised while we play) + Deepgram `finalize()`.
+- Cached acknowledgement while the agent thinks; "One moment." after 3.5 s; replies wait for 0.7 s of quiet from the candidate; a leading "Got it." isn't said twice.
+- Merging: speech before the reply plays cancels the turn (cancel-safe `handle_utterance`, `checkpoint/restore`) and reruns it on both parts.
+- Barge-in (`interruption.py`): ≥ 300 ms with real words or ≥ 600 ms of speech that started after the reply became audible → `clear`, heard portion, `handle_interruption`. Backchannels held; "yes" over a yes/no question's end is the answer; bare "Hello?" never is.
+- Silence: question again, "are you still there?", close (`silence_timeout`). Wrap-up read-back at 600 s, hard close at 880 s.
+- Transcript merged by seq after every turn (`transcript_service.py`); result stored at the end; `finalize_call` worker job writes the summary.
+- TTS warm-up of the introduction, role line and the job's questions during the greeting (cached replies play in ~1 ms).
+- `end_reason` values from the conversation (migration `0004`). Calls refused while the voice loads.
+- UI: **Call now** and a calls list on the candidate page.
+- Tools: `make test-call` (screening by default), `make voice-sim` (whole call with real providers, no phone).
+
+**Decided with the user:** Kitten TTS (Iris) is the primary voice, Deepgram Aura (Harmonia) the fallback (after live calls: "Iris is performing great as compared to Deepgram"). No other testers are available: P6-AC1's three different testers move to Phase 10 (after KYC). Card 6 (opt-out) and card 9 (noise) not tested live.
+
+**Agent changes from the calls** (prompt `p6-2026-11-19.1`; live eval 17 scenarios × 3 → **51/51**, new s17):
+- "Schedule a call/interview for me" is the next step, not a callback.
+- A company/location with no name in it ("Working at.") is invalid → asked again.
+- A notice period with no duration in it is rejected.
+- Read-back uses the extracted notice days ("15 days"), not the whole sentence.
+- Role line: "an AI Engineer position … , fully remote".
+- Silence re-prompts in the identity/permission phases repeat the actual question.
+
+**Files created / changed:**
+- Backend, new: `voice/pipeline.py`, `turn_manager.py`, `vad.py`, `interruption.py`, `playback.py`, `audio_processor.py`, `session_registry.py`, `telephony_poc.py`; `services/transcript_service.py`; `scripts/voice_sim.py`; migration `0004_conversation_end_reasons.py`; tests `unit/voice/session_harness.py`, `test_turn_parts.py`, `test_call_session.py`, `integration/test_transcript_service.py`, eval scenario `s17_schedule_interview.yaml`.
+- Backend, changed: `voice/websocket_handler.py` (production handler), `agent/conversation_manager.py`, `agent/prompts.py`, `agent/extraction.py`, `services/screening_store.py`, `call_service.py`, `api/v1/calls.py`, `workers/call_worker.py` + `settings.py`, `utils/queue.py`, `providers/tts/__init__.py`, `fallback.py`, `kitten_provider.py`, `deepgram_provider.py` (LRU 192), `config.py` (VAD, barge-in, silence, wrap-up, acknowledgement, warm-up, hold settings), `models/enums.py`, `scripts/test_call.py`, tests. Removed `voice/live_screening.py`.
+- Frontend: `candidates/[id]/calls-panel.tsx`, `candidate-detail.tsx`, `services/calls.ts`, `lib/labels.ts`, `types/` (regenerated).
+- Infra: `webrtcvad-wheels` 2.0.14.post1 (addition only); Makefile `voice-sim`, `test-call` default mode `screen`; `.env.example`.
+- Docs: `voice-pipeline.md`, `test-calls/phase-06.md` (new); `setup.md`, `benchmarks/tts.md`, `phases/phase-06` §13.
+
+**Tests run:**
+- `make test` → 576 passed, 1 skipped. `make test-docker` → 564 passed (before the last additions). Lint, mypy, eslint, tsc clean.
+- `make agent-eval` → 51/51 (twice, after each agent change).
+- `make voice-sim`: happy path all 10 fields right; callback "tomorrow 5 PM" right.
+- 7 real calls (6 screenings + 1 lost to a dead tunnel), one tester, phone ending …9773.
+
+**Acceptance criteria:** P6-AC2, AC3 (94.5%), AC5 (464 / 480 ms where the line delivers the audio), AC7, AC8 ✅. AC4 ✅ with one live miss of card 2 (STT). AC6 ✅ automated, the live part needs 2 lines. **AC1 partly**: 4 complete screenings by one tester.
+
+**Latency (calls 3-6):** acknowledgement / first sound p50 **0.72 s** (≤ 1.0 ✅); reply p50 **3.25 s** (≤ 3.5 ✅), p95 5.8 s; STT p50 681 ms (600 target, ~80 ms over); LLM p50 2.23 s.
+
+**Deferred or not done:**
+- Calls by other testers, opt-out and noisy-background cards, two simultaneous calls: Phase 10 (KYC, Exotel concurrency).
+- Outbound frames still 200 ms (3 200 bytes); barge-in met its target without changing it.
+- Candidate fields from earlier calls stay when a new call has no answer (e.g. a CTC declined now but given before): Phase 7 conflict rules.
+- STT on real lines: cities and company names get lost or misheard ("Deli", "PCS"). Consider reading location and company back, or job-specific keyterms, in Phase 7.
+- Kitten on the production CPU with 2 parallel calls: benchmark in Phase 10.
+
+**Needs credentials or manual configuration:** none new. The quick tunnel dies when the Mac idles: each new tunnel needs `PUBLIC_BACKEND_URL` in `.env`, `docker compose up -d backend worker`, and the new Voicebot URL in the Exotel flow. Production needs a stable URL (Phase 10).
+
+**Risks or surprises discovered:**
+- The tester's phone/network gates the microphone while our audio plays and opens late when they start talking: soft interruptions never arrive, and first consonants get clipped (STT misses). Not fixable on our side.
+- Deepgram's first audio was ~1 s from here on 2026-11-19 (network), not 340 ms; the warm-up and then Kitten as primary made it irrelevant.
+- "Hello?" said into the thinking pause used to cut the reply off; the barge-in rule now ignores speech that started before the reply was audible.
+- The first LLM turn of a call is often slow (up to 6 s).
+- Captured call audio in `backend/artifacts/calls/` is the tester's voice: delete after review.
+
 ## Phase 5 addendum: live screening preview (2026-11-19)
 
 **Asked by the user** after the PoC: one live test from the call to the AI's questions to the answers being stored. Built as a preview of Phase 6 on the Phase 5 stream:

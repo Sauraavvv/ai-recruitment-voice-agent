@@ -54,6 +54,7 @@ class Ineligible:
     LIVE_ATTEMPT = "call_already_active"
     OUTSIDE_WINDOW = "outside_calling_window"
     NOT_CONFIGURED = "telephony_not_configured"
+    VOICE_UNAVAILABLE = "voice_unavailable"
 
 
 INELIGIBLE_MESSAGES = {
@@ -66,6 +67,7 @@ INELIGIBLE_MESSAGES = {
     Ineligible.LIVE_ATTEMPT: "A call for this candidate is already queued or in progress",
     Ineligible.OUTSIDE_WINDOW: "Outside calling hours",
     Ineligible.NOT_CONFIGURED: "Telephony is not configured",
+    Ineligible.VOICE_UNAVAILABLE: "The AI voice isn't ready yet; try again in a minute",
 }
 
 
@@ -142,6 +144,7 @@ async def start_calls(
     *,
     attempt_type: CallAttemptType = CallAttemptType.MANUAL,
     ignore_window: bool = False,
+    voice_ready: bool = True,
 ) -> list[StartResult]:
     results: list[StartResult] = []
     for candidate_id in dict.fromkeys(candidate_ids):  # de-duplicate, keep order
@@ -151,6 +154,8 @@ async def start_calls(
         result.error = await check_eligibility(
             session, candidate, settings, ignore_window=ignore_window
         )
+        if result.error is None and not voice_ready:
+            result.error = Ineligible.VOICE_UNAVAILABLE  # nothing could speak on the call
         if result.error or candidate is None:
             continue
         attempt = CallAttempt(
@@ -370,18 +375,23 @@ async def stream_ended(
     attempt_id: uuid.UUID,
     *,
     ended_by: str,
+    end_reason: str | None = None,
+    failure_reason: str | None = None,
 ) -> None:
     """The stream is gone; the flow's Hangup step ends the call. `ended_by`: agent | caller |
-    error. The terminal status itself comes from the provider's callback."""
+    error. `end_reason`: how the conversation ended, when the voice pipeline knows (phase-06
+    §5.6). The terminal status itself comes from the provider's callback."""
     attempt = await call_repo.get(session, attempt_id, lock=True)
     if attempt is None:
         return
     if attempt.end_reason is None and not call_state.is_terminal(attempt.call_status):
-        attempt.end_reason = {
+        attempt.end_reason = end_reason or {
             "agent": CallEndReason.AGENT_COMPLETED.value,
             "caller": CallEndReason.CANDIDATE_HANGUP.value,
         }.get(ended_by, CallEndReason.TECHNICAL_FAILURE.value)
-        if ended_by == "error":
+        if failure_reason:
+            attempt.failure_reason = failure_reason
+        elif ended_by == "error":
             attempt.failure_reason = "stream_error"
     await session.commit()
     await call_slots.release(redis, str(attempt.id), size=settings.max_concurrent_calls)

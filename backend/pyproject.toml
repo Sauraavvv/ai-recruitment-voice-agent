@@ -38,7 +38,7 @@ packages = ["app"]
 
 [[tool.mypy.overrides]]
 module = ["arq.*", "openpyxl.*", "num2words.*", "soxr.*", "onnxruntime.*", "kittenml.*", "torch.*",
-          "transformers.*", "sounddevice.*"]
+          "transformers.*", "sounddevice.*", "webrtcvad.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

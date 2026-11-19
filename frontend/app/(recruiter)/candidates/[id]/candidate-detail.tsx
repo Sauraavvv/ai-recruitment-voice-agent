@@ -12,6 +12,8 @@ import { deleteCandidate, getCandidate, updateCandidate } from "@/services/candi
 import { listJobs } from "@/services/jobs";
 import type { Candidate, CandidateUpdate } from "@/types";
 
+import { CallsPanel } from "./calls-panel";
+
 const TEXT_FIELDS = [
   { key: "name", label: "Name", required: true },
   { key: "phone", label: "Phone", required: true },
@@ -174,6 +176,11 @@ export function CandidateDetail() {
         </section>
 
         <section className="space-y-6">
+          <CallsPanel
+            candidateId={c.id}
+            canCall={!c.opted_out && !!c.consent_at}
+            onCallEnded={candidate.reload}
+          />
           <div>
             <h2 className="mb-3 font-medium">Screening</h2>
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
@@ -188,7 +195,7 @@ export function CandidateDetail() {
               <Row label="Interview availability" value={c.interview_availability} />
             </dl>
             <p className="mt-2 text-xs text-zinc-500">
-              Filled in by screening calls. Call history and transcripts arrive in a later phase.
+              Filled in by screening calls. Transcripts and summaries arrive with the dashboard.
             </p>
           </div>
           <div>

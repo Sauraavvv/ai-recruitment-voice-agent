@@ -14,7 +14,7 @@ from app.agent.schemas import FIELD_TO_KEY, FieldName
 from app.agent.state import FieldStatus, Phase, QuestionSpec, ScreeningState
 from app.providers.llm.base import Message
 
-PROMPT_VERSION = "p2-2026-11-18.1"
+PROMPT_VERSION = "p6-2026-11-19.1"
 IST = ZoneInfo("Asia/Kolkata")
 HISTORY_TURNS = 12
 
@@ -72,6 +72,10 @@ for the recruitment team, then continue.
 next_action=schedule_callback. If they give a time, set callback_time_text and resolve \
 callback_time_iso against NOW (Asia/Kolkata, +05:30 offset). "Tomorrow at 5" means 17:00 the \
 next day; "evening" without a time is vague, so leave callback_time_iso null.
+- Asking you to schedule an interview or "a call" with the recruiter or company is NOT a \
+callback: it means they want the next step. Keep callback_requested=false, say the recruitment \
+team will arrange it, and continue with the next question (their timing is \
+interview_availability).
 - "Don't call me again", "remove my number", "stop calling": opt_out=true, next_action=end_call.
 - Clearly not interested in the job: declined_opportunity=true, interested=false, \
 next_action=end_call. "Maybe, depends on salary" is not a decline.
@@ -277,9 +281,19 @@ def introduction(candidate: CandidateContext, job: JobConfig) -> str:
     )
 
 
+REMOTE_WORDS = frozenset({"remote", "fully remote", "work from home", "wfh", "anywhere"})
+
+
 def role_line(job: JobConfig) -> str:
-    where = f" based in {job.location}" if job.location else ""
-    return f"Great, thank you. It's a {job.job_title} position with {job.company_name}{where}."
+    location = (job.location or "").strip()
+    if location.lower() in REMOTE_WORDS:
+        where = ", fully remote"
+    else:
+        where = f" based in {location}" if location else ""
+    article = "an" if job.job_title[:1].lower() in "aeiou" else "a"
+    return (
+        f"Great, thank you. It's {article} {job.job_title} position with {job.company_name}{where}."
+    )
 
 
 def ask(spec: QuestionSpec, *, prefix: str = "") -> str:
@@ -341,17 +355,30 @@ def readback(state: ScreeningState) -> tuple[str, list[str]] | None:
         FieldName.TOTAL_EXPERIENCE: lambda v: f"{_years(v)} of experience",
         FieldName.CURRENT_CTC: lambda v: f"a current CTC of {_num(v)} lakhs",
         FieldName.EXPECTED_CTC: lambda v: f"an expected CTC of {_num(v)} lakhs",
-        FieldName.NOTICE_PERIOD: lambda v: f"a notice period of {v}",
     }
     for name in READBACK_FIELDS:
         rec = state.fields.get(name.value)
         if rec and rec.status is not FieldStatus.DECLINED and rec.has_value:
-            parts.append(phrases[name](rec.value))
+            if name is FieldName.NOTICE_PERIOD:
+                parts.append(notice_phrase(rec.value, rec.meta.get("days")))
+            else:
+                parts.append(phrases[name](rec.value))
             keys.append(name.value)
     if not parts:
         return None
     joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
     return f"Thanks. Just to confirm, you have {joined}. Is that correct?", keys
+
+
+def notice_phrase(value: Any, days: Any) -> str:
+    """For the read-back: the extracted days when there are any, not the candidate's whole
+    sentence (real call 2026-11-19: "a notice period of Officially, it's of fifteen days, but…")."""
+    if isinstance(days, int | float) and not isinstance(days, bool):
+        if days == 0:
+            return "no notice period"
+        return f"a notice period of {_num(days)} day" + ("" if days == 1 else "s")
+    text = str(value).strip().rstrip(".!?")
+    return f"a notice period of {text}"
 
 
 def closing(candidate: CandidateContext) -> str:
@@ -418,6 +445,14 @@ def silence_prompt(last_question: str | None) -> str:
     return (
         f"Are you still there? {last_question}" if last_question else "Hello, are you still there?"
     )
+
+
+def silence_reprompt(question: str | None) -> str:
+    return f"Sorry, I'll ask again. {question}" if question else "Hello, are you still there?"
+
+
+def wrap_up_line() -> str:
+    return "We're almost out of time, so let me just check what I have."
 
 
 def silence_close() -> str:

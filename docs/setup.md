@@ -80,9 +80,9 @@ Set `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5.4-mini` and `OPENAI_REASONING_EFFORT=n
 
 These call the real API; `make test` never does. See [agent.md](agent.md).
 
-### Voice: Deepgram Aura with Kitten fallback (Phase 3 onwards)
+### Voice: Kitten (Iris) with Deepgram Aura fallback (since 2026-11-19)
 
-With `DEEPGRAM_API_KEY` set, the agent speaks with **Deepgram Aura-2 Harmonia**. Kitten TTS (voice Iris) stays loaded as the fallback, used when Deepgram errors or sends no audio within 1.5 s. Once a call falls back, it stays on Kitten until it ends. After 3 failures in a row, Deepgram is skipped for 60 s. Without a key, Kitten speaks alone. Settings and rules: `.env.example` (`TTS_PROVIDER`, `DEEPGRAM_TTS_*`) and `backend/app/providers/tts/fallback.py`. Cost: $0.030 per 1,000 characters, about $0.06 per call. New accounts get $200 of free credit.
+The agent speaks with **Kitten TTS, voice Iris**, on the backend's own CPU. After live calls the user found Iris clearer on the phone than Deepgram's Harmonia (2026-11-19), so Kitten is the primary and **Deepgram Aura-2 Harmonia** is the fallback when `DEEPGRAM_API_KEY` is set: it takes over when Kitten errors or takes longer than `TTS_TIMEOUT_S` (3 s). Once a call falls back, it stays on Deepgram until it ends. After 3 failures in a row, Kitten is skipped for 60 s. Without a key, Kitten speaks alone. `TTS_PROVIDER=deepgram` puts Deepgram first again (the Phase 3 setup). Settings and rules: `.env.example` (`TTS_PROVIDER`, `DEEPGRAM_TTS_*`) and `backend/app/providers/tts/fallback.py`. Cost: $0.030 per 1,000 characters, about $0.06 per call. New accounts get $200 of free credit.
 
 - `make tts-say TEXT="…" PROVIDER=kitten` hears the fallback voice. `VOICE=aura-2-asteria-en` tries another Deepgram voice.
 - `make test-deepgram-tts`: live Deepgram tests (a few cents). `make bench-tts args='--provider deepgram --runs 10'`: its latency.
@@ -117,7 +117,10 @@ Protocol, verified facts and the test-call log: [telephony.md](telephony.md).
 1. `.env`: `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_ACCOUNT_SID`, `EXOTEL_SUBDOMAIN` (`api.exotel.com` for a Singapore-region account, `api.in.exotel.com` for Mumbai), `EXOTEL_CALLER_ID` (the ExoPhone), `EXOTEL_APP_ID` (the flow's id).
 2. Public URL: `make tunnel` (Cloudflare quick tunnel; `brew install cloudflared`). Put its `https://…trycloudflare.com` URL in `PUBLIC_BACKEND_URL`, then `docker compose up -d backend worker` (containers read `.env` only when created). The URL changes every time the tunnel restarts.
 3. `make exotel-urls` prints the Voicebot URL. In Exotel's App Bazaar the flow is exactly **Voicebot** (that URL) → **Hangup**.
-4. Test call to a consenting tester whose number is verified in the Exotel dashboard (trial accounts without KYC can't call anyone else): `make test-call phone=+9198XXXXXXXX` (mode `full`: clip, echo, stop test, backend hangs up) or `mode=listen` (clip, then you hang up). Test calls skip the calling window. Each call writes `backend/artifacts/calls/<attempt>_in.wav` and `_stream.json` (gitignored; delete after review).
+4. Test call to a consenting tester whose number is verified in the Exotel dashboard (trial accounts without KYC can't call anyone else): `make test-call phone=+9198XXXXXXXX` runs a real screening conversation (Phase 6) and prints the transcript, the stored answers, the summary and the per-turn latency table. `mode=full` (clip, echo, stop test, backend hangs up) and `mode=listen` (clip, then you hang up) are the Phase 5 line checks. Test calls skip the calling window. With `TELEPHONY_CAPTURE_DIR` set, each call writes `backend/artifacts/calls/<attempt>_in.wav` and `_stream.json` (gitignored; delete after review).
+5. From the UI: open a candidate and press **Call now** (the API refuses outside the calling window, without consent, or while the voice is still loading).
+
+Voice conversation settings (VAD, barge-in, silence, time limits): `.env.example` and [voice-pipeline.md](voice-pipeline.md). The post-call summary is written by the worker's `finalize_call` job a few seconds after the call.
 
 The worker places calls (`initiate_call`, one Redis slot per `MAX_CONCURRENT_CALLS`) and checks stuck calls with Exotel every 2 minutes.
 

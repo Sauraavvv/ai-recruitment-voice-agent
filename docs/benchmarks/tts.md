@@ -144,6 +144,10 @@ Startup: Deepgram's 17 fixed phrases are fetched 4 at a time, then cached on dis
 (`TTS_CACHE_DIR`), so later restarts only send a one-word warm-up. Both providers load in
 parallel. In Docker the backend was ready in about 9.6 s (first start).
 
+## Live calls: Kitten chosen as the primary (2026-11-19)
+
+Phase 6 put both voices on real calls through the whole pipeline. Deepgram's first audio was about 1.0 s from this network on that day (TCP connect alone ~330 ms), against 340 ms in the benchmark above. Kitten, local, took p50 2 ms (cache) and p95 445 ms per reply. On a live call the user rated **Iris clearer and better than Harmonia**, so the order is now Kitten first, Deepgram as the fallback (`TTS_PROVIDER=auto`). Kitten doesn't retry when Deepgram can take over; Deepgram, as the last resort, retries once.
+
 ## Reproducing
 
 ```bash

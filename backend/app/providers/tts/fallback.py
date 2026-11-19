@@ -1,4 +1,5 @@
-"""Primary TTS with a fallback: Deepgram Aura first, local Kitten when Deepgram can't answer.
+"""Primary TTS with a fallback (since 2026-11-19: local Kitten first, Deepgram Aura when Kitten
+can't answer; `TTS_PROVIDER=deepgram` reverses them).
 
 Rules:
 - A sentence the primary can't deliver (error, or no audio within its first-byte timeout) is
@@ -110,7 +111,7 @@ class FallbackTTSProvider(TTSProvider):
             detail=f"{state}; primary: {p.detail}; fallback: {f.detail}",
             last_error=p.last_error or f.last_error,
             last_latency_ms=p.last_latency_ms,
-            model_loads=f.model_loads,
+            model_loads=p.model_loads + f.model_loads,
             components=(p, f),
         )
 

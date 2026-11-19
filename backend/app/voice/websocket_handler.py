@@ -1,124 +1,67 @@
-"""Exotel Voicebot media stream (phase-05 P5-T6..T9). PoC behaviour: test clip, echo,
-mark/clear checks. Phase 6 replaces the PoC script with the conversation.
+"""Exotel Voicebot media stream → screening conversation (phase-06; protocol from phase-05).
 
 Lifecycle of one stream:
   accept → `connected` → `start` (resolve + verify the attempt, check the media format) →
-  register a CallSession → media/mark/dtmf/stop … → cleanup (cancel tasks, unregister, save the
-  capture, release the slot).
+  build the conversation (`voice/pipeline.CallSession`) and register it → receive loop
+  (media → inbound queue, mark → MarkTracker, stop → caller hung up) alongside `session.run()`
+  → the agent hangs up (we close the socket; the flow's Hangup step drops the call) or the caller
+  does → cleanup: tasks cancelled, session unregistered, voice state forgotten, the attempt's
+  end_reason set, the concurrency slot released, `finalize_call` queued.
 
-The inbound queue is bounded (about 2 s of audio); on overflow the oldest audio is dropped and
-logged. Outgoing audio is framed to TELEPHONY_FRAME_BYTES and paced close to real time, at most
-TELEPHONY_SEND_AHEAD_MS ahead, so `clear` (barge-in) takes effect quickly.
+The PoC line checks from Phase 5 (`voice/telephony_poc.py`) still run when a test call asks for
+mode `full` or `listen` (`make test-call mode=…`).
 """
 
 import asyncio
 import base64
+import binascii
 import contextlib
 import json
 import time
 import uuid
-from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
 
+from app.agent.conversation_manager import ConversationManager
+from app.agent.prompts import CandidateContext, JobConfig
 from app.config import Settings
 from app.database.connection import get_sessionmaker
+from app.database.models import CallAttempt, CallEndReason, Candidate, Job
+from app.providers.llm import create_llm_provider
+from app.providers.llm.base import LLMError, LLMProvider
+from app.providers.stt import create_stt_provider
 from app.providers.telephony import exotel_models as em
-from app.providers.tts.base import TTSError, TTSProvider
-from app.services import call_service
+from app.providers.tts.base import TTSProvider
+from app.services import call_service, screening_store, transcript_service
 from app.utils.log import get_logger
+from app.utils.queue import enqueue_finalize_call
 from app.utils.redis import KEY_PREFIX, get_redis
 from app.voice import audio_converter as ac
 from app.voice import pcm as pcm_utils
+from app.voice.audio_processor import InboundQueue
+from app.voice.pipeline import CallContext, CallSession, SessionOutcome
+from app.voice.playback import AudioSender, MarkTracker
+from app.voice.session_registry import REGISTRY, SessionExistsError, live_task_count
+from app.voice.telephony_poc import PocSession, run_poc
+from app.voice.vad import SpeechDetector, default_classifier
 
 logger = get_logger(__name__)
 
 START_TIMEOUT_S = 10.0
 INBOUND_QUEUE_SECONDS = 2.0
 POC_MODE_KEY = KEY_PREFIX + "call:{attempt_id}:poc_mode"
-POC_MODES = ("full", "listen", "screen")  # screen: live screening (voice/live_screening.py)
-SAVE_GRACE_S = 30.0  # after the caller hangs up, time to finish and store the screening
+POC_MODES = ("full", "listen", "screen")  # screen = the normal conversation
+SAVE_GRACE_S = 30.0  # after the caller hangs up, time to finish and store the conversation
 MAX_LOGGED_MEDIA = 30  # media messages kept in the capture's message log
 
-# Live sessions in this process, by call_attempt_id.
-SESSIONS: dict[str, "CallSession"] = {}
+SESSIONS = REGISTRY  # live sessions in this process, by call_attempt_id
 
 
-# --- Outgoing audio ---------------------------------------------------------------------------
-
-
-class AudioSender:
-    """Frames phone-side audio and paces it to Exotel. One playback at a time."""
-
-    def __init__(self, ws: WebSocket, stream_sid: str, settings: Settings) -> None:
-        self._ws = ws
-        self._sid = stream_sid
-        self.encoding: ac.Encoding = settings.telephony_encoding
-        self.rate = settings.telephony_sample_rate
-        self.frame_bytes = settings.telephony_frame_bytes
-        self.frame_s = ac.duration_ms(self.frame_bytes, self.encoding, self.rate) / 1000
-        self.ahead_s = max(settings.telephony_send_ahead_ms / 1000, self.frame_s)
-        self._framer = ac.Framer(self.frame_bytes, encoding=self.encoding)
-        self._playhead = 0.0  # monotonic time at which everything sent so far has played
-        self._lock = asyncio.Lock()
-        self.frames_sent = 0
-        self.bytes_sent = 0
-
-    async def send_json(self, message: dict[str, Any]) -> None:
-        await self._ws.send_text(json.dumps(message))
-
-    async def _send_frame(self, frame: bytes, *, ahead_s: float) -> None:
-        now = time.monotonic()
-        wait = self._playhead - now - ahead_s
-        if wait > 0:
-            await asyncio.sleep(wait)
-            now = time.monotonic()
-        await self.send_json(
-            {
-                "event": "media",
-                "stream_sid": self._sid,
-                "media": {"payload": base64.b64encode(frame).decode()},
-            }
-        )
-        self._playhead = max(self._playhead, now) + self.frame_s
-        self.frames_sent += 1
-        self.bytes_sent += len(frame)
-
-    async def push(self, phone_audio: bytes, *, ahead_s: float | None = None) -> None:
-        """Send whole frames now (paced); keep the remainder for the next push."""
-        async with self._lock:
-            for frame in self._framer.push(phone_audio):
-                await self._send_frame(frame, ahead_s=ahead_s or self.ahead_s)
-
-    async def play(
-        self, phone_audio: bytes, *, mark: str | None = None, ahead_s: float | None = None
-    ) -> None:
-        """Send a whole clip (last frame padded), then an optional mark."""
-        await self.push(phone_audio, ahead_s=ahead_s)
-        async with self._lock:
-            for frame in self._framer.flush():
-                await self._send_frame(frame, ahead_s=ahead_s or self.ahead_s)
-        if mark:
-            await self.mark(mark)
-
-    async def mark(self, name: str) -> None:
-        await self.send_json({"event": "mark", "stream_sid": self._sid, "mark": {"name": name}})
-
-    async def clear(self) -> None:
-        self._framer.reset()
-        self._playhead = time.monotonic()
-        await self.send_json({"event": "clear", "stream_sid": self._sid})
-
-    @property
-    def buffered_s(self) -> float:
-        return max(0.0, self._playhead - time.monotonic())
-
-
-# --- Capture (PoC) ----------------------------------------------------------------------------
+# --- Capture (debugging, testers' phones only) ------------------------------------------------
 
 
 @dataclass
@@ -135,10 +78,8 @@ class StreamCapture:
     last_media_at: float | None = None
     last_sequence: int | None = None
     sequence_gaps: int = 0
-    dropped_inbound_bytes: int = 0
     audio: bytearray = field(default_factory=bytearray)
-    marks_sent: dict[str, float] = field(default_factory=dict)
-    marks_back: dict[str, float] = field(default_factory=dict)
+    keep_audio: bool = False
     notes: list[str] = field(default_factory=list)
 
     def t(self) -> float:
@@ -186,14 +127,6 @@ class StreamCapture:
             "media_chunk_sizes": self.media_sizes,
             "inbound_bytes_per_second": round(self.inbound_rate() or 0, 1),
             "sequence_gaps": self.sequence_gaps,
-            "dropped_inbound_bytes": self.dropped_inbound_bytes,
-            "marks_sent": self.marks_sent,
-            "marks_back": self.marks_back,
-            "mark_latency_s": {
-                k: round(self.marks_back[k] - v, 3)
-                for k, v in self.marks_sent.items()
-                if k in self.marks_back
-            },
             "notes": self.notes,
         }
 
@@ -218,201 +151,118 @@ def sanitize(message: Any) -> Any:
     return message
 
 
-# --- Session ----------------------------------------------------------------------------------
+# --- Building the conversation ----------------------------------------------------------------
 
 
-@dataclass
-class CallSession:
-    attempt_id: str
-    stream_sid: str
-    call_sid: str | None
-    sender: AudioSender
-    inbound: "InboundQueue"
-    capture: StreamCapture
-    tasks: set[asyncio.Task[Any]] = field(default_factory=set)
-    hangup_requested: bool = False
-    stop_reason: str | None = None
-    mark_events: dict[str, asyncio.Event] = field(default_factory=dict)
-
-    def spawn(self, coro: Any, name: str) -> asyncio.Task[Any]:
-        task = asyncio.create_task(coro, name=f"{name}:{self.attempt_id[:8]}")
-        self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
-        return task
-
-    async def close_tasks(self) -> None:
-        for task in list(self.tasks):
-            task.cancel()
-        for task in list(self.tasks):
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
-        self.tasks.clear()
-
-    def mark_event(self, name: str) -> asyncio.Event:
-        return self.mark_events.setdefault(name, asyncio.Event())
-
-
-class InboundQueue:
-    """Bounded FIFO of inbound audio chunks; overflow drops the oldest."""
-
-    def __init__(self, max_bytes: int, capture: StreamCapture) -> None:
-        self._chunks: deque[bytes] = deque()
-        self._bytes = 0
-        self._max = max_bytes
-        self._capture = capture
-        self._ready = asyncio.Event()
-
-    def put(self, chunk: bytes) -> None:
-        self._chunks.append(chunk)
-        self._bytes += len(chunk)
-        while self._bytes > self._max and len(self._chunks) > 1:
-            old = self._chunks.popleft()
-            self._bytes -= len(old)
-            self._capture.dropped_inbound_bytes += len(old)
-        self._ready.set()
-
-    async def get(self) -> bytes:
-        while not self._chunks:
-            self._ready.clear()
-            await self._ready.wait()
-        chunk = self._chunks.popleft()
-        self._bytes -= len(chunk)
-        return chunk
-
-    def drain(self) -> None:
-        self._chunks.clear()
-        self._bytes = 0
-
-
-# --- PoC script -------------------------------------------------------------------------------
-
-INTRO_FULL = (
-    "Hello, this is a test call from the recruitment assistant. "
-    "If you can hear me clearly, please say something after the beep. "
-    "You will hear yourself back about one second later."
-)
-INTRO_LISTEN = (
-    "Hello, this is a test call from the recruitment assistant. "
-    "Please say a few words, and then hang up whenever you like."
-)
-CLEAR_INTRO = "Now a stop test. I will count to ten, but I should stop at about three."
-COUNTING = "One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten."
-GOODBYE = "The test is finished. Thank you, goodbye."
-ECHO_SECONDS = 15.0
-ECHO_DELAY_S = 1.0
-CLEAR_AFTER_S = 2.6  # "one, two, three" takes about this long
-
-
-def _beep(rate: int, *, hz: float = 880.0, ms: int = 300) -> bytes:
-    t = np.arange(int(rate * ms / 1000)) / rate
-    tone = (0.3 * np.sin(2 * np.pi * hz * t)).astype(np.float32)
-    fade = min(len(tone) // 10, int(rate * 0.01))
-    if fade:
-        ramp = np.linspace(0, 1, fade, dtype=np.float32)
-        tone[:fade] *= ramp
-        tone[-fade:] *= ramp[::-1]
-    return pcm_utils.float_to_pcm16(tone)
-
-
-async def _speak(tts: TTSProvider, text: str, settings: Settings, attempt_id: str) -> bytes:
-    clip = await tts.synthesize(text, call_attempt_id=attempt_id)
-    return ac.to_telephony(
-        clip.pcm,
-        clip.sample_rate,
-        to_rate=settings.telephony_sample_rate,
-        encoding=settings.telephony_encoding,
+def job_config(job: Job) -> JobConfig:
+    return JobConfig.from_dict(
+        {
+            "id": str(job.id),
+            "job_title": job.job_title,
+            "company_name": job.company_name,
+            "job_description": job.job_description,
+            "location": job.location,
+            "required_experience": job.required_experience,
+            "skills": job.skills,
+            "screening_questions": job.screening_questions,
+            "agent_instructions": job.agent_instructions,
+        }
     )
 
 
-async def _wait_mark(session: CallSession, name: str, timeout: float) -> bool:
+async def load_context(attempt_id: uuid.UUID, provider_call_id: str | None) -> CallContext:
+    async with get_sessionmaker()() as db:
+        attempt = await db.get(CallAttempt, attempt_id)
+        assert attempt is not None
+        candidate = await db.get(Candidate, attempt.candidate_id)
+        assert candidate is not None
+        job = await db.get(Job, candidate.job_id)
+        assert job is not None
+    return CallContext(
+        attempt_id=str(attempt_id),
+        job=job_config(job),
+        candidate=CandidateContext(
+            name=candidate.name, candidate_id=str(candidate.id), call_id=str(attempt_id)
+        ),
+        candidate_id=candidate.id,
+        provider_call_id=provider_call_id,
+        keyterms=[k for k in (job.company_name, job.location) if k],
+    )
+
+
+def make_vad(settings: Settings) -> SpeechDetector:
+    classifier, name = default_classifier(
+        settings.telephony_sample_rate, settings.vad_aggressiveness
+    )
+    return SpeechDetector(
+        classifier,
+        start_ms=settings.vad_speech_start_ms,
+        end_silence_ms=settings.vad_end_silence_ms,
+        min_dbfs=settings.vad_min_dbfs,
+        echo_margin_db=settings.vad_echo_margin_db,
+        name=name,
+    )
+
+
+async def store_outcome(ctx: CallContext, outcome: SessionOutcome) -> None:
+    """At the end of the conversation: final transcript and result, then queue the summary."""
+    assert ctx.candidate_id is not None
+    await screening_store.store_outcome(
+        attempt_id=uuid.UUID(ctx.attempt_id),
+        candidate_id=ctx.candidate_id,
+        result=outcome.result,
+        extra={
+            "turn_metrics": outcome.metrics,
+            "session": {k: v for k, v in outcome.stats.items() if k != "turn_history"},
+            "end_reason": outcome.end_reason.value,
+        },
+    )
     try:
-        await asyncio.wait_for(session.mark_event(name).wait(), timeout)
-        return True
-    except TimeoutError:
-        session.capture.note(f"mark {name} not returned within {timeout:.0f}s")
-        return False
+        await enqueue_finalize_call(ctx.attempt_id)
+    except Exception:
+        logger.exception("finalize_enqueue_failed", call_attempt_id=ctx.attempt_id)
 
 
-async def _send_mark(session: CallSession, name: str) -> None:
-    session.capture.marks_sent[name] = time.monotonic()
-    await session.sender.mark(name)
+@dataclass
+class Conversation:
+    session: CallSession
+    llm: LLMProvider
 
 
-async def _echo(session: CallSession, seconds: float) -> None:
-    """Send the caller's own audio back ECHO_DELAY_S later."""
-    session.inbound.drain()
-    await asyncio.sleep(ECHO_DELAY_S)
-    end = time.monotonic() + seconds
-    while time.monotonic() < end:
-        try:
-            chunk = await asyncio.wait_for(session.inbound.get(), timeout=1.0)
-        except TimeoutError:
-            continue
-        # Inbound and outbound use the same configured format: send the bytes back as they are.
-        await session.sender.push(chunk)
-
-
-async def run_poc(
-    session: CallSession, mode: str, tts: TTSProvider | None, settings: Settings
-) -> None:
-    cap = session.capture
+async def build_conversation(
+    settings: Settings,
+    attempt_id: str,
+    provider_call_id: str | None,
+    *,
+    tts: TTSProvider | None,
+    sender: AudioSender,
+    inbound: InboundQueue,
+    marks: MarkTracker,
+) -> Conversation | str:
+    """The session for a real call, or why there can't be one."""
     if tts is None or not tts.status().ready:
-        cap.note("no TTS available; playing beeps only")
+        return "voice_unavailable"
     try:
-        say = (
-            (lambda text: _speak(tts, text, settings, session.attempt_id))
-            if tts is not None and tts.status().ready
-            else None
-        )
-        beep = ac.to_telephony(
-            _beep(settings.telephony_sample_rate),
-            settings.telephony_sample_rate,
-            to_rate=settings.telephony_sample_rate,
-            encoding=settings.telephony_encoding,
-        )
-        await asyncio.sleep(0.3)
-        intro = await say(INTRO_FULL if mode == "full" else INTRO_LISTEN) if say else b""
-        cap.note(f"intro clip {len(intro)} bytes; playing")
-        await session.sender.play(intro + (beep if mode == "full" else b""))
-        await _send_mark(session, "intro")
-        await _wait_mark(session, "intro", timeout=30)
-        if mode == "listen":
-            cap.note("listen mode: waiting for the caller to hang up")
-            return
-
-        cap.note("echo start")
-        await _echo(session, ECHO_SECONDS)
-        cap.note("echo end")
-        await session.sender.play(b"")
-        await asyncio.sleep(session.sender.buffered_s + 0.5)
-
-        if say:
-            await session.sender.play(await say(CLEAR_INTRO))
-            await _send_mark(session, "clear-intro")
-            await _wait_mark(session, "clear-intro", timeout=20)
-            counting = await say(COUNTING)
-            ms = ac.duration_ms(
-                len(counting), settings.telephony_encoding, settings.telephony_sample_rate
-            )
-            cap.note(f"counting clip {ms:.0f} ms; sending all of it ahead")
-            sent_at = time.monotonic()
-            # Send far ahead so Exotel holds most of it in its buffer, then clear.
-            await session.sender.play(counting, ahead_s=30.0)
-            await _send_mark(session, "counting")
-            await asyncio.sleep(max(0.0, CLEAR_AFTER_S - (time.monotonic() - sent_at)))
-            await session.sender.clear()
-            cap.note(f"clear sent {time.monotonic() - sent_at:.2f}s after counting started")
-            got = await _wait_mark(session, "counting", timeout=3)
-            cap.note(f"counting mark after clear: {'returned' if got else 'not returned'}")
-            await asyncio.sleep(1.0)
-            await session.sender.play(await say(GOODBYE))
-        await _send_mark(session, "bye")
-        await _wait_mark(session, "bye", timeout=20)
-        cap.note("hanging up from the backend (closing the stream)")
-        session.hangup_requested = True
-    except TTSError as exc:
-        cap.note(f"TTS failed: {exc}")
-        session.hangup_requested = True
+        llm = create_llm_provider(settings)
+    except LLMError:
+        return "llm_not_configured"
+    ctx = await load_context(uuid.UUID(attempt_id), provider_call_id)
+    manager = ConversationManager(ctx.job, ctx.candidate, llm, timeout_s=settings.openai_timeout_s)
+    await transcript_service.open_conversation(uuid.UUID(attempt_id))
+    session = CallSession(
+        ctx,
+        settings=settings,
+        sender=sender,
+        inbound=inbound,
+        marks=marks,
+        stt=create_stt_provider(settings, keyterms=ctx.keyterms),
+        tts=tts,
+        manager=manager,
+        vad=make_vad(settings),
+        writer=transcript_service.TranscriptWriter(uuid.UUID(attempt_id)),
+        on_end=lambda outcome: store_outcome(ctx, outcome),
+    )
+    return Conversation(session, llm)
 
 
 # --- Stream entry point -----------------------------------------------------------------------
@@ -426,8 +276,8 @@ async def _receive_json(ws: WebSocket) -> dict[str, Any]:
 
 async def handle_exotel_stream(ws: WebSocket, settings: Settings) -> None:
     await ws.accept()
-    capture = StreamCapture()
-    tasks_before = len(asyncio.all_tasks())
+    capture = StreamCapture(keep_audio=bool(settings.telephony_capture_dir))
+    tasks_before = live_task_count()
     try:
         start_msg: dict[str, Any] | None = None
         async with asyncio.timeout(START_TIMEOUT_S):
@@ -464,20 +314,6 @@ async def handle_exotel_stream(ws: WebSocket, settings: Settings) -> None:
         return
 
     attempt_id = str(attempt.id)
-    sender = AudioSender(ws, start.stream_sid or "", settings)
-    max_inbound = int(
-        ac.bytes_per_second(settings.telephony_encoding, settings.telephony_sample_rate)
-        * INBOUND_QUEUE_SECONDS
-    )
-    session = CallSession(
-        attempt_id=attempt_id,
-        stream_sid=start.stream_sid or "",
-        call_sid=start.call_sid,
-        sender=sender,
-        inbound=InboundQueue(max_inbound, capture),
-        capture=capture,
-    )
-    SESSIONS[attempt_id] = session
     log = logger.bind(call_attempt_id=attempt_id, provider_call_id=start.call_sid)
     log.info(
         "stream_started",
@@ -486,62 +322,118 @@ async def handle_exotel_stream(ws: WebSocket, settings: Settings) -> None:
         sample_rate=start.sample_rate,
         custom_parameters=sorted(start.custom_parameters),
     )
-
-    mode = "full"
-    with contextlib.suppress(Exception):
-        mode = await get_redis().get(POC_MODE_KEY.format(attempt_id=attempt_id)) or "full"
+    sender = AudioSender(
+        ws,
+        start.stream_sid or "",
+        encoding=settings.telephony_encoding,
+        sample_rate=settings.telephony_sample_rate,
+        frame_bytes=settings.telephony_frame_bytes,
+        send_ahead_ms=settings.telephony_send_ahead_ms,
+        session_id=attempt_id,
+    )
+    max_inbound = int(
+        ac.bytes_per_second("slin", settings.telephony_sample_rate) * INBOUND_QUEUE_SECONDS
+    )
+    inbound = InboundQueue(max_inbound)
+    marks = MarkTracker()
     tts: TTSProvider | None = getattr(ws.app.state, "tts", None)
-    live = None
-    if mode == "screen" and tts is not None and tts.status().ready:
-        from app.voice.live_screening import LiveScreening
 
-        live = LiveScreening(session, settings, tts)
-        script = session.spawn(live.run(), "screen")
-    else:
-        script = session.spawn(run_poc(session, mode, tts, settings), "poc")
+    mode = "screen"
+    with contextlib.suppress(Exception):
+        mode = await get_redis().get(POC_MODE_KEY.format(attempt_id=attempt_id)) or "screen"
 
+    conversation: Conversation | None = None
+    poc: PocSession | None = None
+    end_reason: str | None = None
+    failure: str | None = None
     ended_by = "error"
-    receiver: asyncio.Task[Any] | None = None
+    on_stop: Callable[[str], None]
+    main: asyncio.Task[Any]
     try:
-        receiver = asyncio.create_task(_receive_loop(ws, session))
-        hangup_watch = asyncio.create_task(_wait_hangup(session, script))
-        done, _ = await asyncio.wait({receiver, hangup_watch}, return_when=asyncio.FIRST_COMPLETED)
-        hangup_watch.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await hangup_watch
-        if session.hangup_requested and receiver not in done:
+        if mode in ("full", "listen"):
+            poc = PocSession(attempt_id, sender, inbound, marks, capture.notes)
+            main = asyncio.create_task(run_poc(poc, mode, tts, settings), name="poc")
+            on_stop = lambda _reason: inbound.close()  # noqa: E731
+        else:
+            built = await build_conversation(
+                settings,
+                attempt_id,
+                start.call_sid,
+                tts=tts,
+                sender=sender,
+                inbound=inbound,
+                marks=marks,
+            )
+            if isinstance(built, str):
+                log.error("conversation_unavailable", reason=built)
+                end_reason, failure = CallEndReason.TECHNICAL_FAILURE.value, built
+                await ws.close(code=1011)
+                await _stream_closed(settings, attempt_id, "error", end_reason, failure, log)
+                return
+            conversation = built
+            main = asyncio.create_task(conversation.session.run(), name=f"call:{attempt_id[:8]}")
+            on_stop = conversation.session.caller_hung_up
+        REGISTRY.register(attempt_id, conversation.session if conversation else poc)
+    except SessionExistsError:
+        log.error("stream_duplicate_session")
+        await ws.close(code=1008)
+        return
+    except Exception:
+        log.exception("conversation_setup_failed")
+        end_reason, failure = CallEndReason.TECHNICAL_FAILURE.value, "setup_failed"
+        with contextlib.suppress(Exception):
+            await ws.close(code=1011)
+        await _stream_closed(settings, attempt_id, "error", end_reason, failure, log)
+        return
+
+    receiver = asyncio.create_task(
+        _receive_loop(ws, capture, inbound, marks, on_stop, settings.telephony_encoding)
+    )
+    try:
+        done, _ = await asyncio.wait({receiver, main}, return_when=asyncio.FIRST_COMPLETED)
+        if main in done and (conversation is not None or (poc and poc.hangup_requested)):
             ended_by = "agent"
             with contextlib.suppress(Exception):
                 await ws.close(code=1000)
-            receiver.cancel()
         else:
-            ended_by = "caller" if session.stop_reason else "error"
-            if receiver.done() and receiver.exception():
-                log.warning("stream_receive_error", error=repr(receiver.exception()))
-            if live is not None and not script.done():
-                # Let the conversation end cleanly and store what it collected
-                live.caller_hung_up()
-                await asyncio.wait({script}, timeout=SAVE_GRACE_S)
-    finally:
-        if receiver is not None and not receiver.done():
-            receiver.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            if receiver is not None:
+            if receiver not in done:  # PoC listen mode: wait for the caller
                 await receiver
-        await session.close_tasks()
-        SESSIONS.pop(attempt_id, None)
+            stopped = receiver.result() if not receiver.cancelled() else "disconnect"
+            ended_by = "caller" if stopped == "stop" else "error"
+            on_stop(stopped)
+            await asyncio.wait({main}, timeout=SAVE_GRACE_S)
+        if conversation is not None and main.done() and not main.cancelled():
+            if main.exception() is not None:
+                log.error("session_crashed", error=repr(main.exception()))
+                end_reason, failure = CallEndReason.TECHNICAL_FAILURE.value, "session_crashed"
+            else:
+                outcome: SessionOutcome = main.result()
+                ended_by = outcome.ended_by if ended_by == "agent" else ended_by
+                end_reason, failure = outcome.end_reason.value, outcome.failure_reason
+    finally:
+        for task in (receiver, main):
+            if not task.done():
+                task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        REGISTRY.unregister(attempt_id)
+        if conversation is not None:
+            with contextlib.suppress(Exception):
+                await conversation.llm.aclose()
         if tts is not None:
             tts.forget_call(attempt_id)
         await asyncio.sleep(0)
-        tasks_after = len(asyncio.all_tasks())
         summary = capture.summary() | {
-            "ended_by": ended_by,
-            "stop_reason": session.stop_reason,
-            "frames_sent": sender.frames_sent,
-            "bytes_sent": sender.bytes_sent,
-            "tasks_before": tasks_before,
-            "tasks_after": tasks_after,
             "mode": mode,
+            "ended_by": ended_by,
+            "end_reason": end_reason,
+            "failure_reason": failure,
+            "frames_sent": sender.frames_sent,
+            "clears": sender.clears,
+            "mark_latency_s": marks.latencies(),
+            "dropped_inbound_bytes": inbound.dropped_bytes,
+            "tasks_before": tasks_before,
+            "tasks_after": live_task_count(),
         }
         _save_capture(settings, attempt_id, capture, summary)
         log.info(
@@ -549,77 +441,94 @@ async def handle_exotel_stream(ws: WebSocket, settings: Settings) -> None:
             **{
                 k: summary[k]
                 for k in (
+                    "mode",
                     "ended_by",
-                    "stop_reason",
+                    "end_reason",
+                    "failure_reason",
                     "counts",
                     "inbound_bytes_per_second",
-                    "media_chunk_sizes",
                     "frames_sent",
-                    "mark_latency_s",
                     "tasks_before",
                     "tasks_after",
                     "dropped_inbound_bytes",
                 )
             },
         )
-        try:
-            async with get_sessionmaker()() as db:
-                await call_service.stream_ended(
-                    db, get_redis(), settings, uuid.UUID(attempt_id), ended_by=ended_by
-                )
-        except Exception:
-            log.exception("stream_end_update_failed")
+        await _stream_closed(settings, attempt_id, ended_by, end_reason, failure, log)
 
 
-async def _wait_hangup(session: CallSession, script: asyncio.Task[Any]) -> None:
-    """Returns once the script asked to hang up; in listen mode it never does."""
-    await asyncio.wait({script})  # doesn't raise the script's errors; does honour cancel
-    if not session.hangup_requested:
-        await asyncio.Event().wait()  # wait for the caller (cancelled by the stream's end)
+async def _stream_closed(
+    settings: Settings,
+    attempt_id: str,
+    ended_by: str,
+    end_reason: str | None,
+    failure: str | None,
+    log: Any,
+) -> None:
+    try:
+        async with get_sessionmaker()() as db:
+            await call_service.stream_ended(
+                db,
+                get_redis(),
+                settings,
+                uuid.UUID(attempt_id),
+                ended_by=ended_by,
+                end_reason=end_reason,
+                failure_reason=failure,
+            )
+    except Exception:
+        log.exception("stream_end_update_failed")
 
 
-async def _receive_loop(ws: WebSocket, session: CallSession) -> None:
-    cap = session.capture
-    encoding = session.sender.encoding
+async def _receive_loop(
+    ws: WebSocket,
+    capture: StreamCapture,
+    inbound: InboundQueue,
+    marks: MarkTracker,
+    on_stop: Callable[[str], None],
+    encoding: ac.Encoding,
+) -> str:
+    """Returns "stop" when Exotel ended the stream, "disconnect" when the socket dropped."""
     while True:
         try:
             message = await _receive_json(ws)
         except WebSocketDisconnect:
-            cap.note("websocket closed by Exotel")
-            return
+            capture.note("websocket closed by Exotel")
+            return "disconnect"
         except ValueError:
-            cap.note("non-JSON message ignored")
+            capture.note("non-JSON message ignored")
             continue
         kind = message.get("event")
         if kind == "media":
             payload = (message.get("media") or {}).get("payload") or ""
             try:
-                chunk = base64.b64decode(payload)
-            except ValueError:
-                cap.record(message, 0)
+                raw = base64.b64decode(payload)
+            except (binascii.Error, ValueError):
+                capture.record(message, 0)
                 continue
-            cap.record(message, len(chunk))
-            cap.audio.extend(ac.from_telephony(chunk, encoding=encoding))
-            session.inbound.put(chunk)
+            capture.record(message, len(raw))
+            pcm = ac.from_telephony(raw, encoding=encoding)
+            if capture.keep_audio:
+                capture.audio.extend(pcm)
+            inbound.put(pcm)
         elif kind == "mark":
-            cap.record(message, None)
+            capture.record(message, None)
             name = str((message.get("mark") or {}).get("name", ""))
-            cap.marks_back[name] = time.monotonic()
-            cap.note(f"mark {name} returned")
-            session.mark_event(name).set()
+            marks.note_returned(name)
         elif kind == "stop":
-            cap.record(message, None)
-            session.stop_reason = str((message.get("stop") or {}).get("reason") or "stop")
-            cap.note(f"stop received: {session.stop_reason}")
-            return
+            capture.record(message, None)
+            reason = str((message.get("stop") or {}).get("reason") or "stop")
+            capture.note(f"stop received: {reason}")
+            on_stop("stop")
+            return "stop"
         else:  # dtmf, clear acks, anything new
-            cap.record(message, None)
+            capture.record(message, None)
 
 
 def _save_capture(
     settings: Settings, attempt_id: str, capture: StreamCapture, summary: dict[str, Any]
 ) -> None:
-    """PoC only, testers' phones only: inbound WAV + message log (gitignored artifacts/)."""
+    """Testers' phones only: inbound WAV + message log (gitignored artifacts/)."""
     if not settings.telephony_capture_dir:
         return
     try:

@@ -116,6 +116,7 @@ class KittenTTSProvider(TTSProvider):
         threads: int = 2,
         max_workers: int = 1,
         timeout_s: float = 3.0,
+        attempts: int = 2,
         normalizer: TextNormalizer | None = None,
         fixed_phrases: Iterable[str] = (),
         engine_factory: EngineFactory | None = None,
@@ -125,6 +126,7 @@ class KittenTTSProvider(TTSProvider):
         self.voice = voice
         self.threads = threads
         self.timeout_s = timeout_s
+        self.attempts = max(1, attempts)  # 1 when a fallback voice can take over at once
         self._normalize = normalizer or default_normalizer()
         self._fixed_phrases = [TECHNICAL_APOLOGY, *fixed_phrases]
         self._engine_factory: EngineFactory = engine_factory or _KittenTinyEngine
@@ -270,7 +272,7 @@ class KittenTTSProvider(TTSProvider):
             return cached
 
         last_exc: Exception | None = None
-        for attempt in (1, 2):
+        for attempt in range(1, self.attempts + 1):
             try:
                 clip = await self._synthesize_once(normalized, call_attempt_id)
             except Exception as exc:  # retried once, then reported
@@ -288,8 +290,12 @@ class KittenTTSProvider(TTSProvider):
                 self._lru.popitem(last=False)
             return clip
         if isinstance(last_exc, TimeoutError):
-            raise TTSTimeoutError(f"synthesis took over {self.timeout_s} s twice") from last_exc
-        raise TTSSynthesisError(f"synthesis failed twice: {type(last_exc).__name__}") from last_exc
+            raise TTSTimeoutError(
+                f"synthesis took over {self.timeout_s} s ({self.attempts} attempts)"
+            ) from last_exc
+        raise TTSSynthesisError(
+            f"synthesis failed ({self.attempts} attempts): {type(last_exc).__name__}"
+        ) from last_exc
 
     def apology_clip(self, *, call_attempt_id: str | None = None) -> AudioClip:
         """Pre-synthesized 'Sorry, I'm having a technical problem…' for a call to end on (P6)."""

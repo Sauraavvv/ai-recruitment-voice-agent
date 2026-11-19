@@ -302,7 +302,8 @@ export interface paths {
         put?: never;
         /**
          * Start Calls
-         * @description Queue a call per candidate. Each candidate gets its own result (ok or a reason).
+         * @description Queue a screening call per candidate. Each candidate gets its own result (ok or a
+         *     reason). Calls need the AI voice loaded in this process (it speaks on the stream).
          */
         post: operations["start_calls_api_v1_calls_start_post"];
         delete?: never;
@@ -427,10 +428,10 @@ export interface components {
         CallAttemptType: "initial" | "manual" | "retry" | "callback";
         /**
          * CallEndReason
-         * @description Normalized reason a call attempt ended (phase-05 §5).
+         * @description Normalized reason a call attempt ended (phase-05 §5, phase-06 §5.6).
          * @enum {string}
          */
-        CallEndReason: "no_answer" | "busy" | "invalid_number" | "candidate_hangup" | "agent_completed" | "provider_failed" | "technical_failure" | "cancelled";
+        CallEndReason: "no_answer" | "busy" | "invalid_number" | "candidate_hangup" | "agent_completed" | "provider_failed" | "technical_failure" | "cancelled" | "declined" | "opted_out" | "callback_scheduled" | "wrong_person" | "silence_timeout" | "max_duration" | "escalated";
         /**
          * CallStatus
          * @description plan.md Module F.

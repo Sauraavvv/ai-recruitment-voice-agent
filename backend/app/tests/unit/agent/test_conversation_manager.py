@@ -1,5 +1,6 @@
 """Phase transitions, guardrails, callback/opt-out and recovery paths, driven by a scripted LLM."""
 
+import asyncio
 import json
 from typing import Any
 
@@ -540,10 +541,78 @@ async def test_one_retry_recovers() -> None:
 async def test_silence_reprompts_then_ends() -> None:
     llm = ScriptedLLM()
     m = await screening(llm)
-    reply = await m.handle_silence(1)
-    assert reply.text.startswith("Are you still there?") and reply.text.endswith("opportunity?")
+    reply = await m.handle_silence(1)  # the question again, in its short form
+    assert reply.text.startswith("Sorry, I'll ask again.") and reply.text.endswith("opportunity?")
+    assert not reply.end_call
     reply = await m.handle_silence(2)
+    assert reply.text.startswith("Are you still there?") and not reply.end_call
+    reply = await m.handle_silence(3)
     assert reply.end_call and m.state.end_reason is EndReason.NO_RESPONSE
+
+
+async def test_two_step_silence_still_supported() -> None:
+    m = await screening(ScriptedLLM())
+    assert not (await m.handle_silence(1, max_silences=2)).end_call
+    assert (await m.handle_silence(2, max_silences=2)).end_call
+
+
+async def test_cancelled_turn_leaves_no_trace() -> None:
+    """The voice pipeline cancels a turn when the candidate keeps talking (phase-06 §5.2)."""
+
+    class SlowLLM(ScriptedLLM):
+        slow = False
+
+        async def structured(self, *args: Any, **kwargs: Any) -> Any:
+            if self.slow:
+                await asyncio.sleep(10)
+            return await super().structured(*args, **kwargs)
+
+    llm = SlowLLM()
+    m = await screening(llm)
+    llm.slow = True
+    before = (m.snapshot(), len(m.turn_logs))
+    task = asyncio.create_task(m.handle_utterance("I have five years"))
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert (m.snapshot(), len(m.turn_logs)) == before
+
+
+async def test_restore_undoes_a_finished_turn() -> None:
+    llm = ScriptedLLM()
+    m = await screening(llm)
+    cp = m.checkpoint()
+    snap = m.snapshot()
+    llm.push(turn("Got it.", fields={"interested": True}, evidence={"interested": "yes"},
+                  next_question="current_location"))  # fmt: skip
+    await m.handle_utterance("yes", stt_confidence=0.9)
+    assert m.transcript[-2].stt_confidence == 0.9
+    assert m.snapshot() != snap
+    m.restore(cp)
+    assert m.snapshot() == snap
+
+
+async def test_wrap_up_reads_back_after_the_next_answer() -> None:
+    llm = ScriptedLLM()
+    m = await screening(llm)
+    llm.push(turn("Got it.", fields={"interested": True}, evidence={"interested": "yes"},
+                  next_question="total_experience_years"))  # fmt: skip
+    await m.handle_utterance("yes I'm interested")
+    m.request_wrap_up()
+    llm.push(turn("Thanks.", fields={"total_experience_years": 5},
+                  evidence={"total_experience_years": "five years"},
+                  next_question="current_ctc_lpa"))  # fmt: skip
+    reply = await m.handle_utterance("five years")
+    assert reply.text.startswith("We're almost out of time")
+    assert "5 years of experience" in reply.text and m.state.phase is Phase.CONFIRMATION
+    assert m.state.fields["total_experience"].value == 5
+
+
+async def test_time_up_closes() -> None:
+    m = await screening(ScriptedLLM())
+    reply = m.time_up()
+    assert reply.end_call and m.state.end_reason is EndReason.MAX_TURNS
 
 
 async def test_interruption_is_reflected_in_history() -> None:
@@ -597,3 +666,26 @@ def test_clean_for_speech_keeps_question_when_too_long() -> None:
     long = " ".join(["This is a long sentence about the role."] * 8) + " Where are you based?"
     out = clean_for_speech(long, max_words=20)
     assert out.endswith("Where are you based?") and len(out.split()) <= 20
+
+
+def test_readback_uses_notice_days_not_the_whole_sentence() -> None:
+    from app.agent.prompts import notice_phrase
+
+    said = "Officially, it's of fifteen days, but I can buy out it for the next day."
+    assert notice_phrase(said, 15) == "a notice period of 15 days"
+    assert notice_phrase("immediate joiner", 0) == "no notice period"
+    assert notice_phrase("two months.", None) == "a notice period of two months"
+
+
+async def test_company_fragment_is_asked_again_not_stored() -> None:
+    llm = ScriptedLLM()
+    m = await screening(llm)
+    llm.push(turn("Got it.", fields={"interested": True}, evidence={"interested": "yes"},
+                  next_question="current_company"))  # fmt: skip
+    await m.handle_utterance("yes")
+    llm.push(turn("Thanks. How many years?", fields={"current_company": "Working at"},
+                  evidence={"current_company": "Working at"},
+                  next_question="total_experience_years"))  # fmt: skip
+    reply = await m.handle_utterance("Working at.")
+    assert m.state.fields["current_company"].value is None
+    assert reply.asked_field == "current_company" and reply.ask_kind is AskKind.CLARIFY

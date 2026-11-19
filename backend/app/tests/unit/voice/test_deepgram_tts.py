@@ -213,28 +213,42 @@ async def test_gain_raises_level_without_clipping(server: Server, tmp_path: Path
 # --- factory -------------------------------------------------------------------------------
 
 
-def test_factory_auto_with_key_is_deepgram_plus_kitten() -> None:
+@pytest.mark.parametrize("choice", ["auto", "kitten"])
+def test_factory_default_is_kitten_then_deepgram(choice: str) -> None:
     provider = create_tts_provider(
-        make_settings(deepgram_api_key="dg", deepgram_tts_voice="aura-2-asteria-en")
+        make_settings(
+            deepgram_api_key="dg", deepgram_tts_voice="aura-2-asteria-en", tts_provider=choice
+        )
     )
     assert isinstance(provider, FallbackTTSProvider)
-    assert isinstance(provider.primary, DeepgramTTSProvider)
-    assert provider.primary.voice == "aura-2-asteria-en"
+    assert isinstance(provider.primary, KittenTTSProvider)
     assert provider.primary.attempts == 1  # switch to the fallback instead of retrying
+    assert isinstance(provider.fallback, DeepgramTTSProvider)
+    assert provider.fallback.voice == "aura-2-asteria-en"
+    assert provider.fallback.attempts == 2  # the last resort retries
+
+
+def test_factory_without_key_is_kitten_alone() -> None:
+    provider = create_tts_provider(make_settings())
+    assert isinstance(provider, KittenTTSProvider) and provider.attempts == 2
+
+
+def test_factory_kitten_without_fallback() -> None:
+    provider = create_tts_provider(make_settings(deepgram_api_key="dg", tts_fallback=False))
+    assert isinstance(provider, KittenTTSProvider) and provider.attempts == 2
+
+
+def test_factory_deepgram_first_with_kitten_fallback() -> None:
+    provider = create_tts_provider(make_settings(deepgram_api_key="dg", tts_provider="deepgram"))
+    assert isinstance(provider, FallbackTTSProvider)
+    assert isinstance(provider.primary, DeepgramTTSProvider) and provider.primary.attempts == 1
     assert isinstance(provider.fallback, KittenTTSProvider)
 
 
-def test_factory_auto_without_key_is_kitten() -> None:
-    assert isinstance(create_tts_provider(make_settings()), KittenTTSProvider)
-
-
-def test_factory_kitten_forced() -> None:
-    provider = create_tts_provider(make_settings(deepgram_api_key="dg", tts_provider="kitten"))
-    assert isinstance(provider, KittenTTSProvider)
-
-
 def test_factory_deepgram_without_fallback_retries() -> None:
-    provider = create_tts_provider(make_settings(deepgram_api_key="dg", tts_fallback=False))
+    provider = create_tts_provider(
+        make_settings(deepgram_api_key="dg", tts_provider="deepgram", tts_fallback=False)
+    )
     assert isinstance(provider, DeepgramTTSProvider)
     assert provider.attempts == 2
 

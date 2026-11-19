@@ -3,6 +3,8 @@
 Knows nothing about audio or telephony: P4/P6 feed it text and speak what it returns.
 """
 
+import asyncio
+import copy
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -47,6 +49,7 @@ MAX_LOW_CONFIDENCE_REPROMPTS = 2
 CALLBACK_MAX_AHEAD = timedelta(days=14)
 MAX_WORDS = 40
 MAX_WORDS_ANSWER = 55
+MAX_SILENCES = 3  # re-prompt, "are you still there?", then close (phase-06 §5.5)
 
 _END_PHASE = {
     EndReason.COMPLETED: Phase.ENDED,
@@ -75,6 +78,10 @@ class TranscriptEntry:
     timestamp: str  # UTC ISO 8601
     interrupted: bool = False
     heard_text: str | None = None
+    # Voice calls (Phase 6): filled in by the pipeline
+    stt_confidence: float | None = None
+    latency_ms: int | None = None  # candidate stopped speaking → first sound of this reply
+    ack: str | None = None  # acknowledgement played before this reply ("Okay.")
 
 
 @dataclass
@@ -94,6 +101,17 @@ class TurnLog:
     guardrails: list[str] = field(default_factory=list)
     llm_calls: list[CallMetrics] = field(default_factory=list)
     prompt_version: str = PROMPT_VERSION
+
+
+@dataclass
+class Checkpoint:
+    """Everything a turn can change, to undo a turn that was cancelled (see `restore`)."""
+
+    state: ScreeningState
+    transcript: list[TranscriptEntry]
+    turn_logs: int
+    consecutive_errors: int
+    last_question_text: str | None
 
 
 @dataclass
@@ -130,6 +148,15 @@ class ScreeningResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ScreeningResult":
+        """Inverse of `to_dict` (the post-call job reads the stored result)."""
+        values = {k: data[k] for k in cls.__dataclass_fields__ if k in data}
+        values["end_reason"] = EndReason(values["end_reason"])
+        values["screening_status"] = ScreeningStatus(values["screening_status"])
+        values.setdefault("transcript", [])
+        return cls(**values)
 
 
 def clean_for_speech(text: str, *, max_words: int = MAX_WORDS) -> str:
@@ -199,6 +226,7 @@ class ConversationManager:
         self._consecutive_errors = 0
         self._last_question_text: str | None = None
         self._turn_log: TurnLog | None = None
+        self._wrap_up_requested = False
         if prior_fields:
             self._load_prior(prior_fields)
 
@@ -209,11 +237,40 @@ class ConversationManager:
             raise RuntimeError("Conversation already started")
         self.state.phase = Phase.IDENTITY_CHECK
         self.state.identity_attempts = 1
-        return self._say(prompts.greeting(self.candidate), NextAction.ASK_QUESTION)
+        self._last_question_text = prompts.greeting(self.candidate)
+        return self._say(self._last_question_text, NextAction.ASK_QUESTION)
+
+    def checkpoint(self) -> Checkpoint:
+        return Checkpoint(
+            state=self.state.model_copy(deep=True),
+            transcript=copy.deepcopy(self.transcript),
+            turn_logs=len(self.turn_logs),
+            consecutive_errors=self._consecutive_errors,
+            last_question_text=self._last_question_text,
+        )
+
+    def restore(self, cp: Checkpoint) -> None:
+        """Undo everything since `cp`: the voice pipeline cancels a turn when the candidate kept
+        talking, merges the two utterances and runs the turn again (phase-06 §5.2)."""
+        self.state = cp.state.model_copy(deep=True)
+        self.transcript = copy.deepcopy(cp.transcript)
+        del self.turn_logs[cp.turn_logs :]
+        self._consecutive_errors = cp.consecutive_errors
+        self._last_question_text = cp.last_question_text
+        self._turn_log = None
 
     async def handle_utterance(
         self, text: str, *, stt_confidence: float | None = None
     ) -> AgentReply:
+        """One candidate turn. Cancel-safe: if cancelled, the conversation is as before."""
+        cp = self.checkpoint()
+        try:
+            return await self._handle_utterance(text, stt_confidence=stt_confidence)
+        except asyncio.CancelledError:
+            self.restore(cp)
+            raise
+
+    async def _handle_utterance(self, text: str, *, stt_confidence: float | None) -> AgentReply:
         s = self.state
         if s.ended:
             return AgentReply("", NextAction.END_CALL, True, s.phase)
@@ -222,6 +279,7 @@ class ConversationManager:
         text = text.strip()
         s.turn_count += 1
         self._add("candidate", text)
+        self.transcript[-1].stt_confidence = stt_confidence
         before = self._fingerprint()
         phase_before = s.phase
 
@@ -269,13 +327,37 @@ class ConversationManager:
         reply = await self._apply(call, text, messages)
         return self._log(before, phase_before, text, reply)
 
-    async def handle_silence(self, count: int) -> AgentReply:
-        """`count` = consecutive silence timeouts. One re-prompt, then end the call."""
+    async def handle_silence(self, count: int, *, max_silences: int = MAX_SILENCES) -> AgentReply:
+        """`count` = consecutive silence timeouts. The first repeats the question in its short
+        form, the next ones ask "are you still there?", the last ends the call."""
         if self.state.ended:
             return AgentReply("", NextAction.END_CALL, True, self.state.phase)
-        if count >= 2:
+        if count >= max_silences:
             return self._finish(EndReason.NO_RESPONSE, prompts.silence_close())
+        if count == 1 and max_silences > 2:
+            return self._say(prompts.silence_reprompt(self._short_question()), "reprompt")
         return self._say(prompts.silence_prompt(self._last_question_text), NextAction.ASK_QUESTION)
+
+    def request_wrap_up(self) -> None:
+        """The call is running long (phase-06 §5.5): after the candidate's next answer, read
+        back what we have instead of asking the next question, then close."""
+        if not self._wrap_up_requested:
+            self._wrap_up_requested = True
+            log.info("screening_wrap_up", turns=self.state.turn_count, call_id=self.state.call_id)
+
+    def time_up(self) -> AgentReply:
+        """Hard call limit: close now."""
+        if self.state.ended:
+            return AgentReply("", NextAction.END_CALL, True, self.state.phase)
+        return self._finish(EndReason.MAX_TURNS, prompts.max_turns_close(self.candidate))
+
+    def _short_question(self) -> str | None:
+        key = self.state.current_question
+        if key and self.state.current_ask_kind is AskKind.QUESTION:
+            spec = self.state.spec(key)
+            if spec is not None:
+                return spec.prompt
+        return self._last_question_text
 
     async def handle_interruption(self, heard_portion: str) -> None:
         """The candidate barged in: only `heard_portion` of the last reply was played."""
@@ -372,9 +454,8 @@ class ConversationManager:
         if s.phase is Phase.IDENTITY_CHECK:  # identity just confirmed
             s.phase = Phase.PERMISSION
             s.permission_attempts = 1
-            return self._say(
-                prompts.introduction(self.candidate, self.job), NextAction.ASK_QUESTION
-            )
+            self._last_question_text = prompts.introduction(self.candidate, self.job)
+            return self._say(self._last_question_text, NextAction.ASK_QUESTION)
 
         if s.phase is Phase.PERMISSION:
             if t.permission_granted:
@@ -474,6 +555,9 @@ class ConversationManager:
     ) -> AgentReply:
         s = self.state
         guard = self._guardrails()
+        if self._wrap_up_requested:
+            guard.append("wrap_up")
+            return self._to_confirmation(prefix=prompts.wrap_up_line())
 
         # Python-detected problems come first: a range to narrow, or a value that failed checks.
         if pending_range:

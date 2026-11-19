@@ -156,3 +156,47 @@ async def reconcile_calls(ctx: dict[str, Any], *, now: datetime | None = None) -
                         "call_reconcile_failed", call_attempt_id=str(attempt.id), error=str(exc)
                     )
     return count
+
+
+async def finalize_call(ctx: dict[str, Any], attempt_id: str) -> str:
+    """After a conversation (phase-06 §5.6): the recruiter summary from the stored result.
+    Idempotent (an existing summary is kept). Phase 7 adds the extraction pass and Sheets."""
+    from sqlalchemy import select
+
+    from app.agent.conversation_manager import ScreeningResult
+    from app.database.models import Candidate, Conversation, Job
+    from app.providers.llm import create_llm_provider
+    from app.services import screening_store
+
+    settings: Settings = ctx.get("settings") or get_settings()
+    aid = uuid.UUID(attempt_id)
+    async with get_sessionmaker()() as session:
+        conversation = (
+            await session.execute(select(Conversation).where(Conversation.call_attempt_id == aid))
+        ).scalar_one_or_none()
+        if conversation is None or not (conversation.extracted_data or {}).get("result"):
+            return "no_result"
+        if conversation.summary:
+            return "already_done"
+        attempt = await session.get(CallAttempt, aid)
+        assert attempt is not None
+        candidate = await session.get(Candidate, attempt.candidate_id)
+        assert candidate is not None
+        job = await session.get(Job, candidate.job_id)
+        result = ScreeningResult.from_dict(conversation.extracted_data["result"])
+    llm = (
+        create_llm_provider(settings) if settings.openai_api_key and settings.openai_model else None
+    )
+    try:
+        await screening_store.store_summary(
+            attempt_id=aid,
+            result=result,
+            job_title=job.job_title if job else "",
+            candidate_name=candidate.name,
+            llm=llm,
+        )
+    finally:
+        if llm is not None:
+            await llm.aclose()
+    logger.info("call_finalized", call_attempt_id=attempt_id)
+    return "summarized"

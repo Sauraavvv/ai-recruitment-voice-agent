@@ -5,6 +5,8 @@ from app.providers.tts.base import TTSConfigError, TTSProvider
 
 # Short acknowledgements Phase 6 plays instantly while the LLM thinks (phase-06 plan §5.8).
 ACKNOWLEDGEMENTS = ("Okay.", "Got it.", "Thank you.", "Sure.", "Right.")
+# Played once when the reply still hasn't started a while after the acknowledgement (P6)
+HOLD_PHRASE = "One moment."
 
 
 def fixed_phrases() -> list[str]:
@@ -13,6 +15,7 @@ def fixed_phrases() -> list[str]:
 
     return [
         *ACKNOWLEDGEMENTS,
+        HOLD_PHRASE,
         prompts.low_confidence(),
         prompts.llm_error_retry(),
         prompts.silence_prompt(None),
@@ -27,17 +30,16 @@ def fixed_phrases() -> list[str]:
     ]
 
 
-def use_deepgram(settings: Settings) -> bool:
-    if settings.tts_provider == "kitten":
-        return False
-    if settings.tts_provider == "deepgram" and not settings.deepgram_api_key:
-        raise TTSConfigError("TTS_PROVIDER=deepgram needs DEEPGRAM_API_KEY")
-    return bool(settings.deepgram_api_key)
-
-
 def create_tts_provider(settings: Settings) -> TTSProvider:
-    """Deepgram Aura with Kitten as fallback when a Deepgram key is set (TTS_PROVIDER=auto),
-    otherwise Kitten alone. See providers/tts/fallback.py for the switching rules."""
+    """Which voice speaks (decided 2026-11-19 after live calls: Kitten's Iris sounded better than
+    Deepgram's Harmonia on the phone):
+
+    - TTS_PROVIDER=auto or kitten: Kitten (local) first, Deepgram Aura as the fallback when a
+      Deepgram key is set and TTS_FALLBACK is on.
+    - TTS_PROVIDER=deepgram: Deepgram first, Kitten as the fallback (TTS_FALLBACK on).
+
+    With a fallback, the primary doesn't retry: the fallback takes the sentence at once. See
+    providers/tts/fallback.py for the switching rules."""
     from pathlib import Path
 
     from app.providers.tts.kitten_provider import (
@@ -46,33 +48,42 @@ def create_tts_provider(settings: Settings) -> TTSProvider:
         resolve_model_dir,
     )
 
-    def kitten() -> KittenTTSProvider:
+    has_deepgram = bool(settings.deepgram_api_key)
+    if settings.tts_provider == "deepgram" and not has_deepgram:
+        raise TTSConfigError("TTS_PROVIDER=deepgram needs DEEPGRAM_API_KEY")
+    with_fallback = settings.tts_fallback and has_deepgram
+
+    def kitten(attempts: int) -> KittenTTSProvider:
         return KittenTTSProvider(
             model_dir=resolve_model_dir(settings.kitten_model_path),
             voice=settings.kitten_voice or DEFAULT_VOICE,
             threads=settings.tts_threads,
             max_workers=settings.max_concurrent_calls,
             timeout_s=settings.tts_timeout_s,
+            attempts=attempts,
             fixed_phrases=fixed_phrases(),
         )
 
-    if not use_deepgram(settings):
-        return kitten()
+    def deepgram(attempts: int) -> TTSProvider:
+        from app.providers.tts import deepgram_provider
 
-    from app.providers.tts import deepgram_provider
+        assert settings.deepgram_api_key is not None
+        return deepgram_provider.DeepgramTTSProvider(
+            api_key=settings.deepgram_api_key.get_secret_value(),
+            voice=settings.deepgram_tts_voice or deepgram_provider.DEFAULT_VOICE,
+            first_byte_timeout_s=settings.deepgram_tts_first_byte_timeout_s,
+            gain_db=settings.deepgram_tts_gain_db,
+            attempts=attempts,
+            cache_dir=Path(settings.tts_cache_dir),
+            fixed_phrases=fixed_phrases(),
+        )
+
     from app.providers.tts.fallback import FallbackTTSProvider
 
-    assert settings.deepgram_api_key is not None
-    deepgram = deepgram_provider.DeepgramTTSProvider(
-        api_key=settings.deepgram_api_key.get_secret_value(),
-        voice=settings.deepgram_tts_voice or deepgram_provider.DEFAULT_VOICE,
-        first_byte_timeout_s=settings.deepgram_tts_first_byte_timeout_s,
-        gain_db=settings.deepgram_tts_gain_db,
-        # With a fallback, don't spend a second timeout on a retry: switch at once.
-        attempts=1 if settings.tts_fallback else 2,
-        cache_dir=Path(settings.tts_cache_dir),
-        fixed_phrases=fixed_phrases(),
-    )
-    if not settings.tts_fallback:
-        return deepgram
-    return FallbackTTSProvider(deepgram, kitten())
+    if settings.tts_provider == "deepgram":
+        if not settings.tts_fallback:
+            return deepgram(attempts=2)
+        return FallbackTTSProvider(deepgram(attempts=1), kitten(attempts=2))
+    if not with_fallback:
+        return kitten(attempts=2)
+    return FallbackTTSProvider(kitten(attempts=1), deepgram(attempts=2))

@@ -19,3 +19,5 @@ export type ImportRow = Schemas["ImportRow"];
 export type RowStatus = Schemas["RowStatus"];
 export type DashboardSummary = Schemas["DashboardSummary"];
 export type CallsOnDay = Schemas["CallsOnDay"];
+export type CallAttempt = Schemas["CallAttemptOut"];
+export type StartCallResult = Schemas["StartCallResult"];

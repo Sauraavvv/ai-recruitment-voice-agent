@@ -48,7 +48,7 @@ SAMPLE_RATE = 24000
 DEFAULT_VOICE = "aura-2-harmonia-en"  # chosen by the user, 2026-11-18 (docs/benchmarks/tts.md)
 # Harmonia's average loudness is ~7 dB below Kitten's Iris; this brings it level (soft-limited).
 DEFAULT_GAIN_DB = 6.0
-LRU_SIZE = 64
+LRU_SIZE = 192  # replies and the job questions warmed at call start (P6); ~25 MB at most
 WARM_UP_TEXT = "Hello."
 
 

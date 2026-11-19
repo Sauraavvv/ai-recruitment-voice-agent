@@ -31,3 +31,5 @@ huggingface-hub
 misaki
 spacy
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+# Phase 6 (voice activity detection: barge-in and end of turn). Prebuilt wheels of webrtcvad.
+webrtcvad-wheels

@@ -1,0 +1,31 @@
+id: s17_schedule_interview
+title: Asks to "schedule a call" (an interview), not a callback
+# Found on a real call (2026-11-19): "Can you please schedule a call for me?" was taken as a
+# callback request and the call ended without the read-back.
+candidate: {name: Rahul Sharma}
+prior_fields:
+  current_location: Pune
+  current_company: TCS
+  total_experience: 6
+  relevant_experience: 4
+  current_ctc: 12
+  expected_ctc: 18
+  notice_period: 60 days
+  reason_for_change: career growth
+turns:
+  - say: "Yes."
+  - say: "Sure."
+    expect: {asked: interested}
+  - say: "Yes, I'm interested in this opportunity. Can you please schedule a call for me?"
+    expect:
+      fields: {interested: {value: true}}
+      phase: screening
+      end_call: false
+      asked: interview_availability
+  - say: "Any weekday after 5 pm works."
+    expect: {phase: confirmation}
+  - say: "Yes, that's correct."
+    expect: {end_call: true}
+final:
+  end_reason: completed
+  status: completed

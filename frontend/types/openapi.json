@@ -941,7 +941,7 @@
           "calls"
         ],
         "summary": "Start Calls",
-        "description": "Queue a call per candidate. Each candidate gets its own result (ok or a reason).",
+        "description": "Queue a screening call per candidate. Each candidate gets its own result (ok or a\nreason). Calls need the AI voice loaded in this process (it speaks on the stream).",
         "operationId": "start_calls_api_v1_calls_start_post",
         "requestBody": {
           "content": {
@@ -1327,10 +1327,17 @@
           "agent_completed",
           "provider_failed",
           "technical_failure",
-          "cancelled"
+          "cancelled",
+          "declined",
+          "opted_out",
+          "callback_scheduled",
+          "wrong_person",
+          "silence_timeout",
+          "max_duration",
+          "escalated"
         ],
         "title": "CallEndReason",
-        "description": "Normalized reason a call attempt ended (phase-05 \u00a75)."
+        "description": "Normalized reason a call attempt ended (phase-05 \u00a75, phase-06 \u00a75.6)."
       },
       "CallStatus": {
         "type": "string",

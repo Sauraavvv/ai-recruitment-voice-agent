@@ -101,15 +101,39 @@ class Settings(BaseSettings):
     tts_timeout_s: float = Field(default=3.0, gt=0, le=30)
     # Load the voice model at startup. Tests turn this off; nothing can speak without it.
     tts_preload: bool = True
-    # Which TTS speaks: "auto" = Deepgram Aura when DEEPGRAM_API_KEY is set, else Kitten.
+    # Which TTS speaks first. auto/kitten = Kitten (Iris, local), with Deepgram Aura as the
+    # fallback when DEEPGRAM_API_KEY is set; deepgram = Deepgram first, Kitten as the fallback.
+    # (Kitten chosen as primary 2026-11-19 after live calls.)
     tts_provider: Literal["auto", "deepgram", "kitten"] = "auto"
-    # With Deepgram as primary, keep Kitten loaded and use it when Deepgram fails.
+    # Keep the other voice loaded and use it when the first one fails.
     tts_fallback: bool = True
     deepgram_tts_voice: str | None = None  # e.g. aura-2-asteria-en; empty = aura-2-harmonia-en
     deepgram_tts_gain_db: float = Field(default=6.0, ge=-12, le=12)  # loudness match with Kitten
     deepgram_tts_first_byte_timeout_s: float = Field(default=1.5, gt=0, le=10)
     # Disk cache for fixed phrases from paid providers (survives restarts)
     tts_cache_dir: str = "artifacts/tts-cache"
+
+    # Voice conversation (Phase 6, docs/voice-pipeline.md). Times in ms unless named _s.
+    # VAD: webrtcvad aggressiveness 0-3, plus an energy gate (dBFS) under which a frame is never
+    # speech. While the agent speaks the gate rises by VAD_ECHO_MARGIN_DB (echo of our own voice).
+    vad_aggressiveness: int = Field(default=2, ge=0, le=3)
+    vad_min_dbfs: float = Field(default=-45.0, ge=-90, le=0)
+    vad_echo_margin_db: float = Field(default=6.0, ge=0, le=40)
+    vad_speech_start_ms: int = Field(default=100, ge=20, le=1000)  # voiced run that starts speech
+    vad_end_silence_ms: int = Field(default=400, ge=100, le=3000)  # silence → finalize() STT
+    barge_in_min_ms: int = Field(default=300, ge=60, le=3000)  # speech before barge-in
+    backchannel_max_ms: int = Field(default=600, ge=0, le=3000)  # "yes"/"okay" shorter than this
+    greeting_wait_ms: int = Field(default=1200, ge=0, le=5000)  # wait for "Hello?" first
+    silence_timeout_s: float = Field(default=7.0, ge=2, le=60)  # no speech after the agent
+    max_utterance_s: float = Field(default=30.0, ge=5, le=120)
+    call_wrap_up_s: int = Field(default=600, ge=60, le=3600)  # then read back and close
+    stt_unavailable_s: float = Field(default=5.0, ge=1, le=60)
+    # Play a cached "Okay." / "Got it." while the agent thinks (phase-06 §5.8)
+    voice_acknowledgements: bool = True
+    # Synthesize the job's questions during the greeting: replies that ask them play at once
+    voice_tts_warm: bool = True
+    # Reply still silent this long after the candidate finished → "One moment." (0 = never)
+    voice_hold_after_ms: int = Field(default=3500, ge=0, le=10000)
 
     # Google Sheets (Phase 7)
     google_service_account_json: str | None = None

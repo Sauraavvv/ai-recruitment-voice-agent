@@ -1,9 +1,10 @@
-"""Call attempts (plan.md Module F). Recruiter-only; the UI comes in Phase 8."""
+"""Call attempts (plan.md Module F). Recruiter-only. The candidate page starts a call; the
+call list and transcripts come with the Phase 8 dashboard."""
 
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import SessionDep, SettingsDep
 from app.api.responses import ok
@@ -23,15 +24,19 @@ router = APIRouter(prefix="/calls", tags=["calls"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def start_calls(
-    body: StartCallsRequest, session: SessionDep, settings: SettingsDep
+    body: StartCallsRequest, session: SessionDep, settings: SettingsDep, request: Request
 ) -> dict[str, Any]:
-    """Queue a call per candidate. Each candidate gets its own result (ok or a reason)."""
+    """Queue a screening call per candidate. Each candidate gets its own result (ok or a
+    reason). Calls need the AI voice loaded in this process (it speaks on the stream)."""
+    tts = getattr(request.app.state, "tts", None)
     results = await call_service.start_calls(
         session,
         body.candidate_ids,
         settings,
         enqueue_initiate_call,
         attempt_type=CallAttemptType.MANUAL,
+        # tts_preload off = tests: there is no voice to wait for
+        voice_ready=not settings.tts_preload or bool(tts and tts.status().ready),
     )
     return ok([r.as_dict() for r in results])
 

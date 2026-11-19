@@ -233,3 +233,31 @@ Testers available on different networks and devices; scenario cards printed or s
 ## 12. Exit
 
 [Phase exit report](README.md#phase-exit-report) with the test-call log and latency table.
+
+## 13. As built (2026-11-19)
+
+Design as built: [voice-pipeline.md](../voice-pipeline.md). Real-call programme and log: [test-calls/phase-06.md](../test-calls/phase-06.md).
+
+**Deliverables:** `voice/pipeline.py` (`CallSession`), `websocket_handler.py` (production handler), `audio_processor.py`, `vad.py`, `interruption.py`, `turn_manager.py`, `playback.py`, `session_registry.py`, `services/transcript_service.py`, `docs/voice-pipeline.md`, `docs/test-calls/phase-06.md`. Also: `voice/telephony_poc.py` (the P5 line checks, still reachable with `make test-call mode=full|listen`), `scripts/voice_sim.py` (`make voice-sim`), the `finalize_call` worker job, migration `0004` (end reasons), a **Call now** button and call list on the candidate page. `voice/live_screening.py` (the P5 preview) is removed; the default stream mode is now the conversation.
+
+**Deviations from §5 and why:**
+- Turn rules live in one transition table (`turn_manager.TABLE`); a single driver task applies them to events from the session's own queue. Easier to test row by row and race-free.
+- Merging (§5.2/§5.3): any utterance before the reply starts playing cancels the turn and reruns it on both texts. `ConversationManager.handle_utterance` undoes itself when cancelled, and `checkpoint()/restore()` also undoes a reply that was ready but not yet played.
+- Transcript (§5.7): entries are merged **by seq** (replace or append) rather than only appended, so an agent turn that is interrupted after it was saved is updated in place. Still one atomic UPDATE and idempotent.
+- Silence (§5.5): the first re-prompt repeats the question's short form ("Sorry, I'll ask again. …"), the second asks "are you still there?", the third closes. The timer waits while the candidate is mid-speech.
+- Call length: wrap-up (read-back, then close) at `CALL_WRAP_UP_S` = 600 s; hard close at `MAX_CALL_DURATION_S` − 20 s (880 s; Exotel's `TimeLimit` is 900 s).
+- LLM failure: the P2 agent's own handling ("Sorry, could you repeat that?", then its error close) instead of a separate holding phrase.
+- Backchannels while the agent speaks are held: dropped after the reply, unless it asked a yes/no question or they came over its last 15% (an answer to the question as it ended).
+- Greeting: a "hello" before it is dropped; an answer said over it is kept for after it.
+- Added: a cached-acknowledgement rule (none in the identity phase or after low-confidence speech; never the same twice in a row; a leading "Got it." / "Sure," in the reply isn't spoken again).
+- Added: TTS warm-up of the job's question prompts during the greeting (Deepgram's first audio was ~1 s on 2026-11-19; cached replies play in ~1 ms). Reply latency in simulation went from 4.4 s to 3.2 s p50.
+- Added: calls are refused (`voice_unavailable`) while the voice model is still loading (P5 deferred item).
+- VAD: webrtcvad (`webrtcvad-wheels` 2.0.14.post1, aggressiveness 2) plus an energy gate raised by 6 dB while our audio plays. Silero not needed so far. Flux not evaluated.
+- Session harness with real providers is `make voice-sim` (host, macOS `say` as the candidate) rather than a pytest test, because it needs `say`, costs money and isn't deterministic.
+
+- After the real calls (see the exit report in progress.md): Kitten (Iris) became the primary voice with Deepgram as the fallback (user decision); replies wait for 0.7 s of quiet; barge-in ignores speech that started before the reply was audible; silence timer after a barge-in; "One moment." after 3.5 s; agent fixes (interview vs callback, nameless company/location, notice-period sanity, read-back of notice days).
+
+**Not done:**
+- P6-AC1 with three *different* testers (only one tester available): Phase 10, after KYC.
+- Cards 6 (opt-out) and 9 (noise) not run live; two simultaneous real calls not run.
+- Outbound frame size unchanged (200 ms); barge-in met its target without it.

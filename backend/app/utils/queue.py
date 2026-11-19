@@ -35,3 +35,8 @@ async def enqueue_initiate_call(attempt_id: str, *, ignore_window: bool = False)
     await get_queue().enqueue_job(
         "initiate_call", attempt_id, ignore_window, _job_id=f"call:{attempt_id}"
     )
+
+
+async def enqueue_finalize_call(attempt_id: str) -> None:
+    """Post-call work for one attempt (summary now, Phase 7 extraction and Sheets)."""
+    await get_queue().enqueue_job("finalize_call", attempt_id, _job_id=f"finalize:{attempt_id}")

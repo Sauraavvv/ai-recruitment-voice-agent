@@ -52,7 +52,7 @@ class CallAttemptType(StrEnum):
 
 
 class CallEndReason(StrEnum):
-    """Normalized reason a call attempt ended (phase-05 §5)."""
+    """Normalized reason a call attempt ended (phase-05 §5, phase-06 §5.6)."""
 
     NO_ANSWER = "no_answer"
     BUSY = "busy"
@@ -62,6 +62,14 @@ class CallEndReason(StrEnum):
     PROVIDER_FAILED = "provider_failed"
     TECHNICAL_FAILURE = "technical_failure"
     CANCELLED = "cancelled"
+    # Phase 6: how the conversation itself ended
+    DECLINED = "declined"
+    OPTED_OUT = "opted_out"
+    CALLBACK_SCHEDULED = "callback_scheduled"
+    WRONG_PERSON = "wrong_person"
+    SILENCE_TIMEOUT = "silence_timeout"
+    MAX_DURATION = "max_duration"
+    ESCALATED = "escalated"
 
 
 class SyncStatus(StrEnum):

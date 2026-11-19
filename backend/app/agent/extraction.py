@@ -131,6 +131,28 @@ class ExtractionResult:
     confirmed: list[str] = field(default_factory=list)
 
 
+# Words that can't be a company or a place on their own ("Working at." was stored as a company
+# on a real call when STT lost the name, 2026-11-19)
+_FILLER = frozenset(
+    """i i'm im am is it it's its my the a an at in with for of from to and so um uh er currently
+    current working work works worked company companies office based located live living stay
+    staying right now presently job employed here there city place""".split()
+)
+
+
+# A notice period talks about time (eval run 2026-11-19 stored "Any weekday after 4 pm" as one)
+_NOTICE_WORDS = re.compile(
+    r"\b(day|days|week|weeks|month|months|year|years|immediate|immediately|join|joining|"
+    r"joiner|serving|notice|buy ?out|negotiable|lwd|last working|relieved|relieving)\b",
+    re.IGNORECASE,
+)
+
+
+def has_name(text: str) -> bool:
+    words = re.findall(r"[a-z0-9'&.-]+", text.lower())
+    return any(w.strip(".'") not in _FILLER for w in words if w.strip(".'"))
+
+
 def _validate(name: FieldName, raw: Any, days: int | None) -> tuple[FieldValue, dict[str, Any]]:
     if name in (FieldName.TOTAL_EXPERIENCE, FieldName.RELEVANT_EXPERIENCE):
         return normalize_experience(raw), {}
@@ -139,8 +161,13 @@ def _validate(name: FieldName, raw: Any, days: int | None) -> tuple[FieldValue, 
     if name is FieldName.INTERESTED:
         return (raw if isinstance(raw, bool) else None), {}
     text = _clean_text(raw)
+    if name in (FieldName.CURRENT_COMPANY, FieldName.CURRENT_LOCATION) and text:
+        if not has_name(text):
+            return None, {}  # → invalid: the agent asks again
     if name is FieldName.NOTICE_PERIOD and text:
         d = notice_days(text, days)
+        if d is None and not _NOTICE_WORDS.search(text):
+            return None, {}  # not a notice period at all
         return text, ({"days": d} if d is not None else {})
     return text, {}
 

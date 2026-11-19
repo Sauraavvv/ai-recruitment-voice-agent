@@ -7,7 +7,7 @@ VENV := $(BACKEND)/.venv/bin
 	migrate migration create-user types agent-cli agent-eval llm-bench \
 	tts-model tts-say test-tts test-deepgram-tts bench-tts \
 	stt-clips stt-file stt-mic stt-record voice-loop test-stt bench-stt \
-	tunnel exotel-urls test-call
+	tunnel exotel-urls test-call voice-sim
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -133,6 +133,11 @@ stt-record:  ## Record real test clips (host, with consent): make stt-record SPE
 voice-loop:  ## Talk to the agent through STT (host): make voice-loop [SPEAK=1] [SCRIPT=s14_happy_path] [RATE=8000]
 	$(HOST_RUN) app.voice.local_loop $(if $(SPEAK),--speak) $(if $(SCRIPT),--script "$(SCRIPT)") $(if $(RATE),--rate $(RATE)) $(args)
 
+# --- Phase 6: voice conversation ---
+
+voice-sim:  ## Whole call without a phone, real STT/LLM/voice, `say` as the candidate (host, a few cents): make voice-sim [SCRIPT=s14_happy_path] [VOICE=Rishi]
+	$(HOST_RUN) app.scripts.voice_sim $(if $(SCRIPT),--script "$(SCRIPT)") $(if $(VOICE),--voice "$(VOICE)") $(args)
+
 test-stt:  ## Live Deepgram STT tests (about 1.5 minutes, a few cents; needs `make stt-clips`)
 	docker compose exec -T backend pytest -q -p no:cacheprovider -m stt app/tests/integration/test_deepgram.py
 
@@ -147,7 +152,7 @@ tunnel:  ## Public HTTPS/WSS URL for Exotel (Cloudflare quick tunnel; the URL ch
 exotel-urls:  ## URLs to paste into the Exotel flow (they contain secrets: don't share them)
 	docker compose exec -T backend python -m app.scripts.exotel_urls
 
-test-call:  ## Real call to a verified tester: make test-call phone=+9198XXXXXXXX [mode=full|listen]
-	@test -n "$(phone)$(candidate)" || (echo 'usage: make test-call phone=+91XXXXXXXXXX [mode=full|listen]'; exit 1)
+test-call:  ## Real screening call to a verified tester: make test-call phone=+9198XXXXXXXX [mode=screen|full|listen]
+	@test -n "$(phone)$(candidate)" || (echo 'usage: make test-call phone=+91XXXXXXXXXX [mode=screen|full|listen]'; exit 1)
 	docker compose exec -T backend python -m app.scripts.test_call \
-	  $(if $(phone),--phone "$(phone)",--candidate-id "$(candidate)") --mode $(or $(mode),full)
+	  $(if $(phone),--phone "$(phone)",--candidate-id "$(candidate)") --mode $(or $(mode),screen)

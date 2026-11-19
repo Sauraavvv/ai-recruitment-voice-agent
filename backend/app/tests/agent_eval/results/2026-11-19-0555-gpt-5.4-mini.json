@@ -1,0 +1,992 @@
+{
+ "summary": {
+  "model": "gpt-5.4-mini",
+  "prompt_version": "p6-2026-11-19.1",
+  "date": "2026-11-19T05:55:16+00:00",
+  "conversations": 2,
+  "overall_pass_rate": 1.0,
+  "non_safety_check_pass_rate": 1.0,
+  "safety_all_ok": true,
+  "llm": {
+   "calls": 15,
+   "retries": 0,
+   "retry_rate": 0.0,
+   "latency_ms": {
+    "p50": 2194,
+    "p95": 2921,
+    "mean": 2316,
+    "max": 3268
+   },
+   "tokens": {
+    "input": 42604,
+    "cached_input": 0,
+    "output": 3184,
+    "per_call_input": 2840,
+    "per_call_output": 212
+   },
+   "guardrail_events": [],
+   "reprompts": 0,
+   "template_fallbacks": 0
+  },
+  "cost": null,
+  "scenarios": {
+   "s14_happy_path": {
+    "runs": 1,
+    "passed": 1,
+    "pass_rate": 1.0,
+    "safety_ok": true,
+    "failures": []
+   },
+   "s16_immediate_joiner": {
+    "runs": 1,
+    "passed": 1,
+    "pass_rate": 1.0,
+    "safety_ok": true,
+    "failures": []
+   }
+  }
+ },
+ "runs": [
+  {
+   "scenario": "s14_happy_path",
+   "run": 1,
+   "checks": [
+    {
+     "name": "asked",
+     "ok": true,
+     "detail": "asked interested",
+     "turn": 2
+    },
+    {
+     "name": "phase",
+     "ok": true,
+     "detail": "phase confirmation",
+     "turn": 11
+    },
+    {
+     "name": "end_call",
+     "ok": true,
+     "detail": "end_call True",
+     "turn": 12
+    },
+    {
+     "name": "no_repeat_questions",
+     "ok": true,
+     "detail": "",
+     "turn": null
+    },
+    {
+     "name": "end_reason",
+     "ok": true,
+     "detail": "completed",
+     "turn": null
+    },
+    {
+     "name": "status",
+     "ok": true,
+     "detail": "completed",
+     "turn": null
+    },
+    {
+     "name": "summary_generated",
+     "ok": true,
+     "detail": "Priya Nair is interested in the Backend Developer role and is currently based in Bangalore. The candidate works at Wipro and has 6 years of total experience, including 4 years of relevant experience. The notice period is 60 days, current CTC is 14 LPA, and expected CTC is 20 LPA. The reason for change is to get more ownership and work at a product company. Interview availability is any weekday after 4 pm.",
+     "turn": null
+    },
+    {
+     "name": "summary_neutral",
+     "ok": true,
+     "detail": "Priya Nair is interested in the Backend Developer role and is currently based in Bangalore. The candidate works at Wipro and has 6 years of total experience, including 4 years of relevant experience. The notice period is 60 days, current CTC is 14 LPA, and expected CTC is 20 LPA. The reason for change is to get more ownership and work at a product company. Interview availability is any weekday after 4 pm.",
+     "turn": null
+    },
+    {
+     "name": "field:interested.value",
+     "ok": true,
+     "detail": "got value=True status=answered",
+     "turn": null
+    },
+    {
+     "name": "field:current_location.value_contains",
+     "ok": true,
+     "detail": "got value='Bangalore' status=answered",
+     "turn": null
+    },
+    {
+     "name": "field:current_company.value_contains",
+     "ok": true,
+     "detail": "got value='Wipro' status=answered",
+     "turn": null
+    },
+    {
+     "name": "field:total_experience.value",
+     "ok": true,
+     "detail": "got value=6.0 status=confirmed",
+     "turn": null
+    },
+    {
+     "name": "field:relevant_experience.value",
+     "ok": true,
+     "detail": "got value=4.0 status=answered",
+     "turn": null
+    },
+    {
+     "name": "field:notice_period.value_contains",
+     "ok": true,
+     "detail": "got value='60 days' status=confirmed",
+     "turn": null
+    },
+    {
+     "name": "field:current_ctc.value",
+     "ok": true,
+     "detail": "got value=14.0 status=confirmed",
+     "turn": null
+    },
+    {
+     "name": "field:expected_ctc.value",
+     "ok": true,
+     "detail": "got value=20.0 status=confirmed",
+     "turn": null
+    },
+    {
+     "name": "field:reason_for_change.status",
+     "ok": true,
+     "detail": "got value=\"I want more ownership, and I'd like to work at a product company.\" status=answered",
+     "turn": null
+    },
+    {
+     "name": "field:interview_availability.value_contains",
+     "ok": true,
+     "detail": "got value='Any weekday after 4 pm works for an interview.' status=answered",
+     "turn": null
+    },
+    {
+     "name": "valid_json",
+     "ok": true,
+     "detail": "0 turns failed",
+     "turn": null
+    }
+   ],
+   "transcript": [
+    {
+     "seq": 1,
+     "speaker": "assistant",
+     "text": "Hello, am I speaking with Priya Nair?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 2,
+     "speaker": "candidate",
+     "text": "Yes, this is Priya.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 3,
+     "speaker": "assistant",
+     "text": "Hi Priya, I'm an AI recruitment assistant calling on behalf of Northwind Labs about a Backend Developer role. Is this a good time for a quick five-minute conversation?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 4,
+     "speaker": "candidate",
+     "text": "Yes, sure, I have a few minutes.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 5,
+     "speaker": "assistant",
+     "text": "Great, thank you. It's a Backend Developer position with Northwind Labs based in Bengaluru. Are you interested in this opportunity?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 6,
+     "speaker": "candidate",
+     "text": "Yes, I'm interested.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 7,
+     "speaker": "assistant",
+     "text": "Thanks. Where are you currently located?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 8,
+     "speaker": "candidate",
+     "text": "I'm in Bangalore, currently working at Wipro.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 9,
+     "speaker": "assistant",
+     "text": "Thanks. How many years of total work experience do you have?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 10,
+     "speaker": "candidate",
+     "text": "Six years in total.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 11,
+     "speaker": "assistant",
+     "text": "Thanks. How many years of experience do you have that is relevant to this role?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 12,
+     "speaker": "candidate",
+     "text": "Four years of that is backend development with Python.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 13,
+     "speaker": "assistant",
+     "text": "Got it. What is your notice period?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 14,
+     "speaker": "candidate",
+     "text": "My notice period is 60 days.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 15,
+     "speaker": "assistant",
+     "text": "Thanks. What is your current CTC?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 16,
+     "speaker": "candidate",
+     "text": "My current CTC is 14 lakhs.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 17,
+     "speaker": "assistant",
+     "text": "Thanks. What CTC are you expecting?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 18,
+     "speaker": "candidate",
+     "text": "I'm expecting 20 lakhs.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 19,
+     "speaker": "assistant",
+     "text": "Thanks. Why are you looking for a change right now?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 20,
+     "speaker": "candidate",
+     "text": "I want more ownership, and I'd like to work at a product company.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 21,
+     "speaker": "assistant",
+     "text": "Thanks. When would you be available for an interview?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 22,
+     "speaker": "candidate",
+     "text": "Any weekday after 4 pm works for an interview.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 23,
+     "speaker": "assistant",
+     "text": "Thanks. Just to confirm, you have 6 years of experience, a current CTC of 14 lakhs, an expected CTC of 20 lakhs and a notice period of 60 days. Is that correct?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 24,
+     "speaker": "candidate",
+     "text": "Yes, that's all correct.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 25,
+     "speaker": "assistant",
+     "text": "Thank you for your time, Priya. The recruitment team will be in touch about the next steps. Have a great day!",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    }
+   ],
+   "turn_logs": [
+    {
+     "turn": 1,
+     "phase_before": "identity_check",
+     "phase_after": "permission",
+     "utterance": "Yes, this is Priya.",
+     "reply": "Hi Priya, I'm an AI recruitment assistant calling on behalf of Northwind Labs about a Backend Developer role. Is this a good time for a quick five-minute conversation?",
+     "action": "ask_question",
+     "asked_field": null,
+     "ask_kind": null,
+     "settled": [],
+     "updates": {},
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 2,
+     "phase_before": "permission",
+     "phase_after": "screening",
+     "utterance": "Yes, sure, I have a few minutes.",
+     "reply": "Great, thank you. It's a Backend Developer position with Northwind Labs based in Bengaluru. Are you interested in this opportunity?",
+     "action": "ask_question",
+     "asked_field": "interested",
+     "ask_kind": "question",
+     "settled": [],
+     "updates": {},
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 3,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "Yes, I'm interested.",
+     "reply": "Thanks. Where are you currently located?",
+     "action": "ask_question",
+     "asked_field": "current_location",
+     "ask_kind": "question",
+     "settled": [
+      "interested"
+     ],
+     "updates": {
+      "interested": {
+       "value": true,
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 4,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "I'm in Bangalore, currently working at Wipro.",
+     "reply": "Thanks. How many years of total work experience do you have?",
+     "action": "ask_question",
+     "asked_field": "total_experience",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company"
+     ],
+     "updates": {
+      "current_location": {
+       "value": "Bangalore",
+       "outcome": "set"
+      },
+      "current_company": {
+       "value": "Wipro",
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 5,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "Six years in total.",
+     "reply": "Thanks. How many years of experience do you have that is relevant to this role?",
+     "action": "ask_question",
+     "asked_field": "relevant_experience",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience"
+     ],
+     "updates": {
+      "total_experience": {
+       "value": 6.0,
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 6,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "Four years of that is backend development with Python.",
+     "reply": "Got it. What is your notice period?",
+     "action": "ask_question",
+     "asked_field": "notice_period",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience"
+     ],
+     "updates": {
+      "relevant_experience": {
+       "value": 4.0,
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 7,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "My notice period is 60 days.",
+     "reply": "Thanks. What is your current CTC?",
+     "action": "ask_question",
+     "asked_field": "current_ctc",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period"
+     ],
+     "updates": {
+      "notice_period": {
+       "value": "60 days",
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 8,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "My current CTC is 14 lakhs.",
+     "reply": "Thanks. What CTC are you expecting?",
+     "action": "ask_question",
+     "asked_field": "expected_ctc",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period",
+      "current_ctc"
+     ],
+     "updates": {
+      "current_ctc": {
+       "value": 14.0,
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 9,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "I'm expecting 20 lakhs.",
+     "reply": "Thanks. Why are you looking for a change right now?",
+     "action": "ask_question",
+     "asked_field": "reason_for_change",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period",
+      "current_ctc",
+      "expected_ctc"
+     ],
+     "updates": {
+      "expected_ctc": {
+       "value": 20.0,
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 10,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "I want more ownership, and I'd like to work at a product company.",
+     "reply": "Thanks. When would you be available for an interview?",
+     "action": "ask_question",
+     "asked_field": "interview_availability",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period",
+      "current_ctc",
+      "expected_ctc",
+      "reason_for_change"
+     ],
+     "updates": {
+      "reason_for_change": {
+       "value": "I want more ownership, and I'd like to work at a product company.",
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 11,
+     "phase_before": "screening",
+     "phase_after": "confirmation",
+     "utterance": "Any weekday after 4 pm works for an interview.",
+     "reply": "Thanks. Just to confirm, you have 6 years of experience, a current CTC of 14 lakhs, an expected CTC of 20 lakhs and a notice period of 60 days. Is that correct?",
+     "action": "ask_question",
+     "asked_field": null,
+     "ask_kind": "confirm",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period",
+      "current_ctc",
+      "expected_ctc",
+      "reason_for_change",
+      "interview_availability"
+     ],
+     "updates": {
+      "interview_availability": {
+       "value": "Any weekday after 4 pm works for an interview.",
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 12,
+     "phase_before": "confirmation",
+     "phase_after": "ended",
+     "utterance": "Yes, that's all correct.",
+     "reply": "Thank you for your time, Priya. The recruitment team will be in touch about the next steps. Have a great day!",
+     "action": "end_call",
+     "asked_field": null,
+     "ask_kind": null,
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period",
+      "current_ctc",
+      "expected_ctc",
+      "reason_for_change",
+      "interview_availability"
+     ],
+     "updates": {
+      "total_experience": {
+       "outcome": "confirmed"
+      },
+      "notice_period": {
+       "outcome": "confirmed"
+      },
+      "current_ctc": {
+       "outcome": "confirmed"
+      },
+      "expected_ctc": {
+       "outcome": "confirmed"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    }
+   ],
+   "latencies_ms": [
+    2271,
+    2121,
+    2149,
+    3268,
+    2155,
+    2194,
+    2166,
+    2235,
+    2065,
+    2466,
+    2281,
+    2151
+   ],
+   "retries": 0,
+   "llm_calls": 12,
+   "input_tokens": 34375,
+   "cached_tokens": 0,
+   "output_tokens": 2580,
+   "guardrails": [],
+   "error": null,
+   "duration_s": 29.22
+  },
+  {
+   "scenario": "s16_immediate_joiner",
+   "run": 1,
+   "checks": [
+    {
+     "name": "asked",
+     "ok": true,
+     "detail": "asked notice_period",
+     "turn": 2
+    },
+    {
+     "name": "field:notice_period.status",
+     "ok": true,
+     "detail": "got value='immediate joiner' status=answered",
+     "turn": 3
+    },
+    {
+     "name": "field:notice_period.meta_days",
+     "ok": true,
+     "detail": "got value='immediate joiner' status=answered",
+     "turn": 3
+    },
+    {
+     "name": "asked",
+     "ok": true,
+     "detail": "asked current_ctc",
+     "turn": 3
+    },
+    {
+     "name": "no_repeat_questions",
+     "ok": true,
+     "detail": "",
+     "turn": null
+    },
+    {
+     "name": "valid_json",
+     "ok": true,
+     "detail": "0 turns failed",
+     "turn": null
+    }
+   ],
+   "transcript": [
+    {
+     "seq": 1,
+     "speaker": "assistant",
+     "text": "Hello, am I speaking with Rahul Sharma?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 2,
+     "speaker": "candidate",
+     "text": "Yes.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 3,
+     "speaker": "assistant",
+     "text": "Hi Rahul, I'm an AI recruitment assistant calling on behalf of Northwind Labs about a Backend Developer role. Is this a good time for a quick five-minute conversation?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 4,
+     "speaker": "candidate",
+     "text": "Sure.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 5,
+     "speaker": "assistant",
+     "text": "Great, thank you. It's a Backend Developer position with Northwind Labs based in Bengaluru. What is your notice period?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 6,
+     "speaker": "candidate",
+     "text": "I'm an immediate joiner, my last day was last week.",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    },
+    {
+     "seq": 7,
+     "speaker": "assistant",
+     "text": "Got it. What is your current CTC?",
+     "timestamp": "2026-11-18T05:30:00+00:00",
+     "interrupted": false,
+     "heard_text": null,
+     "stt_confidence": null,
+     "latency_ms": null,
+     "ack": null
+    }
+   ],
+   "turn_logs": [
+    {
+     "turn": 1,
+     "phase_before": "identity_check",
+     "phase_after": "permission",
+     "utterance": "Yes.",
+     "reply": "Hi Rahul, I'm an AI recruitment assistant calling on behalf of Northwind Labs about a Backend Developer role. Is this a good time for a quick five-minute conversation?",
+     "action": "ask_question",
+     "asked_field": null,
+     "ask_kind": null,
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience"
+     ],
+     "updates": {},
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 2,
+     "phase_before": "permission",
+     "phase_after": "screening",
+     "utterance": "Sure.",
+     "reply": "Great, thank you. It's a Backend Developer position with Northwind Labs based in Bengaluru. What is your notice period?",
+     "action": "ask_question",
+     "asked_field": "notice_period",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience"
+     ],
+     "updates": {},
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    },
+    {
+     "turn": 3,
+     "phase_before": "screening",
+     "phase_after": "screening",
+     "utterance": "I'm an immediate joiner, my last day was last week.",
+     "reply": "Got it. What is your current CTC?",
+     "action": "ask_question",
+     "asked_field": "current_ctc",
+     "ask_kind": "question",
+     "settled": [
+      "interested",
+      "current_location",
+      "current_company",
+      "total_experience",
+      "relevant_experience",
+      "notice_period"
+     ],
+     "updates": {
+      "notice_period": {
+       "value": "immediate joiner",
+       "outcome": "set"
+      }
+     },
+     "dropped": {},
+     "invalid": {},
+     "guardrails": []
+    }
+   ],
+   "latencies_ms": [
+    2255,
+    2191,
+    2773
+   ],
+   "retries": 0,
+   "llm_calls": 3,
+   "input_tokens": 8229,
+   "cached_tokens": 0,
+   "output_tokens": 604,
+   "guardrails": [],
+   "error": null,
+   "duration_s": 7.22
+  }
+ ]
+}

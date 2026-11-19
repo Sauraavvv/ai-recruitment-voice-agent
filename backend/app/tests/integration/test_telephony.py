@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import CallAttempt, Candidate, WebhookEvent
+from app.database.models import CallAttempt, Candidate, Conversation, WebhookEvent
 from app.providers.telephony import stream_token, webhook_token
 from app.providers.telephony.base import (
     ProviderCall,
@@ -32,7 +32,9 @@ from app.providers.telephony.base import (
 from app.services import call_service, call_slots
 from app.tests.conftest import make_settings
 from app.utils.redis import get_redis
+from app.voice import telephony_poc
 from app.voice import websocket_handler as wh
+from app.voice.audio_processor import InboundQueue
 from app.workers import call_worker
 
 EXOTEL = {
@@ -616,7 +618,8 @@ async def test_stream_caller_hangup_cleans_up(
     summary = capture["summary"]
     assert summary["counts"] == {"connected": 1, "start": 1, "media": 2, "dtmf": 1, "stop": 1}
     assert summary["media_chunk_sizes"] == {"3200": 2}
-    assert summary["stop_reason"] == "callended" and summary["ended_by"] == "caller"
+    assert summary["ended_by"] == "caller" and summary["mode"] == "listen"
+    assert any("stop received: callended" in n for n in summary["notes"])
     assert summary["tasks_after"] <= summary["tasks_before"]
     assert "payload" not in json.dumps(capture["first_shapes"]).replace('"payload": "str', "")
     assert "9000009001" not in json.dumps(capture) and "acct" not in json.dumps(capture)
@@ -631,9 +634,10 @@ async def test_stream_full_mode_hangs_up_from_backend(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(wh, "ECHO_SECONDS", 0.3)
-    monkeypatch.setattr(wh, "ECHO_DELAY_S", 0.05)
+    monkeypatch.setattr(telephony_poc, "ECHO_SECONDS", 0.3)
+    monkeypatch.setattr(telephony_poc, "ECHO_DELAY_S", 0.05)
     attempt = await _initiated(authed, enqueued, db_session, settings, "+91 90000 09041")
+    await get_redis().set(wh.POC_MODE_KEY.format(attempt_id=attempt.id), "full")
     msgs = _stream_messages(attempt.provider_call_id or "")[:2]  # connected, start
     ws = FakeWebSocket(msgs, _State(), hold=True)
 
@@ -695,11 +699,10 @@ async def test_stream_route_rejects_bad_token(client: AsyncClient, settings: Set
 
 
 def test_inbound_queue_drops_oldest() -> None:
-    cap = wh.StreamCapture()
-    q = wh.InboundQueue(max_bytes=1000, capture=cap)
+    q = InboundQueue(max_bytes=1000)
     for i in range(5):
         q.put(bytes([i]) * 400)
-    assert cap.dropped_inbound_bytes == 1200  # three oldest chunks dropped
+    assert q.dropped_bytes == 1200  # three oldest chunks dropped
     assert q._chunks[0][0] == 3
 
 
@@ -786,3 +789,124 @@ async def test_stream_matches_by_custom_parameter_key(
     assert attempt is not None
     await db_session.refresh(attempt)
     assert attempt.provider_call_id == "sid-from-exotel" and attempt.stream_id is not None
+
+
+# --- Phase 6: the screening conversation over the stream -------------------------------------
+
+
+async def test_stream_runs_the_screening_conversation(
+    authed: AsyncClient,
+    active_job: dict[str, Any],
+    enqueued: list[str],
+    db_session: AsyncSession,
+    sessions: None,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real stream (fake phone, STT, LLM and voice): greeting → answer → the agent closes and
+    hangs up; transcript, result and end_reason are stored, the summary job is queued."""
+    from app.services import screening_store, transcript_service
+    from app.tests.unit.agent.stub_llm import ScriptedLLM, turn
+    from app.tests.unit.voice.session_harness import FakeSTT, FakeTTS
+
+    @contextlib.asynccontextmanager
+    async def factory() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    for module in (transcript_service, screening_store):
+        monkeypatch.setattr(module, "get_sessionmaker", lambda: factory)
+    stt, llm = FakeSTT(), ScriptedLLM([turn(identity_confirmed=False)])
+    monkeypatch.setattr(wh, "create_stt_provider", lambda *_a, **_k: stt)
+    monkeypatch.setattr(wh, "create_llm_provider", lambda _s: llm)
+    finalized: list[str] = []
+
+    async def enqueue_finalize(attempt_id: str) -> None:
+        finalized.append(attempt_id)
+
+    monkeypatch.setattr(wh, "enqueue_finalize_call", enqueue_finalize)
+    fast = settings.model_copy(update={"greeting_wait_ms": 50, "telephony_frame_bytes": 640})
+
+    class State:
+        tts = FakeTTS(ms_per_word=20)
+
+    attempt = await _initiated(authed, enqueued, db_session, settings, "+91 90000 09060")
+    ws = FakeWebSocket(_stream_messages(attempt.provider_call_id or "")[:2], State(), hold=True)
+
+    async def phone() -> None:
+        said = False
+        while ws.closed is None:
+            for m in list(ws.sent):
+                if m["event"] == "mark" and not m.get("_answered"):
+                    m["_answered"] = True
+                    ws.feed({"event": "mark", "stream_sid": "docs-stream-1", "mark": m["mark"]})
+                    if not said:  # the greeting has played: the candidate answers
+                        said = True
+                        await asyncio.sleep(0.05)
+                        stt.say("No, you have the wrong number.")
+            await asyncio.sleep(0.02)
+
+    helper = asyncio.create_task(phone())
+    await asyncio.wait_for(wh.handle_exotel_stream(ws, fast), 15)  # type: ignore[arg-type]
+    helper.cancel()
+
+    assert ws.closed == 1000  # the agent hung up
+    assert {m["stream_sid"] for m in ws.sent} == {"docs-stream-1"}
+    await db_session.refresh(attempt)
+    assert attempt.end_reason == "wrong_person" and attempt.failure_reason is None
+    assert finalized == [str(attempt.id)]
+    assert str(attempt.id) not in wh.SESSIONS
+    assert State.tts.forgotten == [str(attempt.id)]
+    conv = (
+        await db_session.execute(
+            select(Conversation).where(Conversation.call_attempt_id == attempt.id)
+        )
+    ).scalar_one()
+    assert [e["speaker"] for e in conv.transcript] == ["assistant", "candidate", "assistant"]
+    assert conv.transcript[1]["text"] == "No, you have the wrong number."
+    assert conv.extracted_data["result"]["end_reason"] == "wrong_person"
+    assert conv.extracted_data["end_reason"] == "wrong_person"
+    assert "live" in conv.extracted_data  # saved turn by turn during the call
+    candidate = await db_session.get(Candidate, attempt.candidate_id)
+    assert candidate is not None and candidate.screening_status == "wrong_person"
+    assert await call_slots.in_use(get_redis(), size=1) == []
+
+
+async def test_stream_without_a_voice_is_a_technical_failure(
+    authed: AsyncClient,
+    active_job: dict[str, Any],
+    enqueued: list[str],
+    db_session: AsyncSession,
+    sessions: None,
+    settings: Settings,
+) -> None:
+    attempt = await _initiated(authed, enqueued, db_session, settings, "+91 90000 09061")
+    ws = FakeWebSocket(_stream_messages(attempt.provider_call_id or ""), _State())  # tts None
+    await wh.handle_exotel_stream(ws, settings)  # type: ignore[arg-type]
+    assert ws.closed == 1011
+    await db_session.refresh(attempt)
+    assert (attempt.end_reason, attempt.failure_reason) == (
+        "technical_failure",
+        "voice_unavailable",
+    )
+
+
+async def test_start_refused_while_the_voice_is_loading(
+    authed: AsyncClient, active_job: dict[str, Any], enqueued: list[str], settings: Settings
+) -> None:
+    from app.providers.tts.base import ProviderStatus
+
+    class Loading:
+        def status(self) -> ProviderStatus:
+            return ProviderStatus("deepgram", False, "loading")
+
+    app: Any = authed.app  # type: ignore[attr-defined]
+    cid = await _candidate(authed, "+91 90000 09062")
+    original = (app.state.tts, settings.tts_preload)
+    app.state.tts = Loading()
+    object.__setattr__(settings, "tts_preload", True)
+    try:
+        (result,) = await _start(authed, cid)
+    finally:
+        app.state.tts = original[0]
+        object.__setattr__(settings, "tts_preload", original[1])
+    assert result["error"]["code"] == "voice_unavailable" and enqueued == []

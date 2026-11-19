@@ -1,6 +1,6 @@
-"""Place one real PoC test call and follow it (phase-05 P5-AC1..AC7).
+"""Place one real test call and follow it (phase-05 PoC, phase-06 screening calls).
 
-    python -m app.scripts.test_call --phone +9198XXXXXXXX [--mode full|listen]
+    python -m app.scripts.test_call --phone +9198XXXXXXXX [--mode screen|full|listen]
     python -m app.scripts.test_call --candidate-id <uuid>
 
 Only call testers who agreed to it, whose numbers are verified in the Exotel dashboard.
@@ -8,9 +8,12 @@ Only call testers who agreed to it, whose numbers are verified in the Exotel das
 consent recorded as a manual entry. The calling window is skipped for these test calls.
 
 Modes (what the stream does once answered):
-  full    clip → beep → 15 s echo → stop (`clear`) test → goodbye → backend hangs up
-  listen  clip, then record until the caller hangs up
-  screen  live screening: the AI agent asks the job's questions, the answers are stored
+  screen  the screening conversation (default; what every real call does)
+  full    PoC line check: clip → beep → 15 s echo → stop (`clear`) test → goodbye → hang up
+  listen  PoC: clip, then record until the caller hangs up
+
+After a screening call it prints the transcript, the stored fields, the summary (written by the
+worker's `finalize_call` a few seconds later) and the per-turn latency table.
 """
 
 import argparse
@@ -127,7 +130,41 @@ async def _print_screening(attempt_id: uuid.UUID) -> None:
         print(f"\n--- stored on the candidate (screening_status={candidate.screening_status}) ---")
         for f in FieldName:
             print(f"  {f.value:<24} {getattr(candidate, f.value)!r}")
-        print(f"\n--- summary ---\n{conv.summary}\n")
+        print(f"\nend_reason={attempt.end_reason} failure={attempt.failure_reason or '-'}")
+        metrics = (conv.extracted_data or {}).get("turn_metrics") or []
+        if metrics:
+            print("\n--- latency per turn (ms) ---")
+            cols = ("turn", "ack", "stt_ms", "llm_ms", "tts_ms", "ack_ms", "total_ms", "merged")
+            print("  ".join(f"{c:>8}" for c in cols))
+            for m in metrics:
+                cells = ("-" if m.get(c) is None else str(m.get(c)) for c in cols)
+                print("  ".join(f"{cell:>8}" for cell in cells))
+            print_percentiles(metrics)
+        stats = (conv.extracted_data or {}).get("session") or {}
+        if stats:
+            keys = ("merges", "barge_ins", "backchannels_ignored", "clears", "max_loop_lag_ms")
+            print({k: stats.get(k) for k in keys})
+    for _ in range(15):  # the worker writes the summary just after the call
+        async with get_sessionmaker()() as session_db:
+            conv2 = (
+                await session_db.execute(
+                    select(Conversation).where(Conversation.call_attempt_id == attempt_id)
+                )
+            ).scalar_one_or_none()
+        if conv2 is not None and conv2.summary:
+            print(f"\n--- summary ---\n{conv2.summary}\n")
+            return
+        await asyncio.sleep(1)
+    print("\n(no summary yet: is the worker running?)")
+
+
+def print_percentiles(metrics: list[dict[str, object]]) -> None:
+    for key in ("first_sound_ms", "total_ms", "stt_ms", "llm_ms", "tts_ms"):
+        values = sorted(float(v) for m in metrics if isinstance(v := m.get(key), int | float))
+        if values:
+            p50 = values[len(values) // 2]
+            p95 = values[min(len(values) - 1, round(0.95 * (len(values) - 1)))]
+            print(f"  {key:<15} p50 {p50:6.0f}  p95 {p95:6.0f}  (n={len(values)})")
 
 
 async def main(args: argparse.Namespace) -> int:
@@ -173,7 +210,7 @@ if __name__ == "__main__":
     who = parser.add_mutually_exclusive_group(required=True)
     who.add_argument("--phone", help="tester's phone (verified in Exotel)")
     who.add_argument("--candidate-id")
-    parser.add_argument("--name", default="Phase 5 Tester")
-    parser.add_argument("--mode", choices=POC_MODES, default="full")
+    parser.add_argument("--name", default="Test Candidate")
+    parser.add_argument("--mode", choices=POC_MODES, default="screen")
     parser.add_argument("--no-watch", action="store_true")
     sys.exit(asyncio.run(main(parser.parse_args())))

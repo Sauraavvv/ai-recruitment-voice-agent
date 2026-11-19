@@ -1,7 +1,7 @@
 """ARQ worker configuration.
 
 Run with: arq app.workers.settings.WorkerSettings
-Jobs: initiate_call (Phase 5); sync and retries come in later phases.
+Jobs: initiate_call (Phase 5), finalize_call (Phase 6); sync and retries come later.
 """
 
 from typing import Any, ClassVar
@@ -18,7 +18,12 @@ from app.utils.redis import (
     close_redis,
     init_redis,
 )
-from app.workers.call_worker import MAX_SLOT_WAITS, initiate_call, reconcile_calls
+from app.workers.call_worker import (
+    MAX_SLOT_WAITS,
+    finalize_call,
+    initiate_call,
+    reconcile_calls,
+)
 
 logger = get_logger(__name__)
 _settings = get_settings()
@@ -61,7 +66,10 @@ async def on_shutdown(ctx: dict[str, Any]) -> None:
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(_settings.redis_url.get_secret_value())
-    functions: ClassVar[list[Any]] = [func(initiate_call, max_tries=MAX_SLOT_WAITS + 1)]
+    functions: ClassVar[list[Any]] = [
+        func(initiate_call, max_tries=MAX_SLOT_WAITS + 1),
+        func(finalize_call, max_tries=3),
+    ]
     cron_jobs: ClassVar[list[Any]] = [
         cron(heartbeat, second={0, 30}, run_at_startup=False),
         cron(expire_import_previews, minute={7}, second={0}, run_at_startup=True),

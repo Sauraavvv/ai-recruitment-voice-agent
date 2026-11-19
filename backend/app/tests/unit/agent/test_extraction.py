@@ -147,3 +147,21 @@ def test_consistency_flags() -> None:
     s.merge("current_ctc", 5.0, raw_text="5", turn=1)
     s.merge("expected_ctc", 20.0, raw_text="20", turn=1)
     assert consistency_flags(s) == ["relevant_experience", "expected_ctc"]
+
+
+def test_company_or_place_without_a_name_is_invalid() -> None:
+    from app.agent.extraction import has_name
+
+    assert not has_name("Working at.") and not has_name("I'm currently based in")
+    assert has_name("Infosys") and has_name("TCS") and has_name("working at Wipro")
+    assert has_name("Noida") and has_name("Navi Mumbai") and has_name("3M")
+
+
+def test_notice_period_must_be_about_time() -> None:
+    from app.agent.extraction import _validate
+    from app.agent.schemas import FieldName
+
+    assert _validate(FieldName.NOTICE_PERIOD, "Any weekday after 4 pm", None)[0] is None
+    for ok in ("60 days", "two months", "immediate joiner", "serving notice"):
+        assert _validate(FieldName.NOTICE_PERIOD, ok, None)[0] == ok, ok
+    assert _validate(FieldName.NOTICE_PERIOD, "30", 30)[0] == "30"  # the model gave the days
