@@ -62,3 +62,21 @@ export const END_REASON_LABELS: Record<string, string> = {
   technical_failure: "Technical problem",
   cancelled: "Cancelled",
 };
+
+/** Status pill colours; the label is always shown, colour only supports it. */
+export const SCREENING_STATUS_TONE: Record<string, string> = {
+  completed: "bg-[#0ca30c]/15 text-[#5fd35f]",
+  partially_completed: "bg-amber-500/15 text-amber-300",
+  in_progress: "bg-[#1d4ed8]/20 text-[#93b4ff]",
+  callback_requested: "bg-[#1d4ed8]/20 text-[#93b4ff]",
+  declined: "bg-red-500/15 text-red-300",
+  opted_out: "bg-red-500/15 text-red-300",
+  wrong_person: "bg-red-500/15 text-red-300",
+};
+
+export const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");

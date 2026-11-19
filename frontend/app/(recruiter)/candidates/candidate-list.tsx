@@ -5,29 +5,17 @@ import { useEffect, useState } from "react";
 
 import { Alert, Button, Card, buttonClass, Muted, PageHeader, inputClass } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
-import { SCREENING_STATUS_LABELS, formatDate, yesNo } from "@/lib/labels";
+import {
+  SCREENING_STATUS_LABELS,
+  SCREENING_STATUS_TONE,
+  formatDate,
+  initials,
+  yesNo,
+} from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
 import { listCandidates } from "@/services/candidates";
 
 const PAGE_SIZE = 25;
-
-// Status pills: always a label, colour only supports it
-const STATUS_TONE: Record<string, string> = {
-  completed: "bg-[#0ca30c]/15 text-[#5fd35f]",
-  partially_completed: "bg-amber-500/15 text-amber-300",
-  in_progress: "bg-[#1d4ed8]/20 text-[#93b4ff]",
-  callback_requested: "bg-[#1d4ed8]/20 text-[#93b4ff]",
-  declined: "bg-red-500/15 text-red-300",
-  opted_out: "bg-red-500/15 text-red-300",
-  wrong_person: "bg-red-500/15 text-red-300",
-};
-
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
 
 export function CandidateList() {
   const [search, setSearch] = useState("");
@@ -164,7 +152,7 @@ export function CandidateList() {
                     <td className="py-3 pr-4">
                       <span
                         className={`inline-block rounded-full px-2.5 py-1 text-xs whitespace-nowrap ${
-                          STATUS_TONE[c.screening_status] ?? "bg-white/5 text-zinc-400"
+                          SCREENING_STATUS_TONE[c.screening_status] ?? "bg-white/5 text-zinc-400"
                         }`}
                       >
                         {SCREENING_STATUS_LABELS[c.screening_status]}

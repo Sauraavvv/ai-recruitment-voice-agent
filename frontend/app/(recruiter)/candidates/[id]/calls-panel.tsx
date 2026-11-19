@@ -15,24 +15,27 @@ import { listCalls, startCall } from "@/services/calls";
 
 const POLL_MS = 3000;
 
-/** The candidate's calls, newest first, and the button that starts a screening call. */
-export function CallsPanel({
-  candidateId,
-  canCall,
-  onCallEnded,
-}: {
-  candidateId: string;
-  canCall: boolean;
-  onCallEnded: () => void;
-}) {
+const DOT_TONE: Record<string, string> = {
+  completed: "bg-[#0ca30c]",
+  no_answer: "bg-amber-400",
+  busy: "bg-amber-400",
+  failed: "bg-red-400",
+};
+
+type Message = { kind: "error" | "success"; text: string } | null;
+
+/**
+ * The candidate's calls and the action that starts one. While a call is happening the list
+ * refreshes every few seconds; when it ends, the screening answers on the candidate have changed
+ * too, so onCallEnded reloads them.
+ */
+export function useCalls(candidateId: string, onCallEnded: () => void) {
   const calls = useLoad(`calls:${candidateId}`, () => listCalls(candidateId));
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+  const [message, setMessage] = useState<Message>(null);
   const live = calls.data?.some((c) => LIVE_CALL_STATUSES.has(c.call_status)) ?? false;
   const { reload } = calls;
 
-  // While a call is happening, refresh every few seconds; when it ends, the screening answers
-  // on the candidate have changed too.
   const wasLive = useRef(false);
   useEffect(() => {
     if (!live) return;
@@ -44,7 +47,7 @@ export function CallsPanel({
     wasLive.current = live;
   }, [live, onCallEnded]);
 
-  async function onCall() {
+  async function start() {
     setBusy(true);
     setMessage(null);
     try {
@@ -62,34 +65,48 @@ export function CallsPanel({
     }
   }
 
+  return { calls, live, busy, message, start };
+}
+
+export type Calls = ReturnType<typeof useCalls>;
+
+export function CallButton({ calls, canCall }: { calls: Calls; canCall: boolean }) {
+  const { live, busy, start } = calls;
+  return (
+    <Button
+      onClick={start}
+      disabled={!canCall || busy || live}
+      title={canCall ? undefined : "Opted out, or no consent recorded"}
+    >
+      {live ? "Call in progress…" : busy ? "Starting…" : "Call now"}
+    </Button>
+  );
+}
+
+/** The candidate's calls, newest first. */
+export function CallsPanel({ calls: { calls } }: { calls: Calls }) {
   return (
     <Card
       title="Calls"
-      description="The AI assistant calls the candidate and asks the job's screening questions."
-      action={
-        <Button onClick={onCall} disabled={!canCall || busy || live}>
-          {live ? "Call in progress…" : busy ? "Starting…" : "Call now"}
-        </Button>
+      description={
+        calls.data?.length
+          ? `${calls.data.length} attempt${calls.data.length === 1 ? "" : "s"}, newest first.`
+          : "The AI assistant calls the candidate and asks the job's screening questions."
       }
     >
-      {message && (
-        <div className="mb-4">
-          <Alert kind={message.kind}>{message.text}</Alert>
-        </div>
-      )}
       {calls.error && <Alert>{errorMessage(calls.error)}</Alert>}
       {!calls.data ? (
         <Muted>Loading…</Muted>
       ) : calls.data.length === 0 ? (
         <Muted>No calls yet.</Muted>
       ) : (
-        <ul className="divide-y divide-white/5">
+        <ul className="-mr-2 max-h-[26rem] divide-y divide-white/5 overflow-y-auto pr-2">
           {calls.data.map((call) => {
             const isLive = LIVE_CALL_STATUSES.has(call.call_status);
             return (
               <li key={call.id} className="flex items-center gap-3 py-3 text-sm">
                 <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${isLive ? "animate-pulse bg-green-400" : "bg-zinc-600"}`}
+                  className={`h-2 w-2 shrink-0 rounded-full ${isLive ? "animate-pulse bg-green-400" : (DOT_TONE[call.call_status] ?? "bg-zinc-600")}`}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-white">
