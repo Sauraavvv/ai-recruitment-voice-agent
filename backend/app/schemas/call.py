@@ -81,6 +81,8 @@ class CallTranscript(BaseModel):
     entries: list[TranscriptEntry]
     summary: str | None
     finalized: bool
+    voice_engine: str  # pipeline | realtime (the engine that ran this call)
+    estimated_cost_usd: float | None  # realtime calls: from the model's token usage
 
 
 class HangupResult(BaseModel):

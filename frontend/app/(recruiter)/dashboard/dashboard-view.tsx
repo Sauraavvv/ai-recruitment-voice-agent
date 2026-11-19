@@ -127,7 +127,7 @@ function TranscriptLines({
   }, [conv.call_attempt_id]);
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-2 text-xs text-zinc-500">
         <Link
           href={`/candidates/${conv.candidate_id}`}
@@ -139,7 +139,10 @@ function TranscriptLines({
           {timeAgo(conv.ended_at, now)} · {duration(conv.duration_seconds)} · {conv.turns} lines
         </span>
       </div>
-      <ul ref={listRef} className="max-h-72 space-y-2 overflow-y-auto pr-1">
+      <ul
+        ref={listRef}
+        className="max-h-72 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 xl:max-h-none"
+      >
         {conv.transcript.map((line, i) => {
           const agent = line.speaker === "assistant" || line.speaker === "agent";
           return (
@@ -234,9 +237,12 @@ export function DashboardView() {
           {data ? <LiveCalls data={data} now={now} /> : <Skeleton className="h-40" />}
         </Card>
         <ActivityList items={activity.data} error={activity.error} onRetry={activity.reload} />
-        <Card title="Latest call transcript">
-          {data ? <Transcript data={data} now={now} /> : <Skeleton className="h-40" />}
-        </Card>
+        {/* The row's height comes from its neighbours; the chat fills the card to the bottom */}
+        <div className="relative xl:min-h-[24rem]">
+          <Card title="Latest call transcript" className="flex flex-col xl:absolute xl:inset-0">
+            {data ? <Transcript data={data} now={now} /> : <Skeleton className="h-40" />}
+          </Card>
+        </div>
       </div>
 
       {summary.error && !data && <ErrorState error={summary.error} onRetry={summary.reload} />}

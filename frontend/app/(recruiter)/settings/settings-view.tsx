@@ -56,6 +56,7 @@ export function SettingsView() {
             <>
               <PauseCard data={settings.data} onSaved={settings.setData} />
               <CallingCard data={settings.data} onSaved={settings.setData} />
+              <VoiceEngineCard data={settings.data} onSaved={settings.setData} />
               <IntroCard data={settings.data} onSaved={settings.setData} />
             </>
           ) : (
@@ -249,6 +250,74 @@ function CallingCard({
       >
         {busy ? "Saving…" : "Save"}
       </Button>
+    </Card>
+  );
+}
+
+type Engine = "pipeline" | "realtime";
+
+const ENGINES: { value: Engine; label: string; detail: (s: SettingsPage) => string }[] = [
+  {
+    value: "pipeline",
+    label: "Standard",
+    detail: () =>
+      "Deepgram speech recognition, the GPT agent, Kitten voice (Iris). Tested on real calls.",
+  },
+  {
+    value: "realtime",
+    label: "OpenAI Realtime (trial)",
+    detail: (s) =>
+      `${s.limits.realtime_model}: one model listens and speaks (voice Marin). Faster replies; on trial.`,
+  },
+];
+
+function VoiceEngineCard({
+  data,
+  onSaved,
+}: {
+  data: SettingsPage;
+  onSaved: (d: SettingsPage) => void;
+}) {
+  const { busy, save } = useSave(onSaved);
+  const current = data.general.voice_engine ?? data.limits.voice_engine_env;
+  return (
+    <Card
+      title="Voice engine"
+      description="Used from the next call. Each call's transcript shows which engine ran it."
+    >
+      <div className="space-y-2" role="radiogroup" aria-label="Voice engine">
+        {ENGINES.map((engine) => {
+          const on = current === engine.value;
+          return (
+            <button
+              key={engine.value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={busy || on}
+              onClick={() =>
+                save({ voice_engine: engine.value }, `Next calls use ${engine.label}.`)
+              }
+              className={`w-full rounded-2xl border p-4 text-left transition disabled:cursor-default ${
+                on
+                  ? "border-[#1d4ed8] bg-[#1d4ed8]/10"
+                  : "border-[#34363d] bg-[#202226] hover:border-zinc-500"
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium text-white">
+                <span
+                  className={`h-3 w-3 rounded-full border ${
+                    on ? "border-[#2563eb] bg-[#2563eb]" : "border-zinc-500"
+                  }`}
+                  aria-hidden
+                />
+                {engine.label}
+              </span>
+              <span className="mt-1 block pl-5 text-xs text-zinc-400">{engine.detail(data)}</span>
+            </button>
+          );
+        })}
+      </div>
     </Card>
   );
 }

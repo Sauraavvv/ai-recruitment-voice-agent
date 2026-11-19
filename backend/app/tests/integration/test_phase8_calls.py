@@ -377,6 +377,8 @@ async def test_settings_defaults_and_validation(authed: AsyncClient, active_job:
         "max_concurrent_calls": 1,
         "timezone": "Asia/Kolkata",
         "calling_enabled_env": True,
+        "voice_engine_env": "pipeline",
+        "realtime_model": "gpt-realtime-2.1-mini",
     }
     assert data["introduction"]["built_in"] is True
     assert "AI recruitment assistant" in data["introduction"]["text"]

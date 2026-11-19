@@ -135,6 +135,7 @@ async def get_transcript(call_attempt_id: uuid.UUID, session: SessionDep) -> dic
         )
     ).scalar_one_or_none()
     entries = [x for e in (conv.transcript if conv else []) if (x := _entry(e))]
+    session_info = ((conv.extracted_data or {}).get("session") or {}) if conv else {}
     return ok(
         {
             "call_attempt_id": attempt.id,
@@ -147,6 +148,8 @@ async def get_transcript(call_attempt_id: uuid.UUID, session: SessionDep) -> dic
             "entries": entries,
             "summary": conv.summary if conv else None,
             "finalized": bool(conv and conv.finalized_at),
+            "voice_engine": session_info.get("engine") or "pipeline",
+            "estimated_cost_usd": session_info.get("estimated_cost_usd"),
         }
     )
 

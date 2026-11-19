@@ -11,6 +11,8 @@ paces our audio like Exotel and echoes marks. Nothing is written to the database
 Prints the transcript, the outcome and the latency table, and writes a stereo WAV (left: the
 candidate, right: the agent) to artifacts/voice-sim/ to listen to. Costs a few cents per run.
 Host only (macOS `say`).
+
+    make voice-sim ENGINE=realtime          # the same call on OpenAI Realtime (trial engine)
 """
 
 import argparse
@@ -190,6 +192,114 @@ async def run(
     return 0
 
 
+async def run_realtime(
+    args: argparse.Namespace, lines: list[str], name: str, job: JobConfig, clips: list[bytes]
+) -> int:
+    """The scenario on the Realtime engine: the candidate answers once the agent has finished
+    speaking (a new agent line, nothing generating or playing)."""
+    from app.providers.realtime import OpenAIRealtimeClient
+    from app.voice.realtime_session import RealtimeCallSession
+
+    settings = get_settings().model_copy(update={"voice_engine": "realtime"})
+    assert settings.openai_api_key is not None, "OPENAI_API_KEY is not set"
+    attempt_id = f"sim-rt-{int(time.time())}"
+    started = time.monotonic()
+    line = LoopbackLine(started)
+    sender = AudioSender(
+        line,
+        "sim-stream",
+        encoding="slin",
+        sample_rate=RATE,
+        frame_bytes=settings.telephony_frame_bytes,
+        send_ahead_ms=settings.telephony_send_ahead_ms,
+        session_id=attempt_id,
+    )
+    marks = MarkTracker()
+    line.sender, line.marks = sender, marks
+    inbound = InboundQueue(RATE * 2 * 2)
+    ctx = CallContext(attempt_id=attempt_id, job=job, candidate=CandidateContext(name=name))
+    client = OpenAIRealtimeClient(
+        settings.openai_api_key.get_secret_value(), settings.openai_realtime_model
+    )
+    session = RealtimeCallSession(
+        ctx, settings=settings, sender=sender, inbound=inbound, marks=marks, client=client
+    )
+    candidate_audio: list[tuple[float, bytes]] = []
+    pending = list(clips)
+
+    async def candidate() -> None:
+        rng = np.random.default_rng(7)
+        current = b""
+        ready_at: float | None = None
+        replies_seen = 0
+        i = 0
+        while True:
+            agent_lines = sum(
+                1 for e in session.transcript if e["speaker"] == "assistant" and e["text"]
+            )
+            if not current and pending and not session.speaking and agent_lines > replies_seen:
+                if ready_at is None:
+                    ready_at = time.monotonic() + args.gap
+                elif time.monotonic() >= ready_at:
+                    current, ready_at = pending.pop(0), None
+                    replies_seen = agent_lines
+                    candidate_audio.append((time.monotonic() - started, current))
+            elif session.speaking:
+                ready_at = None
+            if current:
+                frame, current = current[:FRAME], current[FRAME:]
+                frame = frame.ljust(FRAME, b"\0")
+                noisy = np.frombuffer(frame, "<i2").astype(np.int32) + np.frombuffer(
+                    line_noise(FRAME, rng), "<i2"
+                )
+                inbound.put(np.clip(noisy, -32768, 32767).astype("<i2").tobytes())
+            else:
+                inbound.put(line_noise(FRAME, rng))
+            i += 1
+            await asyncio.sleep(max(0.0, started + i * 0.02 - time.monotonic()))
+
+    feeder = asyncio.create_task(candidate())
+    runner = asyncio.create_task(session.run())
+    try:
+        while not runner.done():
+            if not pending and not session.speaking:
+                await asyncio.sleep(args.gap + 8)  # time for the last reply and the goodbye
+                if not runner.done() and not session.speaking:
+                    session.caller_hung_up("stop")
+                    break
+            await asyncio.sleep(0.2)
+        outcome: SessionOutcome = await asyncio.wait_for(runner, 60)
+    finally:
+        feeder.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await feeder
+
+    print("\n--- transcript (realtime) ---")
+    for e in outcome.result.transcript:
+        flag = " [interrupted]" if e.get("interrupted") else ""
+        print(f"{e['speaker']:>9}: {e['text']}{flag}")
+    print(
+        f"\nend_reason={outcome.end_reason.value} "
+        f"status={outcome.result.screening_status.value} ended_by={outcome.ended_by}"
+    )
+    for key, value in outcome.result.collected_data.items():
+        print(f"  {key:<24} {value!r}")
+    stats = outcome.stats
+    firsts = sorted(m["first_sound_ms"] for m in outcome.metrics if m.get("first_sound_ms"))
+    if firsts:
+        p50 = firsts[len(firsts) // 2]
+        p95 = firsts[min(len(firsts) - 1, round(0.95 * (len(firsts) - 1)))]
+        print(
+            f"\nfirst sound after the candidate stops: p50 {p50} ms  p95 {p95} ms (n={len(firsts)})"
+        )
+    print(f"usage: {stats['usage']}")
+    print(f"estimated cost: ${stats['estimated_cost_usd']} for {stats['duration_s']} s")
+    print(f"tool calls: {stats['tool_calls']}  barge-ins: {stats['barge_ins']}")
+    wav = await asyncio.to_thread(write_wav, attempt_id, candidate_audio, line.agent_audio)
+    print(f"\nlisten: {wav}")
+    return 0
+
+
 def clips_left(session: CallSession, total: int) -> bool:
     said = sum(1 for e in session.manager.transcript if e.speaker == "candidate")
     return said + session.merges < total
@@ -255,12 +365,15 @@ def main() -> int:
     parser.add_argument("--script", default="s14_happy_path")
     parser.add_argument("--voice", default="Rishi")
     parser.add_argument("--gap", type=float, default=0.6, help="pause before each answer (s)")
+    parser.add_argument("--engine", choices=["pipeline", "realtime"], default="pipeline")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     configure_logging("INFO" if args.verbose else "WARNING")
     lines, name, job = load_scenario(args.script)
     print(f"Rendering {len(lines)} lines with `say -v {args.voice}`…")
     clips = say_clips(lines, args.voice, RATE)
+    if args.engine == "realtime":
+        return asyncio.run(run_realtime(args, lines, name, job, clips))
     return asyncio.run(run(args, lines, name, job, clips))
 
 

@@ -69,6 +69,12 @@ export function TranscriptView({
               {t.duration_seconds != null && (
                 <span className="text-xs tabular-nums">{duration(t.duration_seconds)}</span>
               )}
+              {t.voice_engine === "realtime" && (
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-200">
+                  Realtime
+                  {t.estimated_cost_usd != null && ` · ~$${t.estimated_cost_usd.toFixed(3)}`}
+                </span>
+              )}
             </span>
           )}
         </label>

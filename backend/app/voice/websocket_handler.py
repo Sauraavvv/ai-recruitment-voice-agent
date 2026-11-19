@@ -22,7 +22,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -32,7 +32,8 @@ from app.config import Settings
 from app.database.connection import get_sessionmaker
 from app.database.models import CallAttempt, CallEndReason, Candidate, Job
 from app.providers.llm import create_llm_provider
-from app.providers.llm.base import LLMError, LLMProvider
+from app.providers.llm.base import LLMError
+from app.providers.realtime import OpenAIRealtimeClient
 from app.providers.stt import create_stt_provider
 from app.providers.telephony import exotel_models as em
 from app.providers.tts.base import TTSProvider
@@ -45,6 +46,7 @@ from app.voice import pcm as pcm_utils
 from app.voice.audio_processor import InboundQueue
 from app.voice.pipeline import CallContext, CallSession, SessionOutcome
 from app.voice.playback import AudioSender, MarkTracker
+from app.voice.realtime_session import RealtimeCallSession
 from app.voice.session_registry import REGISTRY, SessionExistsError, live_task_count
 from app.voice.telephony_poc import PocSession, run_poc
 from app.voice.vad import SpeechDetector, default_classifier
@@ -230,10 +232,22 @@ async def store_outcome(ctx: CallContext, outcome: SessionOutcome) -> None:
         logger.exception("finalize_enqueue_failed", call_attempt_id=ctx.attempt_id)
 
 
+class _Closable(Protocol):
+    async def aclose(self) -> None: ...
+
+
 @dataclass
 class Conversation:
-    session: CallSession
-    llm: LLMProvider
+    session: CallSession | RealtimeCallSession
+    llm: _Closable  # closed when the stream ends
+
+
+class _RealtimeCloser:
+    def __init__(self, client: OpenAIRealtimeClient) -> None:
+        self.client = client
+
+    async def aclose(self) -> None:
+        await self.client.close()
 
 
 async def build_conversation(
@@ -246,7 +260,13 @@ async def build_conversation(
     inbound: InboundQueue,
     marks: MarkTracker,
 ) -> Conversation | str:
-    """The session for a real call, or why there can't be one."""
+    """The session for a real call, or why there can't be one. The engine comes from the
+    effective settings (Settings page, else VOICE_ENGINE)."""
+    effective = await settings_service.effective_new_session(settings)
+    if effective.voice_engine == "realtime":
+        return await build_realtime_conversation(
+            effective, attempt_id, provider_call_id, sender=sender, inbound=inbound, marks=marks
+        )
     if tts is None or not tts.status().ready:
         return "voice_unavailable"
     try:
@@ -270,6 +290,37 @@ async def build_conversation(
         on_end=lambda outcome: store_outcome(ctx, outcome),
     )
     return Conversation(session, llm)
+
+
+async def build_realtime_conversation(
+    settings: Settings,
+    attempt_id: str,
+    provider_call_id: str | None,
+    *,
+    sender: AudioSender,
+    inbound: InboundQueue,
+    marks: MarkTracker,
+) -> Conversation | str:
+    """Trial engine: OpenAI Realtime speech-to-speech (voice/realtime_session.py)."""
+    if settings.openai_api_key is None:
+        return "llm_not_configured"
+    ctx = await load_context(uuid.UUID(attempt_id), provider_call_id, settings)
+    await transcript_service.open_conversation(uuid.UUID(attempt_id))
+    client = OpenAIRealtimeClient(
+        settings.openai_api_key.get_secret_value(), settings.openai_realtime_model
+    )
+    session = RealtimeCallSession(
+        ctx,
+        settings=settings,
+        sender=sender,
+        inbound=inbound,
+        marks=marks,
+        client=client,
+        writer=transcript_service.TranscriptWriter(uuid.UUID(attempt_id)),
+        on_end=lambda outcome: store_outcome(ctx, outcome),
+    )
+    logger.info("conversation_engine", call_attempt_id=attempt_id, engine="realtime")
+    return Conversation(session, _RealtimeCloser(client))
 
 
 # --- Stream entry point -----------------------------------------------------------------------

@@ -135,6 +135,21 @@ class Settings(BaseSettings):
     # Reply still silent this long after the candidate finished → "One moment." (0 = never)
     voice_hold_after_ms: int = Field(default=3500, ge=0, le=10000)
 
+    # Voice engine for screening calls. pipeline = Deepgram STT + OPENAI_MODEL + Kitten/Aura (the
+    # Phase 6 chain); realtime = OpenAI Realtime speech-to-speech (one model hears and speaks;
+    # trial added 2026-11-19, see docs/realtime-voice.md). The Settings page can override it.
+    voice_engine: Literal["pipeline", "realtime"] = "pipeline"
+    openai_realtime_model: str = "gpt-realtime-2.1-mini"
+    openai_realtime_voice: str = "marin"
+    # Transcribes the candidate's side for the transcript and the post-call final pass
+    # gpt-4o-mini-transcribe wrote 2 of 15 lines of the first real call in Devanagari/Urdu script
+    openai_realtime_transcribe_model: str = "gpt-4o-transcribe"
+    realtime_vad_silence_ms: int = Field(default=600, ge=200, le=3000)
+    realtime_vad_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Silence after the agent's audio has PLAYED (our timer; the server's idle timer counts from
+    # when audio is generated, and fired mid-sentence in the first trial) → "still there?",
+    # then a goodbye. Uses SILENCE_TIMEOUT_S like the pipeline.
+
     # Google Sheets (Phase 7, docs/google-sheets.md). The key is a PATH to a read-only mounted
     # file (secrets/google-sa.json, gitignored), never the JSON itself.
     google_service_account_json: str | None = None

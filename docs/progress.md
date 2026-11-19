@@ -1,5 +1,14 @@
 # Progress
 
+## Realtime voice engine, trial (2026-11-19, after Phase 8) — built, not yet on a real call
+
+**Asked by the user:** implement OpenAI Realtime (`gpt-realtime-2.1-mini`) as a voice engine, keeping the Phase 6 pipeline, test it, then decide. Design, switching and results: [realtime-voice.md](realtime-voice.md).
+- New: `voice/realtime_session.py` (`RealtimeCallSession`, same interface as `CallSession`), `providers/realtime/openai_realtime.py` (WebSocket client), engine switch in `voice/websocket_handler.build_conversation` (effective settings), Settings page **Voice engine** card (`general.voice_engine`, env `VOICE_ENGINE`, default `pipeline`), engine + estimated cost on each call's transcript, `make voice-sim ENGINE=realtime`.
+- Config: `VOICE_ENGINE`, `OPENAI_REALTIME_MODEL` (gpt-realtime-2.1-mini), `OPENAI_REALTIME_VOICE` (marin), `OPENAI_REALTIME_TRANSCRIBE_MODEL` (gpt-4o-mini-transcribe), `REALTIME_VAD_SILENCE_MS`, `REALTIME_VAD_THRESHOLD`.
+- Tests: `unit/voice/test_realtime_session.py` (14, fake Realtime server), `integration/test_realtime_engine.py` (4). `make test` → 708 passed.
+- Simulated calls on the real API (final code): happy path ×2 completed 10/10, opt-out and callback correct; first sound p50 1.3–1.7 s (pipeline reply p50 3.25 s); $0.015–0.058 per call.
+- **Next:** real phone calls with Settings → Voice engine → OpenAI Realtime (`make tunnel` first), then compare with the pipeline and decide. Not tested yet: real line noise and accents, barge-in on a phone, finalization of a Realtime call, two calls at once.
+
 ## Phase 8 exit report (2026-11-19) — built, waiting for the user's review and a real call from the UI
 
 **Implemented:** the recruiter UI from plan.md §7 on real database values, call controls, settings with provider status and a global pause, and the three decisions from Phase 7 (Sheets on Settings with an admin-only sheet change, conflict Keep/Use, summary of the latest call with data). Deviations and the open decisions as taken: [phase-08 §13](phases/phase-08-dashboard.md#13-as-built-2026-11-19).

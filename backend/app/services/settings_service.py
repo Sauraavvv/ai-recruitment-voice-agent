@@ -14,7 +14,7 @@ change applies at once without a restart.
 
 import re
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -85,6 +85,8 @@ class GeneralSettings(_Strict):
     max_concurrent_calls: int = Field(ge=1, le=10)
     retry: RetryConfig
     calling_enabled: bool = True
+    # None = VOICE_ENGINE from the environment (pipeline by default)
+    voice_engine: Literal["pipeline", "realtime"] | None = None
 
     @field_validator("organization_name", "agent_introduction", mode="before")
     @classmethod
@@ -123,6 +125,7 @@ class GeneralUpdate(_Strict):
     max_concurrent_calls: int | None = Field(default=None, ge=1, le=10)
     retry: RetryConfig | None = None
     calling_enabled: bool | None = None
+    voice_engine: Literal["pipeline", "realtime"] | None = None
 
 
 class SheetSettings(_Strict):
@@ -191,6 +194,7 @@ def apply(settings: Settings, general: GeneralSettings, sheets: SheetSettings) -
             "calling_enabled": settings.calling_enabled and general.calling_enabled,
             "organization_name": general.organization_name,
             "agent_introduction": general.agent_introduction,
+            "voice_engine": general.voice_engine or settings.voice_engine,
             "google_sheet_id": sheets.sheet_id or settings.google_sheet_id,
             "google_sheet_tab": sheets.tab or settings.google_sheet_tab,
         }
@@ -230,8 +234,8 @@ async def update_general(
     merged = current.model_dump() | {
         k: v
         for k, v in sent.items()
-        # a required section sent as null means "unchanged"; the two texts may be cleared
-        if v is not None or k in {"organization_name", "agent_introduction"}
+        # a required section sent as null means "unchanged"; these may be cleared
+        if v is not None or k in {"organization_name", "agent_introduction", "voice_engine"}
     }
     try:
         new = GeneralSettings.model_validate(merged)  # re-validates the introduction etc.

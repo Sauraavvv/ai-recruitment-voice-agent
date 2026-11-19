@@ -12,6 +12,8 @@ class SettingsLimits(BaseModel):
     max_concurrent_calls: int  # MAX_CONCURRENT_CALLS: the most the Settings page may set
     timezone: str  # APP_TIMEZONE: the calling window and all dates
     calling_enabled_env: bool  # CALLING_ENABLED=false pauses calling whatever is set here
+    voice_engine_env: str  # VOICE_ENGINE: used when the Settings page leaves it unset
+    realtime_model: str  # OPENAI_REALTIME_MODEL
 
 
 class IntroductionPreview(BaseModel):

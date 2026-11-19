@@ -917,6 +917,10 @@ export interface components {
             summary: string | null;
             /** Finalized */
             finalized: boolean;
+            /** Voice Engine */
+            voice_engine: string;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number | null;
         };
         /** CallingWindow */
         CallingWindow: {
@@ -1466,6 +1470,8 @@ export interface components {
              * @default true
              */
             calling_enabled: boolean;
+            /** Voice Engine */
+            voice_engine?: ("pipeline" | "realtime") | null;
         };
         /**
          * GeneralUpdate
@@ -1482,6 +1488,8 @@ export interface components {
             retry?: components["schemas"]["RetryConfig"] | null;
             /** Calling Enabled */
             calling_enabled?: boolean | null;
+            /** Voice Engine */
+            voice_engine?: ("pipeline" | "realtime") | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1960,6 +1968,10 @@ export interface components {
             timezone: string;
             /** Calling Enabled Env */
             calling_enabled_env: boolean;
+            /** Voice Engine Env */
+            voice_engine_env: string;
+            /** Realtime Model */
+            realtime_model: string;
         };
         /** SettingsOut */
         SettingsOut: {

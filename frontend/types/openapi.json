@@ -2533,6 +2533,21 @@
           "finalized": {
             "type": "boolean",
             "title": "Finalized"
+          },
+          "voice_engine": {
+            "type": "string",
+            "title": "Voice Engine"
+          },
+          "estimated_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Usd"
           }
         },
         "type": "object",
@@ -2546,7 +2561,9 @@
           "duration_seconds",
           "entries",
           "summary",
-          "finalized"
+          "finalized",
+          "voice_engine",
+          "estimated_cost_usd"
         ],
         "title": "CallTranscript"
       },
@@ -4480,6 +4497,21 @@
             "type": "boolean",
             "title": "Calling Enabled",
             "default": true
+          },
+          "voice_engine": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pipeline",
+                  "realtime"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Engine"
           }
         },
         "additionalProperties": false,
@@ -4560,6 +4592,21 @@
               }
             ],
             "title": "Calling Enabled"
+          },
+          "voice_engine": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pipeline",
+                  "realtime"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Engine"
           }
         },
         "additionalProperties": false,
@@ -5803,13 +5850,23 @@
           "calling_enabled_env": {
             "type": "boolean",
             "title": "Calling Enabled Env"
+          },
+          "voice_engine_env": {
+            "type": "string",
+            "title": "Voice Engine Env"
+          },
+          "realtime_model": {
+            "type": "string",
+            "title": "Realtime Model"
           }
         },
         "type": "object",
         "required": [
           "max_concurrent_calls",
           "timezone",
-          "calling_enabled_env"
+          "calling_enabled_env",
+          "voice_engine_env",
+          "realtime_model"
         ],
         "title": "SettingsLimits",
         "description": "Fixed in the environment; shown read-only."

@@ -43,6 +43,8 @@ async def _body(session: Any, env: Settings, general: GeneralSettings) -> dict[s
             "max_concurrent_calls": env.max_concurrent_calls,
             "timezone": env.app_timezone,
             "calling_enabled_env": env.calling_enabled,
+            "voice_engine_env": env.voice_engine,
+            "realtime_model": env.openai_realtime_model,
         },
         "introduction": {
             "text": text,

@@ -137,8 +137,8 @@ voice-loop:  ## Talk to the agent through STT (host): make voice-loop [SPEAK=1] 
 
 # --- Phase 6: voice conversation ---
 
-voice-sim:  ## Whole call without a phone, real STT/LLM/voice, `say` as the candidate (host, a few cents): make voice-sim [SCRIPT=s14_happy_path] [VOICE=Rishi]
-	$(HOST_RUN) app.scripts.voice_sim $(if $(SCRIPT),--script "$(SCRIPT)") $(if $(VOICE),--voice "$(VOICE)") $(args)
+voice-sim:  ## Whole call without a phone, real STT/LLM/voice, `say` as the candidate (host, a few cents): make voice-sim [SCRIPT=s14_happy_path] [VOICE=Rishi] [ENGINE=realtime]
+	$(HOST_RUN) app.scripts.voice_sim $(if $(SCRIPT),--script "$(SCRIPT)") $(if $(VOICE),--voice "$(VOICE)") $(if $(ENGINE),--engine "$(ENGINE)") $(args)
 
 test-stt:  ## Live Deepgram STT tests (about 1.5 minutes, a few cents; needs `make stt-clips`)
 	docker compose exec -T backend pytest -q -p no:cacheprovider -m stt app/tests/integration/test_deepgram.py
