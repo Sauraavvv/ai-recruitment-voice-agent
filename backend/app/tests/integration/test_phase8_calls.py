@@ -432,7 +432,13 @@ async def test_settings_update_template_and_concurrency_cap(
     cleared = await authed.patch("/api/v1/settings", json={"agent_introduction": None})
     body = cleared.json()["data"]
     assert body["introduction"]["built_in"] is True
-    assert body["general"]["retry"] == {"max_attempts": 4, "interval_days": 3}
+    assert body["general"]["retry"] == {
+        "max_attempts": 4,
+        "interval_days": 3,
+        "enabled": True,  # Phase 9 fields: defaults when not sent
+        "max_callbacks": 2,
+        "alternate_slots": True,
+    }
 
 
 async def test_intro_template_reaches_the_call(db_session: AsyncSession, active_job: Any) -> None:

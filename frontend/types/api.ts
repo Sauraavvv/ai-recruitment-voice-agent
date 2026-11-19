@@ -421,6 +421,7 @@ export interface paths {
         /**
          * Retry Call
          * @description Call this attempt's candidate again (a new `manual` attempt) when eligible.
+         *     `max_attempts_reached` → ask the recruiter, then send `override_limit: true`.
          */
         post: operations["retry_call_api_v1_calls__call_attempt_id__retry_post"];
         delete?: never;
@@ -744,7 +745,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "callback_due" | "data_conflict" | "unanswered_question" | "vague_callback" | "technical_failure" | "partially_completed" | "wrong_person" | "attempts_exhausted" | "sheets_sync_failed";
+            reason: "callback_due" | "data_conflict" | "unanswered_question" | "vague_callback" | "callback_not_scheduled" | "technical_failure" | "partially_completed" | "wrong_person" | "attempts_exhausted" | "sheets_sync_failed";
             /** At */
             at: string | null;
             /** Call Attempt Id */
@@ -809,6 +810,15 @@ export interface components {
             /** Next Retry At */
             next_retry_at: string | null;
             /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Retry Decision */
+            retry_decision?: string | null;
+            /** Retry Note */
+            retry_note?: string | null;
+            /**
              * Created At
              * Format: date-time
              */
@@ -868,6 +878,15 @@ export interface components {
             failure_reason: string | null;
             /** Next Retry At */
             next_retry_at: string | null;
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Retry Decision */
+            retry_decision?: string | null;
+            /** Retry Note */
+            retry_note?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1046,6 +1065,7 @@ export interface components {
             last_call_has_transcript: boolean;
             /** Open Conflicts */
             open_conflicts: number;
+            retry_status: components["schemas"]["RetryStatus"] | null;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -1127,6 +1147,7 @@ export interface components {
             sheets_configured: boolean;
             /** Conflicts */
             conflicts: components["schemas"]["Conflict"][];
+            retry_status: components["schemas"]["RetryStatus"] | null;
         };
         /** CandidateSummary */
         CandidateSummary: {
@@ -1485,7 +1506,7 @@ export interface components {
             calling?: components["schemas"]["CallingWindow"] | null;
             /** Max Concurrent Calls */
             max_concurrent_calls?: number | null;
-            retry?: components["schemas"]["RetryConfig"] | null;
+            retry?: components["schemas"]["RetryUpdate"] | null;
             /** Calling Enabled */
             calling_enabled?: boolean | null;
             /** Voice Engine */
@@ -1908,15 +1929,83 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** RetryCallRequest */
+        RetryCallRequest: {
+            /**
+             * Override Limit
+             * @default false
+             */
+            override_limit: boolean;
+        };
         /**
          * RetryConfig
-         * @description Used by the Phase 9 retry automation; editable from now on.
+         * @description Automatic retries (phase-09 §5, docs/retries.md). Rows saved before Phase 9 only have
+         *     the first two fields; the rest take their defaults.
          */
         RetryConfig: {
             /** Max Attempts */
             max_attempts: number;
             /** Interval Days */
             interval_days: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Max Callbacks
+             * @default 2
+             */
+            max_callbacks: number;
+            /**
+             * Alternate Slots
+             * @default true
+             */
+            alternate_slots: boolean;
+        };
+        /**
+         * RetryStatus
+         * @description phase-09 P9-T8: what happens next automatically.
+         */
+        RetryStatus: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "retry" | "callback" | "exhausted";
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /** At */
+            at: string | null;
+            /** Attempt */
+            attempt: number | null;
+            /** Attempts Made */
+            attempts_made: number;
+            /** Max Attempts */
+            max_attempts: number;
+            /** Callbacks Made */
+            callbacks_made: number;
+            /** Max Callbacks */
+            max_callbacks: number;
+        };
+        /**
+         * RetryUpdate
+         * @description PATCH body for the retry section: fields left out are unchanged.
+         */
+        RetryUpdate: {
+            /** Max Attempts */
+            max_attempts?: number | null;
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Max Callbacks */
+            max_callbacks?: number | null;
+            /** Alternate Slots */
+            alternate_slots?: boolean | null;
         };
         /** RowIssue */
         RowIssue: {
@@ -2098,6 +2187,11 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Override Limit
+             * @default false
+             */
+            override_limit: boolean;
         };
         /** StatusOut */
         StatusOut: {
@@ -3042,7 +3136,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RetryCallRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {

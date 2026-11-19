@@ -14,7 +14,7 @@ import { useToast } from "@/components/toast";
 import { TranscriptView } from "@/components/transcript-view";
 import { Alert, Button, Card, Field, PageHeader, inputClass } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
-import { formatDate, initials, timeAgo } from "@/lib/labels";
+import { formatDate, initials, retryStatusText, timeAgo } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
 import { deleteCandidate, getCandidate, getOverview, updateCandidate } from "@/services/candidates";
 import { listJobs } from "@/services/jobs";
@@ -127,7 +127,10 @@ export function CandidateDetail() {
   }
 
   async function onOptOut() {
-    if (await save({ opted_out: true }, "Marked as opted out")) overview.reload();
+    if (await save({ opted_out: true }, "Marked as opted out")) {
+      overview.reload();
+      calls.calls.reload(); // scheduled calls were cancelled
+    }
     setConfirm(null);
   }
 
@@ -180,6 +183,11 @@ export function CandidateDetail() {
               {" · "}
               <span className="tabular-nums">{c.phone}</span>
             </p>
+            {retryStatusText(overview.data?.retry_status) && (
+              <p className="mt-1 text-xs text-[#93b4ff]">
+                Next: {retryStatusText(overview.data?.retry_status)}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

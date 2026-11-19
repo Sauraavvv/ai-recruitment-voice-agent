@@ -2,7 +2,8 @@
 
 initiate_call(attempt_id):
   queued only → concurrency slot (none free → retry in 15 s) → re-check eligibility (incl. the
-  global pause: a paused attempt is cancelled with failure_reason ineligible:calling_paused) →
+  global pause: a paused attempt is cancelled with failure_reason ineligible:calling_paused;
+  a paused or out-of-window retry or callback is put back on the schedule instead) →
   initiating → provider → store provider_call_id.
   A provider timeout leaves the attempt `initiating` with failure_reason=initiate_timeout; the
   reconciler then asks the provider whether the call exists. Never retried blindly.
@@ -16,7 +17,7 @@ from arq import Retry
 
 from app.config import Settings, get_settings
 from app.database.connection import get_sessionmaker
-from app.database.models import CallAttempt, CallEndReason, CallStatus
+from app.database.models import CallAttempt, CallAttemptType, CallEndReason, CallStatus, Job
 from app.providers.telephony import create_telephony_provider, status_callback_url
 from app.providers.telephony.base import (
     ProviderCallStatus,
@@ -25,13 +26,24 @@ from app.providers.telephony.base import (
     TelephonyTimeoutError,
 )
 from app.repositories import call_repo, candidate_repo
-from app.services import call_service, call_slots, call_state, settings_service, sync_service
+from app.services import (
+    call_service,
+    call_slots,
+    call_state,
+    retry_service,
+    settings_service,
+    sync_service,
+)
+from app.utils.calling_window import CallingWindow
 from app.utils.log import get_logger
 from app.utils.redis import get_redis
 
 logger = get_logger(__name__)
 
 NO_SLOT_RETRY_S = 15
+# A retry or callback that can't dial right now goes back on the schedule instead of being
+# cancelled (phase-09): the window closed while it waited for a line, or calling was paused
+RESCHEDULE_ON = frozenset({call_service.Ineligible.OUTSIDE_WINDOW, call_service.Ineligible.PAUSED})
 MAX_SLOT_WAITS = 240  # 1 hour of waiting for a free line, then give up
 
 
@@ -74,6 +86,7 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
                     again = await call_repo.get(s2, aid, lock=True)
                     if again is not None:
                         await _fail(s2, again, "no_free_line", CallEndReason.TECHNICAL_FAILURE)
+                        await call_service.evaluate_retry(s2, aid, settings)
                 return "no_slot"
             raise Retry(defer=NO_SLOT_RETRY_S)
 
@@ -85,6 +98,21 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             own_attempt_id=attempt.id,
             ignore_window=ignore_window,
         )
+        automatic = attempt.attempt_type in (CallAttemptType.RETRY, CallAttemptType.CALLBACK)
+        if automatic and problem is None:
+            job = await session.get(Job, candidate.job_id) if candidate else None
+            problem = retry_service.stop_reason(candidate, job)  # e.g. declined meanwhile
+        if automatic and problem in RESCHEDULE_ON:
+            # A retry or callback that waited too long for a line: back on the schedule
+            now = datetime.now(UTC)
+            at = now
+            if problem == call_service.Ineligible.OUTSIDE_WINDOW:
+                at = CallingWindow.from_settings(settings).next_open(now)
+            retry_service.reschedule(attempt, at)
+            await session.commit()
+            await call_slots.release(redis, attempt_id, size=settings.max_concurrent_calls)
+            logger.info("call_rescheduled", call_attempt_id=attempt_id, reason=problem)
+            return "rescheduled"
         if problem or candidate is None:
             changed = call_state.transition(
                 attempt,
@@ -115,6 +143,7 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             return "timeout"
         except TelephonyError as exc:
             await _fail(session, attempt, f"initiate_failed: {exc}", CallEndReason.PROVIDER_FAILED)
+            await call_service.evaluate_retry(session, aid, settings)
             await sync_service.request_sync(settings, ctx.get("redis"))
             await call_slots.release(redis, attempt_id, size=settings.max_concurrent_calls)
             logger.warning("call_initiate_failed", call_attempt_id=attempt_id, error=str(exc))

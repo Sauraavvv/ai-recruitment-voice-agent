@@ -117,8 +117,72 @@ export const ATTENTION_LABELS: Record<string, string> = {
   partially_completed: "Screening incomplete",
   wrong_person: "Wrong person",
   attempts_exhausted: "No more attempts",
+  callback_not_scheduled: "Callback not scheduled",
   sheets_sync_failed: "Sheet sync failed",
 };
+
+/** Why an ended call was or wasn't followed up automatically (phase-09, `retry_decision`). */
+const NO_RETRY_LABELS: Record<string, string> = {
+  completed: "screening complete",
+  declined: "not interested",
+  opted_out: "asked not to be called",
+  wrong_person: "wrong person",
+  partial: "screening incomplete: call again from here if needed",
+  cancelled: "cancelled",
+  invalid_number: "invalid number",
+  vague_callback: "callback without a time: call when it suits them",
+  callback_limit: "callback limit reached",
+  callback_too_far: "callback more than 14 days ahead",
+  retry_disabled: "automatic retries are off",
+  superseded: "a newer call was made",
+  already_scheduled: "another call was already scheduled",
+  candidate_deleted: "candidate deleted",
+  job_inactive: "job closed",
+  escalated: "needs a recruiter",
+  not_started: "answered, but the screening didn't start",
+  replaced_by_manual_call: "replaced by a manual call",
+  max_attempts_reached: "no attempts left",
+};
+
+export function retryDecisionLabel(code: string | null | undefined): string | null {
+  if (!code || code === "before_phase_9") return null;
+  if (code === "retry_scheduled") return "Retry scheduled";
+  if (code === "callback_scheduled") return "Callback scheduled";
+  if (code === "exhausted") return "No more attempts";
+  const reason = code.replace(/^no_retry:/, "").replace(/^ineligible:/, "");
+  return `Not retried: ${NO_RETRY_LABELS[reason] ?? reason.replace(/_/g, " ")}`;
+}
+
+/** "20 Nov, 10:30" (the viewer's timezone, like every other date on the page). */
+export function shortDate(iso: string | null | undefined) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+type RetryStatusLike = {
+  kind: "retry" | "callback" | "exhausted";
+  at?: string | null;
+  attempt?: number | null;
+  max_attempts: number;
+  attempts_made: number;
+};
+
+/** phase-09 P9-T8: "Retry · 20 Nov, 10:30 · attempt 2 of 3", "Callback · 19 Nov, 17:00",
+ *  "No more attempts (3 of 3)". */
+export function retryStatusText(status: RetryStatusLike | null | undefined): string | null {
+  if (!status) return null;
+  if (status.kind === "exhausted")
+    return `No more attempts (${status.attempts_made} of ${status.max_attempts})`;
+  if (status.kind === "callback") return `Callback · ${shortDate(status.at)}`;
+  const which = status.attempt ? ` · attempt ${status.attempt} of ${status.max_attempts}` : "";
+  return `Retry · ${shortDate(status.at)}${which}`;
+}
 
 export const FIELD_LABELS: Record<string, string> = {
   current_location: "Location",

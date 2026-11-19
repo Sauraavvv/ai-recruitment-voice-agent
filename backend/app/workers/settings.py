@@ -2,6 +2,7 @@
 
 Run with: arq app.workers.settings.WorkerSettings
 Jobs: initiate_call (Phase 5), finalize_call (Phase 6/7), sync_sheets (Phase 7).
+Crons: reconcilers, and the retry dispatcher (Phase 9) every 5 minutes.
 """
 
 from typing import Any, ClassVar
@@ -25,6 +26,7 @@ from app.workers.call_worker import (
     reconcile_calls,
     reconcile_finalize,
 )
+from app.workers.retry_worker import dispatch_retries
 from app.workers.sync_worker import reconcile_sync, sync_sheets
 
 logger = get_logger(__name__)
@@ -83,6 +85,8 @@ class WorkerSettings:
         # Phase 7: unfinished finalizations and the Sheets outbox, every 10 minutes
         cron(reconcile_finalize, minute=set(range(1, 60, 10)), second={30}, run_at_startup=True),
         cron(reconcile_sync, minute=set(range(3, 60, 10)), second={45}, run_at_startup=True),
+        # Phase 9: due retries and callbacks, missed retry decisions, lost call jobs
+        cron(dispatch_retries, minute=set(range(0, 60, 5)), second={50}, run_at_startup=True),
     ]
     on_startup = on_startup
     on_shutdown = on_shutdown

@@ -339,12 +339,38 @@ async def test_worker_rechecks_eligibility(
 ) -> None:
     cid = await _candidate(authed, "+91 90000 09015")
     (result,) = await _start(authed, cid)
-    await authed.patch(f"/api/v1/candidates/{cid}", json={"opted_out": True})
+    # Opted out behind the API's back (the API also cancels queued calls, phase-09 P9-T7)
+    candidate = await db_session.get(Candidate, uuid.UUID(cid))
+    assert candidate is not None
+    candidate.opted_out = True
+    await db_session.flush()
     provider = FakeProvider()
     out = await call_worker.initiate_call(
         {"settings": settings, "telephony": provider}, result["call_attempt_id"]
     )
     assert out == "cancelled" and provider.placed == []
+
+
+async def test_api_opt_out_cancels_a_queued_call(
+    authed: AsyncClient,
+    active_job: dict[str, Any],
+    enqueued: list[str],
+    db_session: AsyncSession,
+    sessions: None,
+    settings: Settings,
+) -> None:
+    cid = await _candidate(authed, "+91 90000 09016")
+    (result,) = await _start(authed, cid)
+    await authed.patch(f"/api/v1/candidates/{cid}", json={"opted_out": True})
+    attempt = await db_session.get(CallAttempt, uuid.UUID(result["call_attempt_id"]))
+    assert attempt is not None
+    await db_session.refresh(attempt)
+    assert (attempt.call_status, attempt.failure_reason) == ("cancelled", "opted_out")
+    provider = FakeProvider()
+    out = await call_worker.initiate_call(
+        {"settings": settings, "telephony": provider}, result["call_attempt_id"]
+    )
+    assert out == "skipped" and provider.placed == []
 
 
 async def test_reconciler_applies_provider_status(

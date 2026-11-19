@@ -14,7 +14,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import CallAttempt, Candidate, Conversation, SyncLog, SyncStatus
+from app.database.models import (
+    CallAttempt,
+    CallStatus,
+    Candidate,
+    Conversation,
+    SyncLog,
+    SyncStatus,
+)
 from app.repositories import call_repo
 from app.services import call_service, sync_service
 from app.services.call_state import is_terminal
@@ -74,7 +81,10 @@ async def list_rows(
     eligibility = await call_service.eligibility_for(
         session, candidates, settings, now=now, voice_ready=voice_ready
     )
-    latest = await call_repo.latest_for_candidates(session, [c.id for c in candidates])
+    ids = [c.id for c in candidates]
+    latest = await call_repo.latest_for_candidates(session, ids, include_scheduled=False)
+    scheduled = await call_repo.scheduled_for_candidates(session, ids)
+    counts = await call_repo.attempt_counts(session, ids)
     with_transcript = set()
     if latest:
         with_transcript = set(
@@ -94,8 +104,49 @@ async def list_rows(
         row["last_call"] = _last_call(last)
         row["last_call_has_transcript"] = bool(last and last.id in with_transcript)
         row["open_conflicts"] = len(open_conflicts(c))
+        row["retry_status"] = retry_status(last, scheduled.get(c.id), counts[c.id], settings)
         rows.append(row)
     return rows
+
+
+def retry_status(
+    last: CallAttempt | None,
+    scheduled: CallAttempt | None,
+    counts: tuple[int, int],
+    settings: Settings,
+) -> dict[str, Any] | None:
+    """phase-09 P9-T8: "Retry scheduled · 20 Nov 10:30 · attempt 2 of 3", "Callback ·
+    19 Nov 17:00", "Exhausted". None when nothing is scheduled and attempts aren't used up."""
+    dialed, callbacks = counts
+    base = {
+        "attempts_made": dialed,
+        "max_attempts": settings.max_call_attempts,
+        "callbacks_made": callbacks,
+        "max_callbacks": settings.max_callbacks,
+    }
+    if scheduled is not None:
+        callback = scheduled.call_status == CallStatus.CALLBACK_REQUESTED
+        return base | {
+            "kind": "callback" if callback else "retry",
+            "call_attempt_id": scheduled.id,
+            "at": scheduled.next_retry_at,
+            "attempt": None if callback else dialed + 1,
+        }
+    if last is not None and last.call_status == CallStatus.EXHAUSTED:
+        return base | {"kind": "exhausted", "call_attempt_id": last.id, "at": None, "attempt": None}
+    return None
+
+
+async def retry_status_for(
+    session: AsyncSession, candidate_id: uuid.UUID, settings: Settings
+) -> dict[str, Any] | None:
+    ids = [candidate_id]
+    last = (await call_repo.latest_for_candidates(session, ids, include_scheduled=False)).get(
+        candidate_id
+    )
+    scheduled = (await call_repo.scheduled_for_candidates(session, ids)).get(candidate_id)
+    counts = (await call_repo.attempt_counts(session, ids))[candidate_id]
+    return retry_status(last, scheduled, counts, settings)
 
 
 async def summary(session: AsyncSession, candidate_id: uuid.UUID) -> dict[str, Any] | None:

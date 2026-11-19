@@ -37,7 +37,13 @@ from app.providers.realtime import OpenAIRealtimeClient
 from app.providers.stt import create_stt_provider
 from app.providers.telephony import exotel_models as em
 from app.providers.tts.base import TTSProvider
-from app.services import call_service, screening_store, settings_service, transcript_service
+from app.services import (
+    call_service,
+    retry_service,
+    screening_store,
+    settings_service,
+    transcript_service,
+)
 from app.utils.log import get_logger
 from app.utils.queue import enqueue_finalize_call
 from app.utils.redis import KEY_PREFIX, get_redis
@@ -187,15 +193,20 @@ async def load_context(
         job = await db.get(Job, candidate.job_id)
         assert job is not None
         effective = await settings_service.effective(db, settings)
+    prior = retry_service.known_answers(candidate)
     return CallContext(
         attempt_id=str(attempt_id),
         job=job_config(job, effective),
         candidate=CandidateContext(
-            name=candidate.name, candidate_id=str(candidate.id), call_id=str(attempt_id)
+            name=candidate.name,
+            candidate_id=str(candidate.id),
+            call_id=str(attempt_id),
+            call_kind=retry_service.call_kind(attempt.attempt_type, prior),
         ),
         candidate_id=candidate.id,
         provider_call_id=provider_call_id,
         keyterms=[k for k in (job.company_name, job.location) if k],
+        prior_fields=prior,
     )
 
 
@@ -274,7 +285,13 @@ async def build_conversation(
     except LLMError:
         return "llm_not_configured"
     ctx = await load_context(uuid.UUID(attempt_id), provider_call_id, settings)
-    manager = ConversationManager(ctx.job, ctx.candidate, llm, timeout_s=settings.openai_timeout_s)
+    manager = ConversationManager(
+        ctx.job,
+        ctx.candidate,
+        llm,
+        prior_fields=ctx.prior_fields or None,
+        timeout_s=settings.openai_timeout_s,
+    )
     await transcript_service.open_conversation(uuid.UUID(attempt_id))
     session = CallSession(
         ctx,

@@ -22,6 +22,7 @@ from app.schemas.call import (
     CallListItem,
     CallTranscript,
     HangupResult,
+    RetryCallRequest,
     StartCallResult,
     StartCallsRequest,
 )
@@ -59,6 +60,7 @@ async def start_calls(
         attempt_type=CallAttemptType.MANUAL,
         voice_ready=voice_ready(request, settings),
         dry_run=body.dry_run,
+        override_limit=body.override_limit,
     )
     if any(r.attempt_id for r in results):
         await sync_service.request_sync(settings)
@@ -164,14 +166,17 @@ async def retry_call(
     session: SessionDep,
     settings: EffectiveSettingsDep,
     request: Request,
+    body: RetryCallRequest | None = None,
 ) -> dict[str, Any]:
-    """Call this attempt's candidate again (a new `manual` attempt) when eligible."""
+    """Call this attempt's candidate again (a new `manual` attempt) when eligible.
+    `max_attempts_reached` → ask the recruiter, then send `override_limit: true`."""
     result = await call_service.retry(
         session,
         call_attempt_id,
         settings,
         enqueue_initiate_call,
         voice_ready=voice_ready(request, settings),
+        override_limit=bool(body and body.override_limit),
     )
     if result.attempt_id:
         await sync_service.request_sync(settings)

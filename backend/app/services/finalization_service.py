@@ -36,14 +36,13 @@ from app.database.connection import get_sessionmaker
 from app.database.models import (
     CallAttempt,
     CallEndReason,
-    CallStatus,
     Candidate,
     Conversation,
     Job,
     ScreeningStatus,
 )
 from app.providers.llm.base import LLMProvider
-from app.services import call_state, sync_service
+from app.services import call_service, retry_service, sync_service
 from app.services.summary_service import generate_summary
 
 __all__ = ["finalize_attempt", "generate_summary", "merge_candidate", "save_final"]
@@ -52,13 +51,6 @@ from app.utils.log import get_logger
 logger = get_logger(__name__)
 
 STANDARD_FIELDS = tuple(f.value for f in FieldName)
-# Attempts that are only scheduled (not dialing yet): cancelled when the candidate opts out
-SCHEDULED = (
-    CallStatus.PENDING,
-    CallStatus.QUEUED,
-    CallStatus.RETRY_SCHEDULED,
-    CallStatus.CALLBACK_REQUESTED,
-)
 _END_REASON = {
     EndReason.COMPLETED: CallEndReason.AGENT_COMPLETED,
     EndReason.CALLBACK: CallEndReason.CALLBACK_SCHEDULED,
@@ -114,32 +106,6 @@ def merge_candidate(
     return written
 
 
-async def _cancel_scheduled(session: AsyncSession, candidate_id: uuid.UUID, keep: uuid.UUID) -> int:
-    rows = (
-        (
-            await session.execute(
-                select(CallAttempt)
-                .where(
-                    CallAttempt.candidate_id == candidate_id,
-                    CallAttempt.id != keep,
-                    CallAttempt.call_status.in_([s.value for s in SCHEDULED]),
-                )
-                .with_for_update()
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for attempt in rows:
-        call_state.transition(
-            attempt,
-            CallStatus.CANCELLED,
-            end_reason=CallEndReason.CANCELLED.value,
-            failure_reason="opted_out",
-        )
-    return len(rows)
-
-
 async def save_final(
     session: AsyncSession, attempt_id: uuid.UUID, result: ScreeningResult, outcome: FinalOutcome
 ) -> bool:
@@ -185,7 +151,9 @@ async def save_final(
     if result.opted_out and not candidate.opted_out:
         candidate.opted_out = True  # only ever false → true
     if candidate.opted_out:
-        cancelled = await _cancel_scheduled(session, candidate.id, keep=attempt_id)
+        cancelled = await call_service.cancel_scheduled(
+            session, candidate.id, reason="opted_out", keep=attempt_id
+        )
 
     if attempt.end_reason is None:
         attempt.end_reason = _END_REASON.get(result.end_reason, CallEndReason.AGENT_COMPLETED).value
@@ -229,7 +197,9 @@ async def save_summary(
     candidate_name: str,
     job_title: str,
     llm: LLMProvider | None,
+    note: str | None = None,
 ) -> str | None:
+    """`note`: a scheduling note (a callback moved into calling hours) added to the text."""
     summary = await generate_summary(
         summary_input(result, final), candidate_name=candidate_name, job_title=job_title, llm=llm
     )
@@ -244,7 +214,7 @@ async def save_summary(
         if conv.summary:
             await session.rollback()
             return None
-        conv.summary = summary.text
+        conv.summary = f"{summary.text} {note}." if note else summary.text
         conv.extracted_data = dict(conv.extracted_data or {}) | {
             "summary_sections": summary.model_dump(mode="json")
         }
@@ -274,6 +244,7 @@ async def finalize_attempt(
         if conv is None or not (conv.extracted_data or {}).get("result"):
             return "no_result"
         if conv.finalized_at is not None and conv.summary:
+            await _evaluate_retry(attempt_id, settings)  # idempotent; e.g. a retried job
             return "already_done"
         attempt = await session.get(CallAttempt, attempt_id)
         assert attempt is not None
@@ -298,6 +269,9 @@ async def finalize_attempt(
         outcome = "finalized"
         await sync_service.request_sync(settings, pool)
 
+    # Phase 9: retry or callback, now that the conversation's outcome is known
+    note = await _evaluate_retry(attempt_id, settings)
+
     try:
         await save_summary(
             attempt_id,
@@ -306,6 +280,7 @@ async def finalize_attempt(
             candidate_name=candidate_name,
             job_title=job_title,
             llm=llm,
+            note=note,
         )
     except Exception:
         # Never undoes or blocks the saved data; the reconciler retries a missing summary
@@ -313,3 +288,13 @@ async def finalize_attempt(
     else:
         await sync_service.request_sync(settings, pool)
     return outcome
+
+
+async def _evaluate_retry(attempt_id: uuid.UUID, settings: Settings) -> str | None:
+    """The retry decision for a finalized call (phase-09). Never raises. Returns the note to
+    add to the summary (a callback moved into calling hours), if any."""
+    async with get_sessionmaker()() as session:
+        evaluation = await retry_service.evaluate_safely(session, attempt_id, settings)
+    if evaluation is None or evaluation.decision != "callback_scheduled":
+        return None
+    return evaluation.note

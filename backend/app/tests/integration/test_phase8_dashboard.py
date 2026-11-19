@@ -88,7 +88,7 @@ async def test_stats_match_a_known_dataset(
             _attempt(e, 1, "queued"),  # pending
             _attempt(f, 1, "ringing"),  # in progress
             _attempt(g, 1, "no_answer", created_at=old),  # unanswered, only in "all"
-            _attempt(g, 2, "retry_scheduled"),  # scheduled (latest → not unanswered)
+            _attempt(g, 2, "retry_scheduled"),  # scheduled; g's latest dialed call: no answer
             _attempt(h, 1, "callback_requested"),  # scheduled
             _attempt(deleted, 1, "failed"),  # deleted candidate: not in candidate metrics
         ]
@@ -112,7 +112,7 @@ async def test_stats_match_a_known_dataset(
         "calls_completed": 2,
         "calls_pending": 1,
         "calls_in_progress": 1,
-        "unanswered_calls": 1,  # c (b and g have newer attempts)
+        "unanswered_calls": 2,  # c and g (Phase 9: a scheduled retry doesn't hide it); b answered
         "failed_calls": 1,  # d (the deleted candidate doesn't count)
         "interested_candidates": 2,
         "screening_completed": 2,

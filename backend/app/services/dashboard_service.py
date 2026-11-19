@@ -219,6 +219,7 @@ PENDING = (CallStatus.PENDING, CallStatus.QUEUED, CallStatus.INITIATING)
 IN_PROGRESS = (CallStatus.RINGING, CallStatus.IN_PROGRESS)
 UNANSWERED = (CallStatus.NO_ANSWER, CallStatus.BUSY)
 SCHEDULED = (CallStatus.RETRY_SCHEDULED, CallStatus.CALLBACK_REQUESTED)
+_UNANSWERED_REASONS = ("no_answer", "busy")
 RANGES = ("today", "7d", "all")
 
 # Shown as the tiles' tooltips (agreed definitions, phase-08 §5.1)
@@ -228,7 +229,7 @@ DEFINITIONS = {
     "calls_pending": "Call attempts pending, queued or dialing right now",
     "calls_in_progress": "Call attempts ringing or on the call right now",
     "unanswered_calls": "Candidates whose latest call was not answered or busy",
-    "failed_calls": "Candidates whose latest call failed",
+    "failed_calls": "Candidates whose latest call failed (incl. the last allowed attempt)",
     "interested_candidates": "Candidates who said they are interested",
     "screening_completed": "Candidates whose screening is completed",
     "scheduled_retries": "Call attempts with a retry or a callback scheduled",
@@ -249,15 +250,18 @@ def range_start(range_: str, *, tz: str, now: datetime) -> datetime | None:
 
 
 def _latest_attempts() -> Any:
-    """Each active candidate's newest attempt (subquery: candidate_id, call_status, created_at)."""
+    """Each active candidate's newest attempt that isn't only scheduled (subquery:
+    candidate_id, call_status, end_reason, created_at). A scheduled retry doesn't hide the
+    unanswered call before it."""
     return (
         select(
             CallAttempt.candidate_id,
             CallAttempt.call_status,
+            CallAttempt.end_reason,
             CallAttempt.created_at,
         )
         .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-        .where(Candidate.deleted_at.is_(None))
+        .where(Candidate.deleted_at.is_(None), CallAttempt.call_status.not_in(_vals(SCHEDULED)))
         .ext(distinct_on(CallAttempt.candidate_id))
         .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())
         .subquery()
@@ -298,11 +302,31 @@ async def stats(
 
     latest = _latest_attempts()
     latest_in_range = latest.c.created_at >= since if since else true()
+    # Phase 9: the last allowed attempt becomes `exhausted`; its end reason says how it ended
+    exhausted = latest.c.call_status == CallStatus.EXHAUSTED
     unanswered, failed = (
         await session.execute(
             select(
-                func.count().filter(latest.c.call_status.in_(_vals(UNANSWERED)), latest_in_range),
-                func.count().filter(latest.c.call_status == CallStatus.FAILED, latest_in_range),
+                func.count().filter(
+                    or_(
+                        latest.c.call_status.in_(_vals(UNANSWERED)),
+                        and_(exhausted, latest.c.end_reason.in_(_UNANSWERED_REASONS)),
+                    ),
+                    latest_in_range,
+                ),
+                func.count().filter(
+                    or_(
+                        latest.c.call_status == CallStatus.FAILED,
+                        and_(
+                            exhausted,
+                            or_(
+                                latest.c.end_reason.is_(None),
+                                latest.c.end_reason.not_in(_UNANSWERED_REASONS),
+                            ),
+                        ),
+                    ),
+                    latest_in_range,
+                ),
             ).select_from(latest)
         )
     ).one()
@@ -353,6 +377,7 @@ ATTENTION_ORDER = (
     "data_conflict",
     "unanswered_question",
     "vague_callback",
+    "callback_not_scheduled",
     "technical_failure",
     "partially_completed",
     "wrong_person",
@@ -360,6 +385,10 @@ ATTENTION_ORDER = (
     "sheets_sync_failed",
 )
 ATTENTION_LIMIT = 100
+NOT_SCHEDULED = {
+    "no_retry:callback_limit": "callback limit reached",
+    "no_retry:callback_too_far": "more than 14 days ahead",
+}
 
 
 def _result_of(conv: Conversation) -> dict[str, Any]:
@@ -461,7 +490,18 @@ async def attention(
         at = attempt.end_time or conv.created_at
         if callback.get("requested") and cand.id not in scheduled:
             when = _parse_time(callback.get("time_iso"))
-            if when is None or callback.get("needs_recruiter"):
+            decision = attempt.retry_decision or ""
+            if decision in NOT_SCHEDULED:
+                # Phase 9: callback limit reached, or a time too far ahead
+                add(
+                    cand,
+                    "callback_not_scheduled",
+                    at,
+                    call_attempt_id=attempt.id,
+                    detail=NOT_SCHEDULED[decision]
+                    + (f": {callback['time_text']}" if callback.get("time_text") else ""),
+                )
+            elif when is None or callback.get("needs_recruiter"):
                 add(
                     cand,
                     "vague_callback",

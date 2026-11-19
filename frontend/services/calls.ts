@@ -3,10 +3,12 @@ import type { CallAttempt, CallListItem, CallTranscript, PageMeta, StartCallResu
 
 /** Queue screening calls. Each candidate gets its own result (ok, or why not). `dryRun`: only
  *  check who could be called (the confirmation dialog); nothing is queued. */
-export async function startCalls(candidateIds: string[], dryRun = false) {
+export async function startCalls(candidateIds: string[], dryRun = false, overrideLimit = false) {
   const { data } = await send<StartCallResult[]>("POST", "/api/v1/calls/start", {
     candidate_ids: candidateIds,
     dry_run: dryRun,
+    // the recruiter confirmed calling beyond the attempt limit (phase-09)
+    override_limit: overrideLimit,
   });
   return data;
 }
@@ -49,8 +51,12 @@ export async function getTranscript(attemptId: string) {
   ).data;
 }
 
-export async function retryCall(attemptId: string) {
-  return (await send<StartCallResult>("POST", `/api/v1/calls/${attemptId}/retry`)).data;
+export async function retryCall(attemptId: string, overrideLimit = false) {
+  return (
+    await send<StartCallResult>("POST", `/api/v1/calls/${attemptId}/retry`, {
+      override_limit: overrideLimit,
+    })
+  ).data;
 }
 
 export async function cancelCall(attemptId: string) {

@@ -1,5 +1,57 @@
 # Progress
 
+## Phase 9 exit report (2026-11-19) — built, waiting for the user's review and real calls
+
+**Implemented:** automatic retries and callbacks. Design, rules and the real-phone procedure: [retries.md](retries.md). Deviations: [phase-09 §14](phases/phase-09-auto-retry.md#14-as-built-2026-11-19).
+- `services/retry_service.py`: `classify` (the §6 outcome table), `decide` (limits, exhausted, callbacks), `retry_time` / `callback_time` (2/3/4 calendar days, alternating morning 10:00 / afternoon 14:30, next calling day, last slot 30 min before closing), `evaluate` (locks the ended attempt, runs once, creates the next attempt or marks `exhausted`, stores `retry_decision` / `retry_note`), `dispatch_due` (FOR UPDATE SKIP LOCKED, re-check, moves out-of-window ones to the next opening, holds while paused, cancels opted-out / declined / deleted), `requeue_stale`, `evaluate_pending`, `known_answers` / `call_kind` (resume).
+- `utils/calling_window.py`, `utils/clock.py` (injectable clock); `workers/retry_worker.py`: cron every 5 min (missed decisions → dispatch → lost jobs).
+- Hooks: webhook and reconciler (no answer / busy / failed → decided at once), dial failures in the worker, finalization (answered calls, callbacks; a moved callback's note goes into the summary). The worker puts a retry or callback back on the schedule when the window closed or calling was paused before it dialed.
+- `call_state`: scheduled → queued, queued → scheduled, `exhausted` terminal (`mark_exhausted`). `call_service.cancel_scheduled` (opt-out from the agent or a recruiter, manual call replacing a schedule). Manual calls: `max_attempts_reached` unless `override_limit`.
+- Resume: retries and callbacks start the agent with earlier answers; openers "you asked us to call back…" and "we spoke earlier, so I only have a few questions left…".
+- API: `override_limit` on start and retry; `retry_count`, `retry_decision`, `retry_note` on calls; `retry_status` on candidate rows and the overview; attention reason `callback_not_scheduled`; settings `retry.{enabled, max_callbacks, alternate_slots}` (partial updates).
+- UI: candidates table "Retry · 21 Nov, 14:30 · attempt 2 of 3" / "Callback · …"; candidate header "Next: …"; call history shows each call's retry decision, the callback note, "Call now instead" for a scheduled one, and asks before going past the limit; start dialog "Call anyway" for used-up candidates; Settings "Retries and callbacks" card is live.
+- Dashboard: Unanswered / Failed look at the latest call that isn't only scheduled; `exhausted` counts by its end reason (`dashboard-check` matches).
+
+**Files created / changed:**
+- Backend, new: `services/retry_service.py`, `utils/calling_window.py`, `utils/clock.py`, `workers/retry_worker.py`, migration `0007_retries.py`, tests `unit/test_retry_rules.py` (48), `integration/test_retries.py` (14).
+- Backend, changed: `config.py` (`RETRY_ENABLED`, `MAX_CALLBACKS`, `RETRY_ALTERNATE_SLOTS`, `RETRY_INTERVAL_UNIT`), `models/call_attempt.py`, `services/call_state.py`, `call_service.py`, `candidate_service.py`, `candidate_view_service.py`, `dashboard_service.py`, `finalization_service.py`, `settings_service.py`; `repositories/call_repo.py`; `workers/call_worker.py`, `settings.py`; `voice/websocket_handler.py`, `pipeline.py`; `agent/prompts.py`; `api/v1/calls.py`, `candidates.py`; schemas `call`, `candidate`, `dashboard`; `scripts/dashboard_check.py`; three older tests updated for the new behaviour (+1 test).
+- Frontend: `lib/labels.ts`, `services/calls.ts`, candidate list, candidate page, calls panel, start-calls dialog, settings view, regenerated types, unit tests (+3); `tests/e2e/start-backend.sh` (all-day calling window: the E2E failed after 19:00 IST because "Outside calling hours" came before "Telephony is not configured").
+- Docs: `retries.md` (new), `api.md`, `phases/phase-09` §14, `.env.example`.
+- No new dependencies.
+
+**Tests run:**
+- `make test` → **771 passed**, 1 skipped (63 new). Ruff, mypy (strict), eslint, tsc clean.
+- `make test-frontend` → **13 passed**. `make test-e2e` → **1 passed**. `make dashboard-check` (dev data) → 9 metrics, 0 differences.
+- Unit (frozen clock): window edges (closing hour exclusive, Saturday evening → Monday, Sunday → Monday, Thursday 20:00 UTC = Friday 01:30 IST → Friday 10:00), 2/3/4-day retries, alternation, last slot, staging minutes, minutes refused in production, callback kept / moved with a note / past / > 14 days, the outcome table (18 cases), limits and exhausted, retries off still place callbacks, callback cap, state moves, known answers, openers.
+- Integration (Postgres + Redis, fake provider): no-answer webhook → retry with the right `next_retry_at` and a re-sent webhook adds nothing; three misses → `exhausted`, no fourth dial, attention item, manual call needs the override; dispatch only when due, Sunday → Monday 10:00, held while paused; a retry that waited past the window is rescheduled; opt-out at scheduling, dispatch and initiation + API opt-out cancels; declined call and declined status; callback at 17:00 tomorrow, resume context and opener; 21:00 callback moved to 10:00 with the note in the summary; vague callback and callback limit in attention; queue down → back on the schedule; lost job after commit → re-enqueued once, job run twice → one dial; **4 concurrent `evaluate` on separate connections → one retry**; reconciler picks up a missed decision; settings validation.
+
+**Acceptance criteria:**
+- P9-AC1 ⏳ automated (webhook → `retry_scheduled` with the correct `next_retry_at`). **Real unanswered call not done yet** (retries.md §10).
+- P9-AC2 ✅ frozen-clock tests for 2/3/4 days and window edges; ⏳ the staging minutes run on a real phone.
+- P9-AC3 ✅ automated (three misses → `exhausted`, no fourth dial); ⏳ real.
+- P9-AC4 ✅ all three checkpoints + recruiter opt-out + declined; ⏳ a real opt-out cancelling a scheduled retry.
+- P9-AC5 ✅ "tomorrow 5 PM" → 17:00 IST; 21:00 → next day 10:00 with a note; ⏳ real ("call me back in ten minutes").
+- P9-AC6 ✅ concurrency test (separate connections) and the worker-restart test.
+
+**Needs the user:**
+- Review the pages (Settings → Retries and callbacks, candidates list, call history).
+- Real calls (retries.md §10): set `RETRY_INTERVAL_UNIT=minutes`, restart backend + worker, `make tunnel`, inside calling hours: don't answer ×3, a callback in ten minutes, an opt-out with a retry scheduled. Set it back to `days` afterwards.
+- Compliance check of the calling window (Mon–Sat 10:00–19:00 IST) before calling real candidates (Phase 10, with KYC).
+- Still open from Phase 8: a real call from the UI (P8-AC2). From Phase 7: real partial call, revoke → restore drill.
+
+**Deferred or not done:**
+- The agent doesn't tell the candidate when it moves a callback into calling hours (the recruiter sees the note).
+- Invalid numbers: Exotel's callbacks don't say why a call failed; every `failed` is retried as temporary until we can see real post-KYC responses (Phase 10).
+- The Realtime trial engine doesn't load earlier answers on a retry (opener only).
+
+**Risks or surprises discovered:**
+- A rollback in a no-op path would have expired the webhook request's loaded objects (a crash on the next log line); the no-op paths end with a commit instead. Found by the finalization test.
+- The dev worker and backend reload code on change: before `make migrate`, the new retry cron failed for a few minutes (missing columns). Migration 0007 is applied on the dev database (28 old attempts marked `before_phase_9`); the cron has run cleanly since.
+- Without the "latest dialed call" change, the Unanswered tile would have dropped to 0 for every candidate with a scheduled retry.
+- The Phase 8 E2E depended on the time of day (fixed with an all-day window on the E2E stack).
+
+**Decisions made:** the four §11 recommendations (user, 2026-11-19). Mine, open to review: listed in [phase-09 §14](phases/phase-09-auto-retry.md#14-as-built-2026-11-19) (retryable `no_response`, 15 s early-drop rule, callbacks placed even with retries off, manual call replaces a schedule, recruiter opt-out cancels queued calls, the dashboard definition change, retry slots 10:00 / 14:30).
+
 ## Realtime voice engine, trial (2026-11-19, after Phase 8) — built, not yet on a real call
 
 **Asked by the user:** implement OpenAI Realtime (`gpt-realtime-2.1-mini`) as a voice engine, keeping the Phase 6 pipeline, test it, then decide. Design, switching and results: [realtime-voice.md](realtime-voice.md).

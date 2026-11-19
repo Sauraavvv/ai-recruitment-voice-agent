@@ -73,8 +73,8 @@ The full schema is at `/docs` and `/openapi.json`; the frontend's types are gene
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/v1/candidates` | Requires `consent_attested: true`. Phone normalized to E.164. `job_id` defaults to the active job. 409 `duplicate_phone` with `details.existing_candidate_id` |
-| GET | `/api/v1/candidates` | `q` (name/phone/email), `screening_status`, `call_status` (the latest call's status, or `not_called`), `job_id`, `interested`, `sort` (`created_at`, `name`, `updated_at`, prefix `-` for descending; default `-created_at`), `page`, `page_size`. Rows add `eligibility {can_call, reason, message}`, `last_call {id, attempt_number, call_status, end_reason, at, terminal}`, `last_call_has_transcript`, `open_conflicts` |
-| GET | `/api/v1/candidates/{id}/overview` | `{eligibility, summary, sheet_sync, sheets_configured, conflicts}`. `summary`: the latest finalized call that collected data, else the latest (`newer_call_without_data` says when a later call had nothing) |
+| GET | `/api/v1/candidates` | `q` (name/phone/email), `screening_status`, `call_status` (the latest call's status, or `not_called`), `job_id`, `interested`, `sort` (`created_at`, `name`, `updated_at`, prefix `-` for descending; default `-created_at`), `page`, `page_size`. Rows add `eligibility {can_call, reason, message}`, `last_call {id, attempt_number, call_status, end_reason, at, terminal}` (the latest call that isn't only scheduled), `last_call_has_transcript`, `open_conflicts`, `retry_status` (Phase 9: `{kind: retry\|callback\|exhausted, call_attempt_id, at, attempt, attempts_made, max_attempts, callbacks_made, max_callbacks}` or null). A scheduled retry or callback doesn't block `can_call`: a call started now replaces it |
+| GET | `/api/v1/candidates/{id}/overview` | `{eligibility, summary, sheet_sync, sheets_configured, conflicts, retry_status}`. `summary`: the latest finalized call that collected data, else the latest (`newer_call_without_data` says when a later call had nothing) |
 | POST | `/api/v1/candidates/{id}/conflicts/{field}/resolve` | `{choice: "keep" \| "use"}`: keep the stored value or take the other one. Marks the conflict resolved (who, when, choice) on the field's meta and in the call's `final.conflicts`; Sheets outbox row. `409 no_conflict` |
 | GET | `/api/v1/candidates/{id}` | Profile and screening fields |
 | PATCH | `/api/v1/candidates/{id}` | Partial update; `null` clears an optional field. Changing the phone re-checks duplicates. `opted_out` can't go back to `false` (409 `opt_out_irreversible`) |
@@ -121,11 +121,11 @@ Row status: `valid`, `invalid`, `duplicate_in_file` (the first row with a phone 
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/v1/calls/start` | `{"candidate_ids": [...], "dry_run": false}` (1–100) → `202` with one result per candidate: `{candidate_id, ok, call_attempt_id, error: {code, message}}`. Each accepted candidate gets a `queued` attempt and an `initiate_call` job. `dry_run: true` only checks (the confirmation dialog) |
+| POST | `/api/v1/calls/start` | `{"candidate_ids": [...], "dry_run": false, "override_limit": false}` (1–100) → `202` with one result per candidate: `{candidate_id, ok, call_attempt_id, error: {code, message}}`. Each accepted candidate gets a `queued` attempt and an `initiate_call` job; a scheduled retry or callback is cancelled and replaced (`replaced_by_manual_call`). `dry_run: true` only checks (the confirmation dialog). Phase 9: `max_attempts_reached` when the candidate's calls are used up; send again with `override_limit: true` after the recruiter confirms |
 | GET | `/api/v1/calls` | Attempts, newest first, with `candidate_name`, `applied_role`, `has_transcript`. Filters `candidate_id`, `call_status` (repeatable), `q` (candidate name/phone), `created_from`, `created_to`; paginated |
-| GET | `/api/v1/calls/{id}` | One attempt: `call_status`, `provider_status`, `end_reason`, times, `duration_seconds`, `failure_reason`, `next_retry_at`, `has_recording` (the provider's recording URL is never sent) |
+| GET | `/api/v1/calls/{id}` | One attempt: `call_status`, `provider_status`, `end_reason`, times, `duration_seconds`, `failure_reason`, `next_retry_at` (when a scheduled retry or callback is due), `retry_count`, `retry_decision` (`retry_scheduled`, `callback_scheduled`, `exhausted`, `no_retry:<reason>`; [retries.md](retries.md)), `retry_note`, `has_recording` (the provider's recording URL is never sent) |
 | GET | `/api/v1/calls/{id}/transcript` | `{entries: [{seq, speaker, text, timestamp, interrupted, heard_text}], summary, finalized, …}`; empty entries for an unanswered call |
-| POST | `/api/v1/calls/{id}/retry` | A new `manual` attempt for the candidate under the start rules; same result shape as one `start` item |
+| POST | `/api/v1/calls/{id}/retry` | A new `manual` attempt for the candidate under the start rules; optional body `{"override_limit": true}`; same result shape as one `start` item |
 | POST | `/api/v1/calls/{id}/cancel` | Only `pending`, `queued`, `retry_scheduled`, `callback_requested` → `cancelled` (`failure_reason: cancelled_by_recruiter:<user>`); else `409 call_not_cancellable` |
 | POST | `/api/v1/calls/{id}/hangup` | Ends a call `in_progress` on this server: the agent says its closing line and hangs up (`failure_reason: ended_by_recruiter`). `409 call_not_in_progress`, `404 call_session_not_found` |
 
@@ -139,7 +139,7 @@ Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`
 |---|---|---|
 | GET | `/api/v1/dashboard/stats?range=today\|7d\|all` | The nine tiles (phase-08 §5.1) plus `definitions` (tooltip text). `range` limits completed / unanswered / failed by when the call was placed. An empty database gives zeros |
 | GET | `/api/v1/dashboard/activity` | The 20 most recently changed attempts with candidate name and status |
-| GET | `/api/v1/dashboard/attention` | `[{candidate_id, candidate_name, reason, at, call_attempt_id, detail, conflict}]`; reasons `callback_due`, `data_conflict`, `unanswered_question`, `vague_callback`, `technical_failure`, `partially_completed`, `wrong_person`, `attempts_exhausted`, `sheets_sync_failed` (most urgent first) |
+| GET | `/api/v1/dashboard/attention` | `[{candidate_id, candidate_name, reason, at, call_attempt_id, detail, conflict}]`; reasons `callback_due`, `data_conflict`, `unanswered_question`, `vague_callback`, `technical_failure`, `partially_completed`, `wrong_person`, `attempts_exhausted`, `callback_not_scheduled` (Phase 9: callback limit reached or more than 14 days ahead), `sheets_sync_failed` (most urgent first) |
 | GET | `/api/v1/dashboard/quick-start` | Eligible candidates never called (first 20), total, whether calling is open now, why not (`blocked_reason`), lines in use |
 | GET | `/api/v1/dashboard/summary` | Phase 1 charts, live calls, latest transcript |
 
@@ -147,8 +147,8 @@ Eligibility error codes: `candidate_not_found`, `candidate_deleted`, `opted_out`
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/v1/settings` | `{general: {organization_name, agent_introduction, calling: {days, start_hour, end_hour}, max_concurrent_calls, retry: {max_attempts, interval_days}, calling_enabled}, limits: {max_concurrent_calls, timezone, calling_enabled_env}, introduction: {text, …}, calling_now}` |
-| PATCH | `/api/v1/settings` | Any subset of `general`. The introduction may use `{first_name}`, `{company}`, `{job_title}`, `{organization}`, must contain "AI" and end with "?"; `null` = built-in line. Concurrency is capped by `MAX_CONCURRENT_CALLS`. Logged with the user id |
+| GET | `/api/v1/settings` | `{general: {organization_name, agent_introduction, calling: {days, start_hour, end_hour}, max_concurrent_calls, retry: {max_attempts, interval_days, enabled, max_callbacks, alternate_slots}, calling_enabled}, limits: {max_concurrent_calls, timezone, calling_enabled_env}, introduction: {text, …}, calling_now}` |
+| PATCH | `/api/v1/settings` | Any subset of `general`. The introduction may use `{first_name}`, `{company}`, `{job_title}`, `{organization}`, must contain "AI" and end with "?"; `null` = built-in line. Concurrency is capped by `MAX_CONCURRENT_CALLS`. `retry` may be partial (fields left out are unchanged); `interval_days` 2–4, `max_callbacks` 0–5. Logged with the user id |
 | GET | `/api/v1/settings/status?refresh=` | `{providers: [{name, label, configured, reachable, message, detail, last_checked}], google_sheets}`; checks cached 60 s; never contains a key |
 
 ### Google Sheets (Phase 7)

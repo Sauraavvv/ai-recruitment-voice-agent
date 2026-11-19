@@ -11,6 +11,7 @@ import {
 import { previewIntroduction } from "@/app/(recruiter)/settings/settings-view";
 import { ScreeningAnswers, fieldStatus } from "@/components/screening-answers";
 import { StatusBadge, badgeFor } from "@/components/status-badge";
+import { retryDecisionLabel, retryStatusText } from "@/lib/labels";
 import type { Candidate, CandidateListItem, SettingsPage } from "@/types";
 
 afterEach(cleanup);
@@ -71,6 +72,7 @@ const row = (overrides: Partial<CandidateListItem> = {}): CandidateListItem =>
     last_call: null,
     last_call_has_transcript: false,
     open_conflicts: 0,
+    retry_status: null,
     ...overrides,
   }) as CandidateListItem;
 
@@ -182,5 +184,58 @@ describe("introduction preview", () => {
         "",
       ),
     ).toBe("Hi Asha, I'm an AI from Test Co for AI Engineer at Test Co. Ok? {x}");
+  });
+});
+
+describe("retry status (phase-09 P9-T8)", () => {
+  const base = {
+    call_attempt_id: "a2",
+    attempts_made: 1,
+    max_attempts: 3,
+    callbacks_made: 0,
+    max_callbacks: 2,
+  };
+
+  it("says when the next try is and which attempt it is", () => {
+    const text = retryStatusText({
+      ...base,
+      kind: "retry",
+      at: "2026-11-20T05:00:00Z",
+      attempt: 2,
+    });
+    expect(text).toMatch(/^Retry · .+ · attempt 2 of 3$/);
+    expect(
+      retryStatusText({ ...base, kind: "callback", at: "2026-11-19T11:30:00Z", attempt: null }),
+    ).toMatch(/^Callback · /);
+    expect(
+      retryStatusText({ ...base, kind: "exhausted", attempts_made: 3, at: null, attempt: null }),
+    ).toBe("No more attempts (3 of 3)");
+    expect(retryStatusText(null)).toBeNull();
+  });
+
+  it("shows the scheduled retry under the call status in the list", () => {
+    renderRow(
+      row({
+        last_call: {
+          id: "a1",
+          attempt_number: 1,
+          call_status: "no_answer",
+          end_reason: "no_answer",
+          at: "2026-11-19T05:00:00Z",
+          terminal: true,
+        },
+        retry_status: { ...base, kind: "retry", at: "2026-11-21T09:00:00Z", attempt: 2 },
+      }),
+    );
+    expect(screen.getByText(/attempt 2 of 3/)).toBeTruthy();
+    expect(screen.getByText("No answer")).toBeTruthy();
+  });
+
+  it("explains why a call was not retried", () => {
+    expect(retryDecisionLabel("retry_scheduled")).toBe("Retry scheduled");
+    expect(retryDecisionLabel("no_retry:partial")).toMatch(/screening incomplete/);
+    expect(retryDecisionLabel("no_retry:opted_out")).toBe("Not retried: asked not to be called");
+    expect(retryDecisionLabel("before_phase_9")).toBeNull();
+    expect(retryDecisionLabel(null)).toBeNull();
   });
 });

@@ -174,3 +174,44 @@ None.
 ## 13. Exit
 
 [Phase exit report](README.md#phase-exit-report).
+
+## 14. As built (2026-11-19)
+
+Design and operations: [retries.md](../retries.md). Exit report: [progress.md](../progress.md).
+
+**Decisions (user, 2026-11-19):** all four §11 recommendations. A partially completed call is not
+retried automatically (Needs attention → manual retry); manual calls count toward
+`max_attempts`, with a confirmed override; at most 2 callbacks, which don't count; retries
+alternate between morning and afternoon. The calling window stays as decided in Phase 5
+(Mon–Sat 10:00–19:00 IST, editable on the Settings page).
+
+**Deviations from the plan, and why:**
+- `app_settings.retry` holds `enabled`, `max_attempts`, `interval_days`, `max_callbacks`,
+  `alternate_slots`. `retry_on` / `stop_on` aren't settings: the outcome table (§6) is code, and
+  is tested as one table. The window stays in `general.calling` (whole hours, as in Phase 8).
+- No `time-machine` dependency: everything takes an injectable `Clock` (`utils/clock.py`,
+  `FrozenClock` in tests). The `retry_worker` cron reads `ctx["clock"]` if one is set.
+- Migration `0007_retries`: `call_attempts.retry_decision`, `retry_note`,
+  `retry_evaluated_at` (idempotency and "why no retry" in the UI) and a partial index for the
+  dispatcher. Existing ended attempts were marked `before_phase_9`, so old test calls are never
+  retried.
+- `exhausted` is a terminal status; `call_state.mark_exhausted` moves the last attempt there.
+  Scheduled attempts may only become `queued` or `cancelled`; `queued` may go back to scheduled
+  when the window closed or calling was paused before it dialed (rescheduled, not cancelled).
+- More outcomes are retryable than the table lists: nobody spoke (`no_response`), and an
+  answered call whose conversation wasn't stored. A call answered and hung up after 15 s with
+  no answers is not retried (`not_started`).
+- Callbacks: a time outside the window moves to the next slot with a note on the attempt and in
+  the summary. A callback past `max_callbacks` or more than 14 days ahead becomes the new
+  attention reason `callback_not_scheduled`. Callbacks are placed even when automatic retries
+  are switched off.
+- A manual call for a candidate with a scheduled retry or callback replaces it (the Call
+  button isn't blocked by a schedule). A recruiter's opt-out also cancels queued calls.
+- Dashboard: "Unanswered" and "Failed" look at the latest call that isn't only scheduled
+  (otherwise every unanswered candidate would vanish from the tile as soon as its retry is
+  scheduled); `exhausted` counts by its end reason. `make dashboard-check` uses the same rules.
+- Resume: the pipeline engine loads earlier answers (values and declined fields from calls,
+  not recruiter-typed values). The Realtime trial engine gets the matching opener only.
+- `RETRY_INTERVAL_UNIT=minutes` (staging) is refused in production by config validation.
+- Not done: the agent doesn't tell the candidate when it moves a callback into calling hours;
+  invalid numbers can't be told apart from other Exotel failures until KYC (Phase 10).

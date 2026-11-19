@@ -19,6 +19,7 @@ import {
   SCREENING_STATUS_LABELS,
   formatDate,
   initials,
+  retryStatusText,
   yesNo,
 } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
@@ -359,6 +360,11 @@ export function Row({
           <StatusBadge kind="call" status={last.call_status} />
         ) : (
           <span className="text-xs text-zinc-500">Not called</span>
+        )}
+        {c.retry_status && c.retry_status.kind !== "exhausted" && (
+          <span className="mt-1 block text-xs whitespace-nowrap text-[#93b4ff]">
+            {retryStatusText(c.retry_status)}
+          </span>
         )}
       </td>
       <td className="py-3 pr-4">

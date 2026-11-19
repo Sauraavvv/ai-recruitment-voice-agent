@@ -12,6 +12,10 @@ export REDIS_URL="redis://localhost:6380/1"
 export FRONTEND_ORIGIN="http://localhost:3011"
 export FRONTEND_URL="http://localhost:3011"
 export TTS_PRELOAD=false
+# Calling hours all day, every day: the page shows the same reasons whatever the time of day
+export CALLING_DAYS="mon,tue,wed,thu,fri,sat,sun"
+export CALLING_HOUR_START=0
+export CALLING_HOUR_END=24
 # Empty = not configured (overrides anything in an .env file)
 for name in OPENAI_API_KEY DEEPGRAM_API_KEY EXOTEL_API_KEY EXOTEL_API_TOKEN EXOTEL_ACCOUNT_SID \
   EXOTEL_SUBDOMAIN EXOTEL_CALLER_ID EXOTEL_APP_ID PUBLIC_BACKEND_URL \

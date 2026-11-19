@@ -102,6 +102,8 @@ class CallContext:
     candidate_id: uuid.UUID | None = None
     provider_call_id: str | None = None
     keyterms: list[str] = field(default_factory=list)
+    # Answers from earlier calls (phase-09 resume): the agent doesn't ask them again
+    prior_fields: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

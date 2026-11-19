@@ -31,6 +31,12 @@ class CallAttempt(Base):
         Index("ix_call_attempts_candidate_id", "candidate_id"),
         Index("ix_call_attempts_call_status", "call_status"),
         Index("ix_call_attempts_next_retry_at", "next_retry_at"),
+        # The retry dispatcher's query (phase-09)
+        Index(
+            "ix_call_attempts_due",
+            "next_retry_at",
+            postgresql_where=text("call_status IN ('retry_scheduled', 'callback_requested')"),
+        ),
         Index(
             "uq_call_attempts_provider_call",
             "provider",
@@ -72,5 +78,10 @@ class CallAttempt(Base):
     failure_reason: Mapped[str | None] = mapped_column(Text)
     next_retry_at: Mapped[datetime | None]
     retry_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # Phase 9: what the retry rules decided when this attempt ended (docs/retries.md), e.g.
+    # retry_scheduled | callback_scheduled | exhausted | no_retry:<reason>. Set once.
+    retry_decision: Mapped[str | None] = mapped_column(String(48))
+    retry_note: Mapped[str | None] = mapped_column(Text)  # e.g. callback moved into the window
+    retry_evaluated_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()

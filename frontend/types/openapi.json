@@ -1345,7 +1345,7 @@
           "calls"
         ],
         "summary": "Retry Call",
-        "description": "Call this attempt's candidate again (a new `manual` attempt) when eligible.",
+        "description": "Call this attempt's candidate again (a new `manual` attempt) when eligible.\n`max_attempts_reached` \u2192 ask the recruiter, then send `override_limit: true`.",
         "operationId": "retry_call_api_v1_calls__call_attempt_id__retry_post",
         "parameters": [
           {
@@ -1359,6 +1359,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RetryCallRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -1976,6 +1993,7 @@
               "data_conflict",
               "unanswered_question",
               "vague_callback",
+              "callback_not_scheduled",
               "technical_failure",
               "partially_completed",
               "wrong_person",
@@ -2208,6 +2226,33 @@
             ],
             "title": "Next Retry At"
           },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "default": 0
+          },
+          "retry_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Decision"
+          },
+          "retry_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Note"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -2392,6 +2437,33 @@
               }
             ],
             "title": "Next Retry At"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "default": 0
+          },
+          "retry_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Decision"
+          },
+          "retry_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Note"
           },
           "created_at": {
             "type": "string",
@@ -2998,6 +3070,16 @@
           "open_conflicts": {
             "type": "integer",
             "title": "Open Conflicts"
+          },
+          "retry_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3031,7 +3113,8 @@
           "eligibility",
           "last_call",
           "last_call_has_transcript",
-          "open_conflicts"
+          "open_conflicts",
+          "retry_status"
         ],
         "title": "CandidateListItem"
       },
@@ -3318,6 +3401,16 @@
             },
             "type": "array",
             "title": "Conflicts"
+          },
+          "retry_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3326,7 +3419,8 @@
           "summary",
           "sheet_sync",
           "sheets_configured",
-          "conflicts"
+          "conflicts",
+          "retry_status"
         ],
         "title": "CandidateOverview",
         "description": "Everything on the candidate page besides the candidate and its calls."
@@ -4575,7 +4669,7 @@
           "retry": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RetryConfig"
+                "$ref": "#/components/schemas/RetryUpdate"
               },
               {
                 "type": "null"
@@ -5717,6 +5811,17 @@
         ],
         "title": "ReportError"
       },
+      "RetryCallRequest": {
+        "properties": {
+          "override_limit": {
+            "type": "boolean",
+            "title": "Override Limit",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "RetryCallRequest"
+      },
       "RetryConfig": {
         "properties": {
           "max_attempts": {
@@ -5730,6 +5835,23 @@
             "maximum": 4.0,
             "minimum": 2.0,
             "title": "Interval Days"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "max_callbacks": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Max Callbacks",
+            "default": 2
+          },
+          "alternate_slots": {
+            "type": "boolean",
+            "title": "Alternate Slots",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -5739,7 +5861,146 @@
           "interval_days"
         ],
         "title": "RetryConfig",
-        "description": "Used by the Phase 9 retry automation; editable from now on."
+        "description": "Automatic retries (phase-09 \u00a75, docs/retries.md). Rows saved before Phase 9 only have\nthe first two fields; the rest take their defaults."
+      },
+      "RetryStatus": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "retry",
+              "callback",
+              "exhausted"
+            ],
+            "title": "Kind"
+          },
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
+          "attempts_made": {
+            "type": "integer",
+            "title": "Attempts Made"
+          },
+          "max_attempts": {
+            "type": "integer",
+            "title": "Max Attempts"
+          },
+          "callbacks_made": {
+            "type": "integer",
+            "title": "Callbacks Made"
+          },
+          "max_callbacks": {
+            "type": "integer",
+            "title": "Max Callbacks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "call_attempt_id",
+          "at",
+          "attempt",
+          "attempts_made",
+          "max_attempts",
+          "callbacks_made",
+          "max_callbacks"
+        ],
+        "title": "RetryStatus",
+        "description": "phase-09 P9-T8: what happens next automatically."
+      },
+      "RetryUpdate": {
+        "properties": {
+          "max_attempts": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Attempts"
+          },
+          "interval_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 4.0,
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "max_callbacks": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Callbacks"
+          },
+          "alternate_slots": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alternate Slots"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RetryUpdate",
+        "description": "PATCH body for the retry section: fields left out are unchanged."
       },
       "RowIssue": {
         "properties": {
@@ -6321,6 +6582,11 @@
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run",
+            "default": false
+          },
+          "override_limit": {
+            "type": "boolean",
+            "title": "Override Limit",
             "default": false
           }
         },

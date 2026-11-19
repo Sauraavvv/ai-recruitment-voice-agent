@@ -17,9 +17,10 @@ from app.database.connection import dispose_engine, get_sessionmaker, init_engin
 from app.services import dashboard_service
 
 LATEST = """
-    (SELECT DISTINCT ON (a.candidate_id) a.candidate_id, a.call_status
+    (SELECT DISTINCT ON (a.candidate_id) a.candidate_id, a.call_status, a.end_reason
        FROM call_attempts a JOIN candidates c ON c.id = a.candidate_id
       WHERE c.deleted_at IS NULL
+        AND a.call_status NOT IN ('retry_scheduled', 'callback_requested')
       ORDER BY a.candidate_id, a.attempt_number DESC) latest
 """
 SQL = {
@@ -33,8 +34,15 @@ SQL = {
         "SELECT count(*) FROM call_attempts WHERE call_status IN ('ringing', 'in_progress')"
     ),
     # constant SQL only (no input reaches these strings)
-    "unanswered_calls": f"SELECT count(*) FROM {LATEST} WHERE call_status IN ('no_answer', 'busy')",  # noqa: S608
-    "failed_calls": f"SELECT count(*) FROM {LATEST} WHERE call_status = 'failed'",  # noqa: S608
+    "unanswered_calls": (
+        f"SELECT count(*) FROM {LATEST} WHERE call_status IN ('no_answer', 'busy') "  # noqa: S608
+        "OR (call_status = 'exhausted' AND end_reason IN ('no_answer', 'busy'))"
+    ),
+    "failed_calls": (
+        f"SELECT count(*) FROM {LATEST} WHERE call_status = 'failed' "  # noqa: S608
+        "OR (call_status = 'exhausted' "
+        "AND (end_reason IS NULL OR end_reason NOT IN ('no_answer', 'busy')))"
+    ),
     "interested_candidates": (
         "SELECT count(*) FROM candidates WHERE deleted_at IS NULL AND interested IS TRUE"
     ),

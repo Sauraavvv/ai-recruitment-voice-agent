@@ -166,6 +166,14 @@ class Settings(BaseSettings):
     max_call_attempts: int = Field(default=3, ge=1, le=10)
     retry_interval_days: int = Field(default=2, ge=2, le=4)
 
+    # Automatic retries (Phase 9, docs/retries.md). Defaults; the Settings page can change them.
+    retry_enabled: bool = True
+    max_callbacks: int = Field(default=2, ge=0, le=5)  # callbacks don't count as attempts
+    retry_alternate_slots: bool = True  # alternate morning and afternoon between retries
+    # Staging only: "minutes" turns the retry interval into minutes, so a real no-answer → retry
+    # cycle can be tried on a tester's phone. Refused when APP_ENV=production.
+    retry_interval_unit: Literal["days", "minutes"] = "days"
+
     @field_validator("*", mode="before")
     @classmethod
     def _empty_string_is_unset(cls, value: Any) -> Any:
@@ -218,6 +226,8 @@ class Settings(BaseSettings):
             raise ValueError("APP_SECRET_KEY looks like a placeholder; generate a random value")
         if not (self.public_backend_url or "").startswith("https://"):
             raise ValueError("PUBLIC_BACKEND_URL must be an https:// URL in production")
+        if self.retry_interval_unit != "days":
+            raise ValueError("RETRY_INTERVAL_UNIT=minutes is for staging only, not production")
         return self
 
     @property

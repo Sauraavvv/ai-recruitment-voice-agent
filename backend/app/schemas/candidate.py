@@ -153,11 +153,25 @@ class LastCall(BaseModel):
     terminal: bool
 
 
+class RetryStatus(BaseModel):
+    """phase-09 P9-T8: what happens next automatically."""
+
+    kind: Literal["retry", "callback", "exhausted"]
+    call_attempt_id: uuid.UUID
+    at: datetime | None  # when the retry or callback is due (UTC)
+    attempt: int | None  # the scheduled retry is attempt N of max_attempts
+    attempts_made: int  # initial + retry + manual calls that ended
+    max_attempts: int
+    callbacks_made: int
+    max_callbacks: int
+
+
 class CandidateListItem(CandidateOut):
     eligibility: Eligibility
-    last_call: LastCall | None
+    last_call: LastCall | None  # the latest call that isn't only scheduled
     last_call_has_transcript: bool
     open_conflicts: int
+    retry_status: RetryStatus | None
 
 
 class Conflict(BaseModel):
@@ -200,6 +214,7 @@ class CandidateOverview(BaseModel):
     sheet_sync: SheetSyncState
     sheets_configured: bool
     conflicts: list[Conflict]
+    retry_status: RetryStatus | None
 
 
 class ConflictResolution(BaseModel):

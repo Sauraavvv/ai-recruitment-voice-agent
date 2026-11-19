@@ -12,7 +12,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -34,14 +33,13 @@ from app.providers.telephony.base import ProviderCallStatus
 from app.repositories import call_repo, candidate_repo
 from app.services import call_slots, call_state, sync_service
 from app.services.errors import conflict, not_found
+from app.utils.calling_window import CallingWindow
 from app.utils.log import get_logger
 from app.utils.phone import normalize_phone
 
 logger = get_logger(__name__)
 
 Enqueue = Callable[[str], Awaitable[None]]
-
-DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 # --- Eligibility ------------------------------------------------------------------------------
 
@@ -58,6 +56,7 @@ class Ineligible:
     NOT_CONFIGURED = "telephony_not_configured"
     VOICE_UNAVAILABLE = "voice_unavailable"
     PAUSED = "calling_paused"
+    MAX_ATTEMPTS = "max_attempts_reached"  # a recruiter may override it after a confirmation
 
 
 INELIGIBLE_MESSAGES = {
@@ -72,15 +71,12 @@ INELIGIBLE_MESSAGES = {
     Ineligible.NOT_CONFIGURED: "Telephony is not configured",
     Ineligible.VOICE_UNAVAILABLE: "The AI voice isn't ready yet; try again in a minute",
     Ineligible.PAUSED: "Calling is paused on the Settings page",
+    Ineligible.MAX_ATTEMPTS: "All call attempts for this candidate have been used",
 }
 
 
 def in_calling_window(settings: Settings, now: datetime | None = None) -> bool:
-    local = (now or datetime.now(UTC)).astimezone(ZoneInfo(settings.app_timezone))
-    days = {d.strip().lower()[:3] for d in settings.calling_days.split(",") if d.strip()}
-    if DAY_NAMES[local.weekday()] not in days:
-        return False
-    return settings.calling_hour_start <= local.hour < settings.calling_hour_end
+    return CallingWindow.from_settings(settings).contains(now or datetime.now(UTC))
 
 
 async def check_eligibility(
@@ -106,7 +102,8 @@ async def check_eligibility(
     job = await session.get(Job, candidate.job_id)
     if job is None or not job.is_active:
         return Ineligible.JOB_INACTIVE
-    live = await call_repo.live_for_candidate(session, candidate.id)
+    # A scheduled retry or callback doesn't block: a call started now replaces it
+    live = await call_repo.live_for_candidate(session, candidate.id, include_scheduled=False)
     if live is not None and live.id != own_attempt_id:
         return Ineligible.LIVE_ATTEMPT
     return global_problem(settings, now=now, ignore_window=ignore_window)
@@ -143,7 +140,13 @@ async def eligibility_for(
             await session.execute(
                 select(CallAttempt.candidate_id).where(
                     CallAttempt.candidate_id.in_(ids),
-                    CallAttempt.call_status.in_([s.value for s in LIVE_CALL_STATUSES]),
+                    CallAttempt.call_status.in_(
+                        [
+                            s.value
+                            for s in LIVE_CALL_STATUSES
+                            if s.value not in call_repo.SCHEDULED_STATUSES
+                        ]
+                    ),
                 )
             )
         ).scalars()
@@ -221,8 +224,11 @@ async def start_calls(
     ignore_window: bool = False,
     voice_ready: bool = True,
     dry_run: bool = False,
+    override_limit: bool = False,
 ) -> list[StartResult]:
-    """`dry_run`: eligibility only (the confirmation dialog), nothing is queued."""
+    """`dry_run`: eligibility only (the confirmation dialog), nothing is queued.
+    `override_limit`: the recruiter confirmed a call beyond max_attempts (phase-09 P9-T4).
+    A scheduled retry or callback for the candidate is cancelled and replaced by this call."""
     results: list[StartResult] = []
     for candidate_id in dict.fromkeys(candidate_ids):  # de-duplicate, keep order
         result = StartResult(candidate_id)
@@ -233,6 +239,10 @@ async def start_calls(
         )
         if result.error is None and not voice_ready:
             result.error = Ineligible.VOICE_UNAVAILABLE  # nothing could speak on the call
+        if result.error is None and candidate is not None and not override_limit:
+            dialed, _ = (await call_repo.attempt_counts(session, [candidate.id]))[candidate.id]
+            if dialed >= settings.max_call_attempts:
+                result.error = Ineligible.MAX_ATTEMPTS
         if result.error or candidate is None or dry_run:
             continue
         attempt = CallAttempt(
@@ -244,6 +254,11 @@ async def start_calls(
         )
         try:
             async with session.begin_nested():
+                # A scheduled retry or callback is replaced by this call (same savepoint)
+                if await cancel_scheduled(
+                    session, candidate.id, reason=f"replaced_by_{attempt_type.value}_call"
+                ):
+                    await session.flush()  # frees the one-live slot before the new attempt
                 session.add(attempt)
         except IntegrityError:
             # Another request created a live attempt for this candidate at the same moment.
@@ -280,6 +295,43 @@ async def get(session: AsyncSession, attempt_id: uuid.UUID) -> CallAttempt:
     return attempt
 
 
+async def cancel_scheduled(
+    session: AsyncSession,
+    candidate_id: uuid.UUID,
+    *,
+    reason: str,
+    keep: uuid.UUID | None = None,
+) -> int:
+    """Cancel the candidate's attempts that haven't dialed yet (pending, queued, retry or
+    callback scheduled), in the caller's transaction. Used on opt-out (phase-09 P9-T7) and when
+    a new call replaces a scheduled one. Returns how many were cancelled."""
+    stmt = (
+        select(CallAttempt)
+        .where(
+            CallAttempt.candidate_id == candidate_id,
+            CallAttempt.call_status.in_([s.value for s in CANCELLABLE]),
+        )
+        .with_for_update()
+    )
+    if keep is not None:
+        stmt = stmt.where(CallAttempt.id != keep)
+    count = 0
+    for attempt in (await session.execute(stmt)).scalars().all():
+        if call_state.transition(
+            attempt,
+            CallStatus.CANCELLED,
+            end_reason=CallEndReason.CANCELLED.value,
+            failure_reason=reason,
+        ):
+            attempt.retry_decision = f"no_retry:{reason}"[:48]
+            attempt.retry_evaluated_at = datetime.now(UTC)
+            count += 1
+    if count:
+        sync_service.record_change(session, candidate_id)  # Call Status, Next Retry Date
+        logger.info("scheduled_calls_cancelled", candidate_id=str(candidate_id), reason=reason)
+    return count
+
+
 # --- Recruiter controls (phase-08 §5.3) ---------------------------------------------------------
 
 # Attempts that haven't dialed yet: the recruiter may cancel them
@@ -298,9 +350,11 @@ async def retry(
     enqueue: Enqueue,
     *,
     voice_ready: bool = True,
+    override_limit: bool = False,
 ) -> StartResult:
     """A new manual attempt for this attempt's candidate, under the same eligibility rules as
-    starting a call (opt-out, consent, window, pause, no live attempt)."""
+    starting a call (opt-out, consent, window, pause, no live attempt, max attempts unless
+    the recruiter overrides it)."""
     attempt = await get(session, attempt_id)  # still live → call_already_active below
     results = await start_calls(
         session,
@@ -309,6 +363,7 @@ async def retry(
         enqueue,
         attempt_type=CallAttemptType.MANUAL,
         voice_ready=voice_ready,
+        override_limit=override_limit,
     )
     return results[0]
 
@@ -474,9 +529,11 @@ async def handle_status_callback(
     event.processed_at = now
     if not changed:
         event.error = f"ignored:{attempt.call_status}->{status.value}"
-    record_if_ended(session, attempt, changed)
+    ended = record_if_ended(session, attempt, changed)
     await session.commit()
     await release_slot_if_done(redis, attempt, settings)
+    if ended:
+        await evaluate_retry(session, attempt.id, settings)
     logger.info(
         "webhook_applied",
         call_attempt_id=str(attempt.id),
@@ -586,8 +643,18 @@ async def reconcile_attempt(
             attempt.provider_call_id = status.provider_call_id
         changed = apply_provider_status(attempt, status)
         outcome = f"applied:{status.status}" if changed else f"unchanged:{status.status}"
-    record_if_ended(session, attempt, outcome.startswith(("applied", "failed")))
+    ended = record_if_ended(session, attempt, outcome.startswith(("applied", "failed")))
     await session.commit()
     await release_slot_if_done(redis, attempt, settings)
+    if ended:
+        await evaluate_retry(session, attempt.id, settings)
     logger.info("call_reconciled", call_attempt_id=str(attempt.id), outcome=outcome)
     return outcome
+
+
+async def evaluate_retry(session: AsyncSession, attempt_id: uuid.UUID, settings: Settings) -> None:
+    """Phase 9: schedule a retry or a callback for an attempt that just ended (a call with a
+    conversation waits for finalization). Never raises; the retry reconciler catches up."""
+    from app.services import retry_service  # retry_service builds on this module
+
+    await retry_service.evaluate_safely(session, attempt_id, settings)

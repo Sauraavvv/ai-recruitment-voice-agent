@@ -5,12 +5,34 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.dialects.postgresql import distinct_on, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import LIVE_CALL_STATUSES, CallAttempt, Candidate, WebhookEvent
+from app.database.models import (
+    LIVE_CALL_STATUSES,
+    CallAttempt,
+    CallAttemptType,
+    CallStatus,
+    Candidate,
+    WebhookEvent,
+)
 from app.repositories.candidate_repo import escape_like
+
+SCHEDULED_STATUSES = (CallStatus.RETRY_SCHEDULED.value, CallStatus.CALLBACK_REQUESTED.value)
+# Attempts that ended after dialing (or trying to): these count toward max_attempts
+DIALED_STATUSES = (
+    CallStatus.COMPLETED.value,
+    CallStatus.FAILED.value,
+    CallStatus.NO_ANSWER.value,
+    CallStatus.BUSY.value,
+    CallStatus.EXHAUSTED.value,
+)
+COUNTED_TYPES = (
+    CallAttemptType.INITIAL.value,
+    CallAttemptType.RETRY.value,
+    CallAttemptType.MANUAL.value,
+)
 
 
 async def get(
@@ -33,12 +55,57 @@ async def get_by_provider_call(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def live_for_candidate(session: AsyncSession, candidate_id: uuid.UUID) -> CallAttempt | None:
+async def live_for_candidate(
+    session: AsyncSession, candidate_id: uuid.UUID, *, include_scheduled: bool = True
+) -> CallAttempt | None:
+    statuses = [s.value for s in LIVE_CALL_STATUSES]
+    if not include_scheduled:
+        statuses = [s for s in statuses if s not in SCHEDULED_STATUSES]
     stmt = select(CallAttempt).where(
-        CallAttempt.candidate_id == candidate_id,
-        CallAttempt.call_status.in_([s.value for s in LIVE_CALL_STATUSES]),
+        CallAttempt.candidate_id == candidate_id, CallAttempt.call_status.in_(statuses)
     )
     return (await session.execute(stmt)).scalars().first()
+
+
+async def attempt_counts(
+    session: AsyncSession, candidate_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """Per candidate: (dialed attempts that count toward max_attempts, callbacks scheduled or
+    made). Cancelled attempts never count."""
+    if not candidate_ids:
+        return {}
+    counted = and_(
+        CallAttempt.attempt_type.in_(COUNTED_TYPES), CallAttempt.call_status.in_(DIALED_STATUSES)
+    )
+    callbacks = and_(
+        CallAttempt.attempt_type == CallAttemptType.CALLBACK.value,
+        CallAttempt.call_status != CallStatus.CANCELLED.value,
+    )
+    rows = await session.execute(
+        select(
+            CallAttempt.candidate_id,
+            func.count().filter(counted),
+            func.count().filter(callbacks),
+        )
+        .where(CallAttempt.candidate_id.in_(list(candidate_ids)))
+        .group_by(CallAttempt.candidate_id)
+    )
+    out = {cid: (0, 0) for cid in candidate_ids}
+    out.update({cid: (int(d), int(c)) for cid, d, c in rows.all()})
+    return out
+
+
+async def scheduled_for_candidates(
+    session: AsyncSession, candidate_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, CallAttempt]:
+    """Each candidate's scheduled retry or callback (at most one: the one-live index)."""
+    if not candidate_ids:
+        return {}
+    stmt = select(CallAttempt).where(
+        CallAttempt.candidate_id.in_(list(candidate_ids)),
+        CallAttempt.call_status.in_(SCHEDULED_STATUSES),
+    )
+    return {a.candidate_id: a for a in (await session.execute(stmt)).scalars()}
 
 
 async def next_attempt_number(session: AsyncSession, candidate_id: uuid.UUID) -> int:
@@ -97,14 +164,16 @@ async def search(
 
 
 async def latest_for_candidates(
-    session: AsyncSession, candidate_ids: Sequence[uuid.UUID]
+    session: AsyncSession, candidate_ids: Sequence[uuid.UUID], *, include_scheduled: bool = True
 ) -> dict[uuid.UUID, CallAttempt]:
-    """Each candidate's newest attempt (highest attempt number)."""
+    """Each candidate's newest attempt (highest attempt number). `include_scheduled=False`:
+    the newest one that isn't only a scheduled retry or callback."""
     if not candidate_ids:
         return {}
     stmt = (
         select(CallAttempt)
         .where(CallAttempt.candidate_id.in_(list(candidate_ids)))
+        .where(true() if include_scheduled else CallAttempt.call_status.not_in(SCHEDULED_STATUSES))
         .ext(distinct_on(CallAttempt.candidate_id))
         .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())
     )

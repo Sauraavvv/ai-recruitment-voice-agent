@@ -108,6 +108,7 @@ AttentionReason = Literal[
     "data_conflict",
     "unanswered_question",
     "vague_callback",
+    "callback_not_scheduled",  # Phase 9: callback limit reached or too far ahead
     "technical_failure",
     "partially_completed",
     "wrong_person",

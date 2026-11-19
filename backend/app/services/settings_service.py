@@ -71,10 +71,24 @@ class CallingWindow(_Strict):
 
 
 class RetryConfig(_Strict):
-    """Used by the Phase 9 retry automation; editable from now on."""
+    """Automatic retries (phase-09 §5, docs/retries.md). Rows saved before Phase 9 only have
+    the first two fields; the rest take their defaults."""
 
-    max_attempts: int = Field(ge=1, le=10)
+    max_attempts: int = Field(ge=1, le=10)  # initial + retry + manual calls per candidate
     interval_days: int = Field(ge=2, le=4)
+    enabled: bool = True
+    max_callbacks: int = Field(default=2, ge=0, le=5)  # don't count toward max_attempts
+    alternate_slots: bool = True  # alternate morning and afternoon between retries
+
+
+class RetryUpdate(_Strict):
+    """PATCH body for the retry section: fields left out are unchanged."""
+
+    max_attempts: int | None = Field(default=None, ge=1, le=10)
+    interval_days: int | None = Field(default=None, ge=2, le=4)
+    enabled: bool | None = None
+    max_callbacks: int | None = Field(default=None, ge=0, le=5)
+    alternate_slots: bool | None = None
 
 
 class GeneralSettings(_Strict):
@@ -123,7 +137,7 @@ class GeneralUpdate(_Strict):
     agent_introduction: str | None = Field(default=None, max_length=500)
     calling: CallingWindow | None = None
     max_concurrent_calls: int | None = Field(default=None, ge=1, le=10)
-    retry: RetryConfig | None = None
+    retry: RetryUpdate | None = None
     calling_enabled: bool | None = None
     voice_engine: Literal["pipeline", "realtime"] | None = None
 
@@ -145,7 +159,11 @@ def defaults(settings: Settings) -> GeneralSettings:
         ),
         max_concurrent_calls=settings.max_concurrent_calls,
         retry=RetryConfig(
-            max_attempts=settings.max_call_attempts, interval_days=settings.retry_interval_days
+            max_attempts=settings.max_call_attempts,
+            interval_days=settings.retry_interval_days,
+            enabled=settings.retry_enabled,
+            max_callbacks=settings.max_callbacks,
+            alternate_slots=settings.retry_alternate_slots,
         ),
     )
 
@@ -162,7 +180,11 @@ async def _rows(session: AsyncSession) -> dict[str, Any]:
 def _general(stored: Any, settings: Settings) -> GeneralSettings:
     base = defaults(settings).model_dump()
     if isinstance(stored, dict):
-        base.update({k: v for k, v in stored.items() if k in GeneralSettings.model_fields})
+        for key, value in stored.items():
+            if key == "retry" and isinstance(value, dict):
+                base[key] = {**base[key], **value}  # rows saved before Phase 9 lack new fields
+            elif key in GeneralSettings.model_fields:
+                base[key] = value
     try:
         return GeneralSettings.model_validate(base)
     except ValueError:
@@ -191,6 +213,9 @@ def apply(settings: Settings, general: GeneralSettings, sheets: SheetSettings) -
             ),
             "max_call_attempts": general.retry.max_attempts,
             "retry_interval_days": general.retry.interval_days,
+            "retry_enabled": general.retry.enabled,
+            "max_callbacks": general.retry.max_callbacks,
+            "retry_alternate_slots": general.retry.alternate_slots,
             "calling_enabled": settings.calling_enabled and general.calling_enabled,
             "organization_name": general.organization_name,
             "agent_introduction": general.agent_introduction,
@@ -231,6 +256,11 @@ async def update_general(
 ) -> GeneralSettings:
     current, _ = await load(session, settings)
     sent = changes.model_dump(exclude_unset=True)
+    if isinstance(sent.get("retry"), dict):
+        # a partial retry section changes only the fields sent
+        sent["retry"] = current.retry.model_dump() | {
+            k: v for k, v in sent["retry"].items() if v is not None
+        }
     merged = current.model_dump() | {
         k: v
         for k, v in sent.items()

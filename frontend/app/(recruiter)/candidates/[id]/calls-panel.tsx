@@ -16,12 +16,14 @@ import {
   LIVE_CALL_STATUSES,
   duration,
   formatDate,
+  retryDecisionLabel,
 } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
 import { cancelCall, hangupCall, listCalls, retryCall } from "@/services/calls";
 import type { CallAttempt, Eligibility } from "@/types";
 
 const CANCELLABLE = new Set(["pending", "queued", "retry_scheduled", "callback_requested"]);
+const SCHEDULED = new Set(["retry_scheduled", "callback_requested"]);
 
 /**
  * The candidate's calls. Refreshes every 3 s while a call is live (30 s otherwise, paused in a
@@ -44,7 +46,8 @@ export function useCalls(candidateId: string, onCallEnded: () => void) {
 
 export type Calls = ReturnType<typeof useCalls>;
 
-type Pending = { kind: "retry" | "cancel" | "hangup"; call: CallAttempt } | null;
+// override: the attempt limit is reached and the recruiter is asked to confirm one more call
+type Pending = { kind: "retry" | "override" | "cancel" | "hangup"; call: CallAttempt } | null;
 
 /** Timeline of attempts with the recruiter's controls (phase-08 P8-T7, P8-T8). */
 export function CallsPanel({
@@ -67,10 +70,13 @@ export function CallsPanel({
     if (!pending) return;
     setBusy(true);
     try {
-      if (pending.kind === "retry") {
-        const result = await retryCall(pending.call.id);
+      if (pending.kind === "retry" || pending.kind === "override") {
+        const result = await retryCall(pending.call.id, pending.kind === "override");
         if (result.ok) notify("success", "Call queued. The phone will ring in a few seconds.");
-        else notify("error", result.error?.message ?? "Can't call right now");
+        else if (result.error?.code === "max_attempts_reached") {
+          setPending({ kind: "override", call: pending.call }); // ask before going over
+          return;
+        } else notify("error", result.error?.message ?? "Can't call right now");
       } else if (pending.kind === "cancel") {
         await cancelCall(pending.call.id);
         notify("success", "Call cancelled.");
@@ -111,7 +117,7 @@ export function CallsPanel({
             title={retryBlocked ? (eligibility?.message ?? "Can't call right now") : undefined}
             onClick={() => setPending({ kind: "retry", call: latest })}
           >
-            Retry call
+            {SCHEDULED.has(latest.call_status) ? "Call now instead" : "Retry call"}
           </Button>
         )
       }
@@ -164,13 +170,23 @@ export function CallsPanel({
                     </dd>
                   </div>
                 )}
-                {call.next_retry_at && (
+                {call.next_retry_at && SCHEDULED.has(call.call_status) && (
                   <div className="col-span-2">
-                    <dt className="inline text-zinc-500">Next try: </dt>
+                    <dt className="inline text-zinc-500">
+                      {call.call_status === "callback_requested" ? "Callback at: " : "Due: "}
+                    </dt>
                     <dd className="inline">{formatDate(call.next_retry_at)}</dd>
                   </div>
                 )}
               </dl>
+              {retryDecisionLabel(call.retry_decision) && (
+                <p className="mt-1 text-xs text-zinc-500">
+                  {retryDecisionLabel(call.retry_decision)}
+                </p>
+              )}
+              {call.retry_note && (
+                <p className="mt-0.5 text-xs text-amber-300">{call.retry_note}</p>
+              )}
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -208,25 +224,31 @@ export function CallsPanel({
         title={
           pending?.kind === "retry"
             ? "Call again?"
-            : pending?.kind === "cancel"
-              ? "Cancel this call?"
-              : "End this call now?"
+            : pending?.kind === "override"
+              ? "All call attempts are used. Call anyway?"
+              : pending?.kind === "cancel"
+                ? "Cancel this call?"
+                : "End this call now?"
         }
         confirmLabel={
-          pending?.kind === "retry"
+          pending?.kind === "retry" || pending?.kind === "override"
             ? "Call now"
             : pending?.kind === "cancel"
               ? "Cancel call"
               : "End call"
         }
         cancelLabel="Back"
-        danger={pending?.kind !== "retry"}
+        danger={pending?.kind === "cancel" || pending?.kind === "hangup"}
         busy={busy}
         onConfirm={run}
         onClose={() => setPending(null)}
       >
         {pending?.kind === "retry" &&
-          "A new screening call is queued and the phone rings in a few seconds."}
+          (SCHEDULED.has(pending.call.call_status)
+            ? "The scheduled call is cancelled and replaced by a call now. The phone rings in a few seconds."
+            : "A new screening call is queued and the phone rings in a few seconds.")}
+        {pending?.kind === "override" &&
+          "This candidate has had the maximum number of calls set on the Settings page. One more call is placed if you confirm."}
         {pending?.kind === "cancel" && "The call won't be placed. You can start a new one later."}
         {pending?.kind === "hangup" &&
           "The AI says a short goodbye and hangs up. Answers given so far are kept."}

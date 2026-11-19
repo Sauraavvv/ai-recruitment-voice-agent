@@ -12,6 +12,7 @@ import { getSettings } from "@/services/settings";
 import type { SettingsPage, StartCallResult } from "@/types";
 
 export const MAX_CALLS_PER_ACTION = 20;
+const LIMIT_REACHED = "max_attempts_reached";
 
 export type CallTarget = { id: string; name: string };
 
@@ -33,6 +34,8 @@ export function StartCallsDialog({
 }) {
   const notify = useToast();
   const [busy, setBusy] = useState(false);
+  // Candidates whose attempts are used up and the recruiter chose to call anyway (phase-09)
+  const [overrides, setOverrides] = useState<Set<string>>(new Set());
   const key = targets?.map((t) => t.id).join(",") ?? null;
   // A dry run each time the dialog opens: who could be called right now, and why not
   const loaded = useLoad<Check>(key && `start-check:${key}`, async () => {
@@ -48,11 +51,33 @@ export function StartCallsDialog({
   const names = new Map(targets?.map((t) => [t.id, t.name]));
   const ok = check?.results.filter((r) => r.ok) ?? [];
   const skipped = check?.results.filter((r) => !r.ok) ?? [];
+  const forced = skipped.filter(
+    (r) => r.error?.code === LIMIT_REACHED && overrides.has(r.candidate_id),
+  );
+  const toCall = [...ok, ...forced];
+
+  function toggleOverride(id: string) {
+    setOverrides((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function close() {
+    setOverrides(new Set());
+    onClose();
+  }
 
   async function confirm() {
     setBusy(true);
     try {
-      const results = await startCalls(ok.map((r) => r.candidate_id));
+      const results = await startCalls(
+        toCall.map((r) => r.candidate_id),
+        false,
+        forced.length > 0,
+      );
       const queued = results.filter((r) => r.ok).length;
       const refused = results.length - queued;
       notify(
@@ -62,7 +87,7 @@ export function StartCallsDialog({
           : (results[0]?.error?.message ?? "No calls could be started"),
       );
       onStarted?.(queued);
-      onClose();
+      close();
     } catch (err) {
       notify("error", errorMessage(err));
     } finally {
@@ -71,18 +96,18 @@ export function StartCallsDialog({
   }
 
   const general = check?.settings?.general;
-  const plural = ok.length === 1 ? "" : "s";
+  const plural = toCall.length === 1 ? "" : "s";
   return (
     <ConfirmDialog
       open={targets !== null}
       title={
         targets && targets.length === 1 ? `Call ${targets[0].name}?` : "Start screening calls?"
       }
-      confirmLabel={ok.length ? `Call ${ok.length} candidate${plural}` : "Nobody to call"}
-      confirmDisabled={!check || ok.length === 0}
+      confirmLabel={toCall.length ? `Call ${toCall.length} candidate${plural}` : "Nobody to call"}
+      confirmDisabled={!check || toCall.length === 0}
       busy={busy}
       onConfirm={confirm}
-      onClose={onClose}
+      onClose={close}
     >
       {error ? (
         <p className="text-red-300">{errorMessage(error)}</p>
@@ -132,13 +157,26 @@ export function StartCallsDialog({
               </div>
               <ul className="max-h-40 space-y-1 overflow-y-auto">
                 {skipped.map((r) => (
-                  <li key={r.candidate_id} className="flex justify-between gap-3">
-                    <span className="truncate text-zinc-300">
-                      {names.get(r.candidate_id) ?? r.candidate_id}
-                    </span>
-                    <span className="shrink-0 text-right text-amber-300">
-                      {r.error?.message ?? "Can't be called"}
-                    </span>
+                  <li key={r.candidate_id}>
+                    <div className="flex justify-between gap-3">
+                      <span className="truncate text-zinc-300">
+                        {names.get(r.candidate_id) ?? r.candidate_id}
+                      </span>
+                      <span className="shrink-0 text-right text-amber-300">
+                        {r.error?.message ?? "Can't be called"}
+                      </span>
+                    </div>
+                    {r.error?.code === LIMIT_REACHED && (
+                      <label className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                        <input
+                          type="checkbox"
+                          checked={overrides.has(r.candidate_id)}
+                          onChange={() => toggleOverride(r.candidate_id)}
+                          className="accent-[#1d4ed8]"
+                        />
+                        Call anyway (one more attempt beyond the limit)
+                      </label>
+                    )}
                   </li>
                 ))}
               </ul>

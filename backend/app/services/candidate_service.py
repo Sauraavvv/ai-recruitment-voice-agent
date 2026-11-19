@@ -15,7 +15,7 @@ from app.agent.schemas import FieldName
 from app.database.models import Candidate, ConsentSource, Conversation, ScreeningStatus
 from app.repositories import candidate_repo
 from app.schemas.candidate import CandidateCreate, CandidateUpdate
-from app.services import job_service, sync_service
+from app.services import call_service, job_service, sync_service
 from app.services.errors import conflict, not_found, unprocessable
 from app.utils.log import get_logger
 
@@ -117,8 +117,12 @@ async def update(
     if changes.get("opted_out") and not candidate.opted_out:
         changes["screening_status"] = ScreeningStatus.OPTED_OUT
 
+    opting_out = bool(changes.get("opted_out")) and not candidate.opted_out
     for key, value in changes.items():
         setattr(candidate, key, value)
+    if opting_out:
+        # Same transaction (phase-09 P9-T7): nothing scheduled may dial after an opt-out
+        await call_service.cancel_scheduled(session, candidate.id, reason="opted_out")
     if changes:
         sync_service.record_change(session, candidate.id)
     try:

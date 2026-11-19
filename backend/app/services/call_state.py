@@ -4,9 +4,16 @@
     any non-terminal → failed | no_answer | busy | cancelled
 
 Terminal states are final. Out-of-order provider events (e.g. `ringing` after `completed`)
-are recorded by the caller but change nothing here. The scheduling states of Phase 9
-(retry_scheduled, callback_requested, exhausted) are not telephony outcomes and aren't reached
-from this module.
+are recorded by the caller but change nothing here.
+
+Phase 9 scheduling (docs/retries.md):
+
+    retry_scheduled | callback_requested → queued       (the dispatcher, when due)
+    queued → retry_scheduled | callback_requested       (not dialed: window closed or paused)
+    no_answer | busy | failed | completed → exhausted   (`mark_exhausted`, last allowed attempt)
+
+`exhausted` is final like the telephony outcomes; the provider's status stays in
+`provider_status` and the reason in `end_reason`.
 """
 
 from datetime import UTC, datetime
@@ -14,15 +21,17 @@ from typing import Any
 
 from app.database.models import CallAttempt, CallStatus
 
-TERMINAL = frozenset(
+# How a dialed call ended
+OUTCOMES = frozenset(
     {
         CallStatus.COMPLETED,
         CallStatus.FAILED,
         CallStatus.NO_ANSWER,
         CallStatus.BUSY,
-        CallStatus.CANCELLED,
     }
 )
+TERMINAL = OUTCOMES | {CallStatus.CANCELLED, CallStatus.EXHAUSTED}
+SCHEDULED = frozenset({CallStatus.RETRY_SCHEDULED, CallStatus.CALLBACK_REQUESTED})
 _FAILURES = frozenset(
     {CallStatus.FAILED, CallStatus.NO_ANSWER, CallStatus.BUSY, CallStatus.CANCELLED}
 )
@@ -31,7 +40,9 @@ _FAILURES = frozenset(
 # initiating → completed when the `answered` event never came).
 _FORWARD: dict[CallStatus, frozenset[CallStatus]] = {
     CallStatus.PENDING: frozenset({CallStatus.QUEUED}),
-    CallStatus.QUEUED: frozenset({CallStatus.INITIATING}),
+    CallStatus.RETRY_SCHEDULED: frozenset({CallStatus.QUEUED}),
+    CallStatus.CALLBACK_REQUESTED: frozenset({CallStatus.QUEUED}),
+    CallStatus.QUEUED: frozenset({CallStatus.INITIATING, *SCHEDULED}),
     CallStatus.INITIATING: frozenset(
         {CallStatus.RINGING, CallStatus.IN_PROGRESS, CallStatus.COMPLETED}
     ),
@@ -49,6 +60,8 @@ def can_transition(current: str, new: str) -> bool:
     if cur in TERMINAL or cur == nxt:
         return False
     if nxt in _FAILURES:
+        if cur in SCHEDULED and nxt != CallStatus.CANCELLED:
+            return False  # never dialed: it can only be cancelled
         # A call that was answered can't become "no answer" or "busy" afterwards.
         return not (
             cur == CallStatus.IN_PROGRESS and nxt in {CallStatus.NO_ANSWER, CallStatus.BUSY}
@@ -84,3 +97,11 @@ def update_details(attempt: CallAttempt, **fields: Any) -> None:
     for name, value in fields.items():
         if value is not None:
             setattr(attempt, name, value)
+
+
+def mark_exhausted(attempt: CallAttempt) -> bool:
+    """The last allowed attempt ended with a retryable outcome (phase-09 P9-T4)."""
+    if attempt.call_status not in OUTCOMES:
+        return False
+    attempt.call_status = CallStatus.EXHAUSTED
+    return True

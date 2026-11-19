@@ -108,6 +108,9 @@ async def candidate_overview(
             "sheet_sync": await candidate_view_service.sync_status(session, candidate.id),
             "sheets_configured": settings.sheets_configured,
             "conflicts": candidate_view_service.open_conflicts(candidate),
+            "retry_status": await candidate_view_service.retry_status_for(
+                session, candidate.id, settings
+            ),
         }
     )
 

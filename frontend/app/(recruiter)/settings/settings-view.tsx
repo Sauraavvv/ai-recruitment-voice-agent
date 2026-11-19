@@ -106,7 +106,7 @@ function PauseCard({ data, onSaved }: { data: SettingsPage; onSaved: (d: Setting
             ? data.calling_now
               ? "On. Calls go out now (inside calling hours)."
               : "On. Calls wait for calling hours."
-            : "Paused. Nothing is dialed; queued calls are cancelled when their turn comes."
+            : "Paused. Nothing is dialed; queued calls are cancelled when their turn comes. Scheduled retries and callbacks wait until calling is on again."
       }
       action={
         <button
@@ -411,16 +411,34 @@ function IntroCard({ data, onSaved }: { data: SettingsPage; onSaved: (d: Setting
 function RetryCard({ data, onSaved }: { data: SettingsPage; onSaved: (d: SettingsPage) => void }) {
   const { busy, save } = useSave(onSaved);
   const r = data.general.retry;
+  const [enabled, setEnabled] = useState(r.enabled);
   const [attempts, setAttempts] = useState(r.max_attempts);
   const [interval, setIntervalDays] = useState(r.interval_days);
-  const dirty = attempts !== r.max_attempts || interval !== r.interval_days;
+  const [callbacks, setCallbacks] = useState(r.max_callbacks);
+  const [alternate, setAlternate] = useState(r.alternate_slots);
+  const dirty =
+    enabled !== r.enabled ||
+    attempts !== r.max_attempts ||
+    interval !== r.interval_days ||
+    callbacks !== r.max_callbacks ||
+    alternate !== r.alternate_slots;
+  const { days, start_hour, end_hour } = data.general.calling;
   return (
     <Card
-      title="Retries"
-      description="For unanswered calls. Automatic retries arrive in the next release; the values are kept."
+      title="Retries and callbacks"
+      description={`Unanswered, busy or failed calls are tried again after the interval, inside calling hours (${start_hour}:00–${end_hour}:00, ${days.length} days a week). Callbacks happen at the time the candidate asked for.`}
     >
+      <label className="mb-4 flex items-center gap-2 text-sm text-zinc-200">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          className="accent-[#1d4ed8]"
+        />
+        Retry unanswered calls automatically
+      </label>
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <Field label="Attempts per candidate">
+        <Field label="Calls per candidate">
           <select
             value={attempts}
             onChange={(e) => setAttempts(Number(e.target.value))}
@@ -446,11 +464,49 @@ function RetryCard({ data, onSaved }: { data: SettingsPage; onSaved: (d: Setting
             ))}
           </select>
         </Field>
+        <Field label="Callbacks per candidate">
+          <select
+            value={callbacks}
+            onChange={(e) => setCallbacks(Number(e.target.value))}
+            className={inputClass}
+          >
+            {[0, 1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
+      <label className="mb-2 flex items-center gap-2 text-sm text-zinc-200">
+        <input
+          type="checkbox"
+          checked={alternate}
+          onChange={(e) => setAlternate(e.target.checked)}
+          className="accent-[#1d4ed8]"
+        />
+        Alternate morning and afternoon between retries
+      </label>
+      <p className="mb-4 text-xs text-zinc-500">
+        Manual calls count toward the limit; after the last one you can still call once more with a
+        confirmation. Callbacks don&apos;t count. A call where the candidate hung up partway is not
+        retried automatically: it appears under Needs attention.
+      </p>
       <Button
         disabled={!dirty || busy}
         onClick={() =>
-          save({ retry: { max_attempts: attempts, interval_days: interval } }, "Retries saved.")
+          save(
+            {
+              retry: {
+                enabled,
+                max_attempts: attempts,
+                interval_days: interval,
+                max_callbacks: callbacks,
+                alternate_slots: alternate,
+              },
+            },
+            "Retries saved.",
+          )
         }
       >
         {busy ? "Saving…" : "Save"}

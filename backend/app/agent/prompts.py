@@ -146,6 +146,8 @@ class CandidateContext:
     name: str
     candidate_id: str | None = None
     call_id: str | None = None
+    # first | callback (they asked us to call back) | resume (earlier call left answers)
+    call_kind: str = "first"
 
     @property
     def first_name(self) -> str:
@@ -278,6 +280,20 @@ def greeting(candidate: CandidateContext) -> str:
 
 
 def introduction(candidate: CandidateContext, job: JobConfig) -> str:
+    article = "an" if job.job_title[:1].lower() in "aeiou" else "a"
+    # Phase 9: callbacks and calls that resume earlier answers (the template is for first calls)
+    if candidate.call_kind == "callback":
+        return (
+            f"Hi {candidate.first_name}, I'm an AI recruitment assistant calling on behalf of "
+            f"{job.company_name}. You asked us to call back about the {job.job_title} role. "
+            "Is now a good time?"
+        )
+    if candidate.call_kind == "resume":
+        return (
+            f"Hi {candidate.first_name}, I'm an AI recruitment assistant calling again on behalf "
+            f"of {job.company_name} about {article} {job.job_title} role. We spoke earlier, so I "
+            "only have a few questions left. Is now a good time?"
+        )
     if job.introduction_template:
         from app.services.settings_service import render_introduction
 
@@ -288,7 +304,6 @@ def introduction(candidate: CandidateContext, job: JobConfig) -> str:
             job_title=job.job_title,
             organization=job.organization or None,
         )
-    article = "an" if job.job_title[:1].lower() in "aeiou" else "a"
     return (
         f"Hi {candidate.first_name}, I'm an AI recruitment assistant calling on behalf of "
         f"{job.company_name} about {article} {job.job_title} role. Is this a good time for a "
