@@ -36,3 +36,6 @@ artifacts/
 .DS_Store
 .idea/
 .vscode/
+
+# Project documentation stays local (not published)
+/docs/
