@@ -38,10 +38,23 @@ export function TranscriptView({
   );
   const listRef = useRef<HTMLOListElement>(null);
   const t = transcript.data?.call_attempt_id === selected ? transcript.data : undefined;
+  // A transcript opens at its first line. While a call is live, new lines are followed only
+  // when the reader is already at the bottom (so reading earlier lines isn't interrupted).
+  const shown = useRef<{ id: string | null; lines: number }>({ id: null, lines: 0 });
   useEffect(() => {
     const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, [t?.entries.length]);
+    if (!list || !t) return;
+    const lines = t.entries.length;
+    const prev = shown.current;
+    if (prev.id !== t.call_attempt_id) {
+      list.scrollTop = 0;
+    } else if (lines > prev.lines) {
+      const lastLine = list.lastElementChild as HTMLElement | null;
+      const gap = list.scrollHeight - list.clientHeight - list.scrollTop;
+      if (gap <= (lastLine?.offsetHeight ?? 0) + 48) list.scrollTop = list.scrollHeight;
+    }
+    shown.current = { id: t.call_attempt_id, lines };
+  }, [t]);
 
   return (
     <div>

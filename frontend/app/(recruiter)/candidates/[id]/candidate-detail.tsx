@@ -220,8 +220,9 @@ export function CandidateDetail() {
         </div>
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <div className="space-y-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-stretch">
+        {/* Left column: Call history (last) stretches to the bottom of the right column */}
+        <div className="flex flex-col gap-4">
           <Card
             title="Details"
             action={
@@ -341,6 +342,13 @@ export function CandidateDetail() {
           </Card>
 
           <SheetSyncCard overview={overview.data} onSyncNow={onSyncNow} />
+
+          <CallsPanel
+            calls={calls}
+            eligibility={eligibility}
+            onChanged={refreshAll}
+            onShowTranscript={showTranscript}
+          />
         </div>
 
         <div className="space-y-4">
@@ -373,13 +381,6 @@ export function CandidateDetail() {
           >
             <ScreeningAnswers candidate={c} />
           </Card>
-
-          <CallsPanel
-            calls={calls}
-            eligibility={eligibility}
-            onChanged={refreshAll}
-            onShowTranscript={showTranscript}
-          />
 
           <div ref={transcriptRef} className="scroll-mt-6">
             <Card title="Transcript">

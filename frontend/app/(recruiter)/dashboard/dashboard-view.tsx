@@ -120,10 +120,10 @@ function TranscriptLines({
   now: number;
 }) {
   const listRef = useRef<HTMLUListElement>(null);
-  // Show the end of the conversation first (newest lines)
+  // Each conversation opens at its first line
   useEffect(() => {
     const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
+    if (list) list.scrollTop = 0;
   }, [conv.call_attempt_id]);
 
   return (

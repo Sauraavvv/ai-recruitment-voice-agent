@@ -110,13 +110,17 @@ export function SheetsCard() {
               </span>
             </Row>
           </dl>
-          {s.configured && (
-            <Button variant="secondary" disabled={busy} onClick={onSyncAll}>
-              {busy ? "Queuing…" : "Sync all"}
-            </Button>
-          )}
-          {s.can_edit && s.key_configured && (
-            <ChangeSheet status={s} onChanged={() => setRefresh((n) => n + 1)} />
+          {(s.configured || (s.can_edit && s.key_configured)) && (
+            <div className="flex flex-wrap items-start gap-2">
+              {s.configured && (
+                <Button variant="secondary" disabled={busy} onClick={onSyncAll}>
+                  {busy ? "Queuing…" : "Sync all"}
+                </Button>
+              )}
+              {s.can_edit && s.key_configured && (
+                <ChangeSheet status={s} onChanged={() => setRefresh((n) => n + 1)} />
+              )}
+            </div>
           )}
           {!s.can_edit && (
             <p className="text-xs text-zinc-500">Only an admin can change the sheet.</p>
@@ -190,7 +194,7 @@ function ChangeSheet({ status, onChanged }: { status: SheetsStatus; onChanged: (
     );
   }
   return (
-    <div className="space-y-3 rounded-2xl border border-white/10 p-4">
+    <div className="w-full space-y-3 rounded-2xl border border-white/10 p-4">
       <p className="text-xs text-zinc-400">
         Admin only. Share the new sheet with the service account as Editor first. The old sheet
         keeps its rows.

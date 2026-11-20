@@ -6,12 +6,11 @@ import { useState } from "react";
 import { ConflictRow } from "@/components/screening-answers";
 import { StartCallsDialog, type CallTarget } from "@/components/start-calls-dialog";
 import { EmptyState, ErrorState, Skeleton } from "@/components/states";
-import { StatTile } from "@/components/stat-tile";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/components/toast";
 import { Button, Card } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
-import { ATTENTION_LABELS, END_REASON_LABELS, timeAgo } from "@/lib/labels";
+import { ATTENTION_LABELS, END_REASON_LABELS, shortDate, timeAgo } from "@/lib/labels";
 import { resolveConflict } from "@/services/candidates";
 import type { ActivityItem, AttentionItem, DashboardStats, QuickStart } from "@/types";
 
@@ -22,16 +21,29 @@ const RANGES: [Range, string][] = [
   ["all", "All time"],
 ];
 
-const TILES: { key: keyof DashboardStats & string; label: string; tone?: string }[] = [
-  { key: "total_candidates", label: "Candidates" },
-  { key: "calls_completed", label: "Calls completed", tone: "text-[#5fd35f]" },
-  { key: "calls_pending", label: "Calls pending" },
-  { key: "calls_in_progress", label: "In progress" },
-  { key: "unanswered_calls", label: "Unanswered", tone: "text-amber-300" },
-  { key: "failed_calls", label: "Failed", tone: "text-red-300" },
-  { key: "interested_candidates", label: "Interested" },
-  { key: "screening_completed", label: "Screened" },
-  { key: "scheduled_retries", label: "Retries scheduled" },
+type Metric = {
+  key: keyof DashboardStats & string;
+  label: string;
+  dot?: string; // status colour, always next to the label
+  tone?: string;
+};
+// One strip, three groups: who · calls · follow-up (design option B, 2026-11-19)
+const GROUPS: Metric[][] = [
+  [
+    { key: "total_candidates", label: "Candidates" },
+    { key: "screening_completed", label: "Screened" },
+    { key: "interested_candidates", label: "Interested", tone: "text-[#5fd35f]" },
+  ],
+  [
+    { key: "calls_completed", label: "Completed" },
+    { key: "calls_in_progress", label: "On call", dot: "bg-[#5fd35f]" },
+    { key: "calls_pending", label: "Pending", dot: "bg-[#93b4ff]" },
+  ],
+  [
+    { key: "unanswered_calls", label: "Unanswered", dot: "bg-amber-300" },
+    { key: "failed_calls", label: "Failed", dot: "bg-red-300" },
+    { key: "scheduled_retries", label: "Retries" },
+  ],
 ];
 // Call outcome metrics follow the range; the others are "now"
 const RANGED = new Set(["calls_completed", "unanswered_calls", "failed_calls"]);
@@ -45,43 +57,67 @@ export function StatTiles({
   range: Range;
   onRange: (range: Range) => void;
 }) {
+  const rangeLabel = RANGES.find((r) => r[0] === range)?.[1];
   return (
     <section aria-label="Statistics">
-      <div className="mb-3 flex items-center justify-end gap-1" role="group" aria-label="Range">
-        {RANGES.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => onRange(value)}
-            aria-pressed={range === value}
-            className={`rounded-lg px-3 py-1.5 text-xs transition ${
-              range === value ? "bg-white/10 text-white" : "text-zinc-500 hover:text-white"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-3 flex justify-end">
+        <div className="flex gap-1 rounded-xl bg-[#18191c] p-1" role="group" aria-label="Range">
+          {RANGES.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onRange(value)}
+              aria-pressed={range === value}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                range === value ? "bg-[#2a2c31] text-white" : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {TILES.map((tile) =>
-          stats ? (
-            <StatTile
-              key={tile.key}
-              label={tile.label}
-              value={String(stats[tile.key])}
-              definition={stats.definitions[tile.key]}
-              tone={tile.tone}
-              hint={
-                RANGED.has(tile.key) && range !== "all"
-                  ? RANGES.find((r) => r[0] === range)?.[1]
-                  : undefined
-              }
-            />
-          ) : (
-            <Skeleton key={tile.key} className="h-[106px] rounded-3xl" />
-          ),
-        )}
-      </div>
+      {!stats ? (
+        <Skeleton className="h-[104px] rounded-3xl" />
+      ) : (
+        <div className="grid grid-cols-1 rounded-3xl bg-[#18191c] py-5 md:grid-cols-3">
+          {GROUPS.map((group, g) => (
+            <div
+              key={g}
+              className={`grid grid-cols-3 ${
+                g > 0
+                  ? "mt-5 border-t border-white/15 pt-5 md:mt-0 md:border-t-0 md:border-l md:pt-0"
+                  : ""
+              }`}
+            >
+              {group.map((m, i) => (
+                <div
+                  key={m.key}
+                  title={stats.definitions[m.key]}
+                  className={`min-w-0 px-4 xl:px-5 ${i > 0 ? "border-l border-white/[0.06]" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5 truncate text-xs text-zinc-400">
+                    {m.dot && <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${m.dot}`} />}
+                    {m.label}
+                  </div>
+                  <div
+                    data-testid="stat-value"
+                    className={`font-display mt-2 text-[28px] leading-none font-semibold tabular-nums ${
+                      m.tone ?? "text-white"
+                    }`}
+                  >
+                    {String(stats[m.key])}
+                  </div>
+                  {RANGED.has(m.key) && range !== "all" && (
+                    <div className="mt-1 text-[11px] text-zinc-500">{rangeLabel}</div>
+                  )}
+                  <span className="sr-only">{stats.definitions[m.key]}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -226,7 +262,7 @@ export function AttentionList({
                     <span className="block font-medium text-white">{item.candidate_name}</span>
                     {item.detail && (
                       <span className="block truncate text-xs text-zinc-500">
-                        {END_REASON_LABELS[item.detail] ?? item.detail}
+                        {attentionDetail(item.detail)}
                       </span>
                     )}
                   </span>
@@ -294,4 +330,10 @@ export function ActivityList({
       )}
     </Card>
   );
+}
+
+/** A due time arrives as an ISO date (callback due): show it as "20 Nov, 17:00". */
+function attentionDetail(detail: string) {
+  if (/^\d{4}-\d{2}-\d{2}T/.test(detail)) return shortDate(detail);
+  return END_REASON_LABELS[detail] ?? detail;
 }

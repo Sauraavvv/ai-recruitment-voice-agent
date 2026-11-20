@@ -102,6 +102,7 @@ export function CallsPanel({
   const retryBlocked = !eligibility?.can_call;
   return (
     <Card
+      className="flex flex-col lg:flex-1"
       title="Call history"
       description={
         calls.data?.length
@@ -127,97 +128,101 @@ export function CallsPanel({
           Retry unavailable: {eligibility?.message ?? "checking…"}
         </p>
       )}
-      {calls.error && !calls.data && <ErrorState error={calls.error} onRetry={calls.reload} />}
-      {!calls.data ? (
-        !calls.error && <SkeletonRows rows={3} />
-      ) : calls.data.length === 0 ? (
-        <p className="text-sm text-zinc-500">No calls yet.</p>
-      ) : (
-        <ol className="-mr-2 max-h-[28rem] space-y-0 overflow-y-auto pr-2">
-          {calls.data.map((call) => (
-            <li key={call.id} className="relative border-l border-white/10 pb-4 pl-5 last:pb-0">
-              <span
-                className={`absolute top-1.5 -left-[5px] h-2.5 w-2.5 rounded-full ${
-                  ACTIVE_CALL_STATUSES.has(call.call_status)
-                    ? "animate-pulse bg-green-400"
-                    : call.call_status === "completed"
-                      ? "bg-[#0ca30c]"
-                      : "bg-zinc-600"
-                }`}
-                aria-hidden
-              />
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-medium text-white">#{call.attempt_number}</span>
-                <StatusBadge kind="call" status={call.call_status} />
-                <span className="text-xs text-zinc-500">
-                  {ATTEMPT_TYPE_LABELS[call.attempt_type] ?? call.attempt_type}
-                </span>
-              </div>
-              <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-zinc-400 sm:grid-cols-4">
-                <div>
-                  <dt className="sr-only">Started</dt>
-                  <dd>{formatDate(call.start_time ?? call.created_at)}</dd>
+      {/* On wide screens the list fills the card's remaining height and scrolls inside it,
+          so the card ends with the right column instead of making the page longer */}
+      <div className="relative lg:min-h-[16rem] lg:flex-1">
+        {calls.error && !calls.data && <ErrorState error={calls.error} onRetry={calls.reload} />}
+        {!calls.data ? (
+          !calls.error && <SkeletonRows rows={3} />
+        ) : calls.data.length === 0 ? (
+          <p className="text-sm text-zinc-500">No calls yet.</p>
+        ) : (
+          <ol className="-mr-2 max-h-[28rem] space-y-0 overflow-y-auto pr-2 lg:absolute lg:inset-0 lg:mr-0 lg:max-h-none">
+            {calls.data.map((call) => (
+              <li key={call.id} className="relative border-l border-white/10 pb-4 pl-5 last:pb-0">
+                <span
+                  className={`absolute top-1.5 -left-[5px] h-2.5 w-2.5 rounded-full ${
+                    ACTIVE_CALL_STATUSES.has(call.call_status)
+                      ? "animate-pulse bg-green-400"
+                      : call.call_status === "completed"
+                        ? "bg-[#0ca30c]"
+                        : "bg-zinc-600"
+                  }`}
+                  aria-hidden
+                />
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium text-white">#{call.attempt_number}</span>
+                  <StatusBadge kind="call" status={call.call_status} />
+                  <span className="text-xs text-zinc-500">
+                    {ATTEMPT_TYPE_LABELS[call.attempt_type] ?? call.attempt_type}
+                  </span>
                 </div>
-                <div>
-                  <dt className="inline text-zinc-500">Length </dt>
-                  <dd className="inline tabular-nums">{duration(call.duration_seconds)}</dd>
-                </div>
-                {call.end_reason && (
-                  <div className="col-span-2">
-                    <dt className="inline text-zinc-500">Ended: </dt>
-                    <dd className="inline">
-                      {END_REASON_LABELS[call.end_reason] ?? call.end_reason}
-                    </dd>
+                <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-zinc-400">
+                  <div>
+                    <dt className="sr-only">Started</dt>
+                    <dd>{formatDate(call.start_time ?? call.created_at)}</dd>
                   </div>
-                )}
-                {call.next_retry_at && SCHEDULED.has(call.call_status) && (
-                  <div className="col-span-2">
-                    <dt className="inline text-zinc-500">
-                      {call.call_status === "callback_requested" ? "Callback at: " : "Due: "}
-                    </dt>
-                    <dd className="inline">{formatDate(call.next_retry_at)}</dd>
+                  <div>
+                    <dt className="inline text-zinc-500">Length </dt>
+                    <dd className="inline tabular-nums">{duration(call.duration_seconds)}</dd>
                   </div>
+                  {call.end_reason && (
+                    <div className="col-span-2">
+                      <dt className="inline text-zinc-500">Ended: </dt>
+                      <dd className="inline">
+                        {END_REASON_LABELS[call.end_reason] ?? call.end_reason}
+                      </dd>
+                    </div>
+                  )}
+                  {call.next_retry_at && SCHEDULED.has(call.call_status) && (
+                    <div className="col-span-2">
+                      <dt className="inline text-zinc-500">
+                        {call.call_status === "callback_requested" ? "Callback at: " : "Due: "}
+                      </dt>
+                      <dd className="inline">{formatDate(call.next_retry_at)}</dd>
+                    </div>
+                  )}
+                </dl>
+                {retryDecisionLabel(call.retry_decision) && (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {retryDecisionLabel(call.retry_decision)}
+                  </p>
                 )}
-              </dl>
-              {retryDecisionLabel(call.retry_decision) && (
-                <p className="mt-1 text-xs text-zinc-500">
-                  {retryDecisionLabel(call.retry_decision)}
-                </p>
-              )}
-              {call.retry_note && (
-                <p className="mt-0.5 text-xs text-amber-300">{call.retry_note}</p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => onShowTranscript(call.id)}
-                  className="text-xs text-[#93b4ff] hover:underline"
-                >
-                  Transcript
-                </button>
-                {CANCELLABLE.has(call.call_status) && (
+                {call.retry_note && (
+                  <p className="mt-0.5 text-xs text-amber-300">{call.retry_note}</p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setPending({ kind: "cancel", call })}
-                    className="text-xs text-red-300 hover:underline"
+                    onClick={() => onShowTranscript(call.id)}
+                    className="text-xs text-[#93b4ff] hover:underline"
                   >
-                    Cancel
+                    Transcript
                   </button>
-                )}
-                {call.call_status === "in_progress" && (
-                  <button
-                    type="button"
-                    onClick={() => setPending({ kind: "hangup", call })}
-                    className="text-xs text-red-300 hover:underline"
-                  >
-                    End call
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
+                  {CANCELLABLE.has(call.call_status) && (
+                    <button
+                      type="button"
+                      onClick={() => setPending({ kind: "cancel", call })}
+                      className="text-xs text-red-300 hover:underline"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  {call.call_status === "in_progress" && (
+                    <button
+                      type="button"
+                      onClick={() => setPending({ kind: "hangup", call })}
+                      className="text-xs text-red-300 hover:underline"
+                    >
+                      End call
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
 
       <ConfirmDialog
         open={pending !== null}
