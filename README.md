@@ -123,7 +123,7 @@ We gave the AI recruiter a natural speaking voice that sounds clear on a phone l
 ### What was done
 
 - The voice was chosen in a listening test: 18 voices compared at real phone quality; the chosen voice scored 4 out of 5 for clarity on all 15 test lines.
-- The main voice runs on our own server, so there is no per-minute voice cost. A second, cloud voice takes over automatically if the main one ever fails, in the middle of a call if needed.
+- If the main voice ever fails, a backup voice takes over automatically, even in the middle of a call.
 - Numbers, salaries, dates, times and phone numbers are spoken the Indian way ("twelve lakhs", "C T C").
 - Common lines (greetings, "Okay", "Got it", closings) are prepared in advance and play instantly.
 
