@@ -1,10 +1,15 @@
 import { apiFetch, send } from "@/lib/api";
 import type { ImportPreview } from "@/types";
 
-export async function uploadImport(file: File, jobId: string | null) {
+/** For a requirement (`target.requirementId`) or a job (`target.jobId`, else the active job). */
+export async function uploadImport(
+  file: File,
+  target: { jobId?: string | null; requirementId?: string | null },
+) {
   const form = new FormData();
   form.append("file", file);
-  if (jobId) form.append("job_id", jobId);
+  if (target.requirementId) form.append("requirement_id", target.requirementId);
+  else if (target.jobId) form.append("job_id", target.jobId);
   return (
     await apiFetch<ImportPreview>("/api/v1/candidates/import", { method: "POST", body: form })
   ).data;

@@ -361,13 +361,14 @@ function JobForm({
         title="What the agent knows"
         description="The agent answers candidates' questions only from this."
       >
-        <div className="space-y-4">
+        {/* Side by side on wide screens (JD left, instructions right); stacked on small ones */}
+        <div className="grid gap-4 lg:grid-cols-2">
           <Field
             label="Job description"
             hint={`${draft.job_description.length}/${MAX_LONG_TEXT}. The agent only answers questions from what's written here.`}
           >
             <textarea
-              rows={6}
+              rows={12}
               maxLength={MAX_LONG_TEXT}
               value={draft.job_description}
               onChange={(e) => set("job_description", e.target.value)}
@@ -379,7 +380,7 @@ function JobForm({
             hint={`${draft.agent_instructions.length}/${MAX_LONG_TEXT}. Extra guidance for the calling agent.`}
           >
             <textarea
-              rows={4}
+              rows={12}
               maxLength={MAX_LONG_TEXT}
               value={draft.agent_instructions}
               onChange={(e) => set("agent_instructions", e.target.value)}

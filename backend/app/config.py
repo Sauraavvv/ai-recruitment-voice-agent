@@ -30,11 +30,22 @@ class ConfigError(RuntimeError):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
+    @property
+    def signup_allowed(self) -> bool:
+        if self.signup_enabled is not None:
+            return self.signup_enabled
+        return self.app_env is not AppEnv.PRODUCTION
+
     # Core (required)
     app_env: AppEnv
     app_secret_key: SecretStr
     database_url: SecretStr
     redis_url: SecretStr
+
+    # Sign-up (POST /auth/signup) creates an organization and its super admin. Candidates, jobs,
+    # calls and settings aren't separated per organization yet, so a new organization would see
+    # the existing data: unset = allowed outside production only.
+    signup_enabled: bool | None = None
 
     # Core (optional)
     app_version: str = "0.0.0"

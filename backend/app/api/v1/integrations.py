@@ -148,7 +148,7 @@ async def sheets_status(
             settings,
             env=env,
             refresh=refresh,
-            can_edit=user.role == UserRole.ADMIN,
+            can_edit=user.role == UserRole.SUPER_ADMIN,
         )
     )
 

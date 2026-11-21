@@ -94,6 +94,6 @@ async def provider_status(
         effective,
         env=env,
         refresh=refresh,
-        can_edit=user.role == UserRole.ADMIN,
+        can_edit=user.role == UserRole.SUPER_ADMIN,
     )
     return ok({"providers": providers, "google_sheets": sheets})

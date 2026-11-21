@@ -42,7 +42,7 @@ from app.database.models import (
     ScreeningStatus,
 )
 from app.providers.llm.base import LLMProvider
-from app.services import call_service, retry_service, sync_service
+from app.services import call_service, retry_service, screening_job, sync_service
 from app.services.summary_service import generate_summary
 
 __all__ = ["finalize_attempt", "generate_summary", "merge_candidate", "save_final"]
@@ -250,7 +250,7 @@ async def finalize_attempt(
         assert attempt is not None
         candidate = await session.get(Candidate, attempt.candidate_id)
         assert candidate is not None
-        job = await session.get(Job, candidate.job_id)
+        job = await screening_job.for_candidate(session, candidate)
         result = ScreeningResult.from_dict(conv.extracted_data["result"])
         result.transcript = list(conv.transcript or [])
         final = (conv.extracted_data or {}).get("final")

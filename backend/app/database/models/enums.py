@@ -85,12 +85,36 @@ class ImportBatchStatus(StrEnum):
 
 
 class UserRole(StrEnum):
-    """Admins may also change integration settings (the Google Sheet), phase-08."""
+    """Super admins own the organization and may also change integration settings (the Google
+    Sheet). Recruiters use the app day to day."""
 
-    ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"
     RECRUITER = "recruiter"
 
 
 class ConsentSource(StrEnum):
     RECRUITER_ATTESTED_IMPORT = "recruiter_attested_import"
     MANUAL = "manual"
+
+
+class ClientStatus(StrEnum):
+    """A client company the recruiters hire for."""
+
+    ACTIVE = "active"
+    ON_HOLD = "on_hold"
+    CLOSED = "closed"
+
+
+class RequirementStatus(StrEnum):
+    """An opening at a client."""
+
+    OPEN = "open"
+    ON_HOLD = "on_hold"
+    FILLED = "filled"
+    CLOSED = "closed"
+
+
+class WorkMode(StrEnum):
+    ONSITE = "onsite"
+    HYBRID = "hybrid"
+    REMOTE = "remote"

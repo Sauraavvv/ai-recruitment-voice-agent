@@ -154,17 +154,18 @@ async def api(client: AsyncClient, db_session: AsyncSession) -> AsyncIterator[As
     app: Any = client.app  # type: ignore[attr-defined]
     app.dependency_overrides[get_session] = _session
     redis = get_redis()
-    async for key in redis.scan_iter("rcai:ratelimit:login:*"):
+    async for key in redis.scan_iter("rcai:ratelimit:*"):
         await redis.delete(key)
     yield client
 
 
 @pytest.fixture
 async def user(db_session: AsyncSession) -> Any:
-    from app.database.models import User
+    from app.database.models import Organization, User
     from app.services.auth_service import hash_password
 
     account = User(
+        organization=Organization(name="Test Org"),
         email=f"recruiter-{uuid.uuid4().hex[:8]}@example.com",
         name="Test Recruiter",
         password_hash=hash_password(TEST_PASSWORD),
@@ -172,6 +173,31 @@ async def user(db_session: AsyncSession) -> Any:
     db_session.add(account)
     await db_session.flush()
     return account
+
+
+def client_body(name: str = "Easy Recruitz 365", **fields: Any) -> dict[str, Any]:
+    """A client with every required field filled in."""
+    return {
+        "name": name,
+        "industry": "BPO / KPO",
+        "email": "hr@client.example",
+        "city": "Pune",
+        "state": "Maharashtra",
+        "contact_name": "Neha Joshi",
+        "contact_phone": "98765 43210",
+    } | fields
+
+
+@pytest.fixture
+async def admin(api: AsyncClient, user: Any, db_session: AsyncSession) -> AsyncClient:
+    """API client logged in as a super admin (clients and requirements need one)."""
+    user.role = "super_admin"
+    await db_session.flush()
+    response = await api.post(
+        "/api/v1/auth/login", json={"email": user.email, "password": TEST_PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    return api
 
 
 @pytest.fixture

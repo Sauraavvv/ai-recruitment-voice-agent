@@ -45,38 +45,33 @@ const GROUPS: Metric[][] = [
     { key: "scheduled_retries", label: "Retries" },
   ],
 ];
-// Call outcome metrics follow the range; the others are "now"
-const RANGED = new Set(["calls_completed", "unanswered_calls", "failed_calls"]);
 
-export function StatTiles({
-  stats,
-  range,
-  onRange,
-}: {
-  stats: DashboardStats | undefined;
-  range: Range;
-  onRange: (range: Range) => void;
-}) {
-  const rangeLabel = RANGES.find((r) => r[0] === range)?.[1];
+/** Today / 7 days / All time, shown beside the dashboard's title. */
+export function RangeToggle({ range, onRange }: { range: Range; onRange: (range: Range) => void }) {
+  return (
+    <div className="flex gap-1 rounded-xl bg-[#18191c] p-1" role="group" aria-label="Range">
+      {RANGES.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onRange(value)}
+          aria-pressed={range === value}
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            range === value ? "bg-[#2a2c31] text-white" : "text-zinc-400 hover:text-white"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The statistics bar. The range switch (beside the title) already says which period the
+ * call outcome numbers cover, so the tiles don't repeat it. */
+export function StatTiles({ stats }: { stats: DashboardStats | undefined }) {
   return (
     <section aria-label="Statistics">
-      <div className="mb-3 flex justify-end">
-        <div className="flex gap-1 rounded-xl bg-[#18191c] p-1" role="group" aria-label="Range">
-          {RANGES.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => onRange(value)}
-              aria-pressed={range === value}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                range === value ? "bg-[#2a2c31] text-white" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
       {!stats ? (
         <Skeleton className="h-[104px] rounded-3xl" />
       ) : (
@@ -108,9 +103,6 @@ export function StatTiles({
                   >
                     {String(stats[m.key])}
                   </div>
-                  {RANGED.has(m.key) && range !== "all" && (
-                    <div className="mt-1 text-[11px] text-zinc-500">{rangeLabel}</div>
-                  )}
                   <span className="sr-only">{stats.definitions[m.key]}</span>
                 </div>
               ))}

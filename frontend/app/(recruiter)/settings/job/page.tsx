@@ -1,7 +1,7 @@
-import { JobSettings } from "./job-settings";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Job settings · HireCall" };
-
-export default function JobSettingsPage() {
-  return <JobSettings />;
+// The jobs list moved to /jobs. The older single-job editor (job-settings.tsx) belongs to the
+// original job flow, which is switched off for now.
+export default function OldJobSettingsPage() {
+  redirect("/jobs");
 }

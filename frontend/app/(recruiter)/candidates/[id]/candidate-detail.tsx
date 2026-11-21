@@ -116,8 +116,8 @@ export function CandidateDetail() {
     const expRaw = String(form.get("total_experience") ?? "").trim();
     const exp = expRaw === "" ? null : Number(expRaw);
     if (exp !== current.total_experience) changes.total_experience = exp;
-    const jobId = String(form.get("job_id"));
-    if (jobId && jobId !== current.job_id) changes.job_id = jobId;
+    const jobId = form.get("job_id"); // absent for a requirement's candidate
+    if (jobId && jobId !== current.job_id) changes.job_id = String(jobId);
 
     if (Object.keys(changes).length === 0) {
       setEditing(false);
@@ -257,15 +257,17 @@ export function CandidateDetail() {
                     className={inputClass}
                   />
                 </Field>
-                <Field label="Job">
-                  <select name="job_id" defaultValue={c.job_id} className={inputClass}>
-                    {jobs.data?.map((j) => (
-                      <option key={j.id} value={j.id}>
-                        {j.job_title} — {j.company_name}
-                      </option>
-                    )) ?? <option value={c.job_id}>Loading…</option>}
-                  </select>
-                </Field>
+                {c.job_id && (
+                  <Field label="Job">
+                    <select name="job_id" defaultValue={c.job_id} className={inputClass}>
+                      {jobs.data?.map((j) => (
+                        <option key={j.id} value={j.id}>
+                          {j.job_title} — {j.company_name}
+                        </option>
+                      )) ?? <option value={c.job_id}>Loading…</option>}
+                    </select>
+                  </Field>
+                )}
                 <Field label="Recruiter notes">
                   <textarea
                     name="recruiter_notes"

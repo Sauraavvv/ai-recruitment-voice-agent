@@ -62,7 +62,7 @@ export function CallsList() {
 
   return (
     <>
-      <PageHeader title="Calls" subtitle="Every call attempt, newest first." />
+      <PageHeader title="Screening calls" subtitle="Every call attempt, newest first." />
       <Card>
         <div className="mb-5 flex flex-wrap items-end gap-3">
           <input

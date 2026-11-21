@@ -54,8 +54,8 @@ CurrentUser = Annotated[User, Depends(require_user)]
 
 
 async def require_admin(user: CurrentUser) -> User:
-    if user.role != UserRole.ADMIN:
-        raise AppError(403, "admin_required", "Only an admin can change this")
+    if user.role != UserRole.SUPER_ADMIN:
+        raise AppError(403, "admin_required", "Only a super admin can change this")
     return user
 
 

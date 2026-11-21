@@ -14,6 +14,7 @@ export type CandidateQuery = {
   call_status?: string;
   interested?: string;
   job_id?: string;
+  requirement_id?: string;
   sort?: string;
   page?: number;
   page_size?: number;

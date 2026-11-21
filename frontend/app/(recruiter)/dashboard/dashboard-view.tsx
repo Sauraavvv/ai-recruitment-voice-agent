@@ -22,8 +22,10 @@ import {
   AttentionList,
   CallingProgress,
   type Range,
+  RangeToggle,
   StatTiles,
 } from "./overview-sections";
+import { DashboardHeading } from "./dashboard-title";
 
 function duration(seconds: number | null | undefined) {
   if (seconds === null || seconds === undefined) return "—";
@@ -207,8 +209,12 @@ export function DashboardView() {
   const data = summary.data;
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <DashboardHeading />
+        <RangeToggle range={range} onRange={setRange} />
+      </div>
       {stats.error && !stats.data && <ErrorState error={stats.error} onRetry={stats.reload} />}
-      <StatTiles stats={stats.data} range={range} onRange={setRange} />
+      <StatTiles stats={stats.data} />
 
       <div className="grid gap-4 xl:grid-cols-3">
         <CallingProgress stats={stats.data} quick={quick.data} onStarted={refreshAll} />

@@ -40,6 +40,7 @@ from app.providers.tts.base import TTSProvider
 from app.services import (
     call_service,
     retry_service,
+    screening_job,
     screening_store,
     settings_service,
     transcript_service,
@@ -190,7 +191,7 @@ async def load_context(
         assert attempt is not None
         candidate = await db.get(Candidate, attempt.candidate_id)
         assert candidate is not None
-        job = await db.get(Job, candidate.job_id)
+        job = await screening_job.for_candidate(db, candidate)
         assert job is not None
         effective = await settings_service.effective(db, settings)
     prior = retry_service.known_answers(candidate)

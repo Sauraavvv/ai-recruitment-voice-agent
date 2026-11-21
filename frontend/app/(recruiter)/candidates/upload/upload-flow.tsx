@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 import {
@@ -15,8 +16,10 @@ import {
 } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { useLoad } from "@/lib/use-load";
+import { getClient } from "@/services/clients";
 import { confirmImport, remapImport, uploadImport } from "@/services/imports";
 import { listJobs } from "@/services/jobs";
+import { getRequirement } from "@/services/requirements";
 import type { ImportPreview, ImportRow } from "@/types";
 
 const STATUS_LABELS: Record<ImportRow["status"], string> = {
@@ -33,8 +36,27 @@ const STATUS_STYLES: Record<ImportRow["status"], string> = {
   duplicate_existing: "text-amber-700 dark:text-amber-400",
 };
 
+/** ?requirement=<id>: the list is for that requirement (its screening calls), not for a job. */
+function useRequirementTarget() {
+  const requirementId = useSearchParams().get("requirement");
+  const { data, error } = useLoad(
+    requirementId ? `upload-target:${requirementId}` : null,
+    async () => {
+      const requirement = await getRequirement(requirementId as string);
+      const client = await getClient(requirement.client_id);
+      return { requirement, client };
+    },
+  );
+  return { requirementId, target: data, error };
+}
+
 export function UploadFlow() {
-  const jobs = useLoad("jobs", listJobs);
+  const forRequirement = useRequirementTarget();
+  const requirementId = forRequirement.requirementId;
+  const back = forRequirement.target
+    ? `/clients/${forRequirement.target.client.id}/requirements/${forRequirement.target.requirement.id}`
+    : "/candidates";
+  const jobs = useLoad(requirementId ? null : "jobs", listJobs);
   const activeJob = jobs.data?.find((j) => j.is_active);
   const [jobId, setJobId] = useState<string>("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -62,7 +84,12 @@ export function UploadFlow() {
       return;
     }
     setConsent(false);
-    void run(() => uploadImport(file, jobId || activeJob?.id || null));
+    void run(() =>
+      uploadImport(
+        file,
+        requirementId ? { requirementId } : { jobId: jobId || activeJob?.id || null },
+      ),
+    );
   }
 
   function onMappingChange(field: string, value: string) {
@@ -78,8 +105,23 @@ export function UploadFlow() {
     <>
       <PageHeader
         title="Upload candidates"
-        subtitle="Import a .csv or .xlsx file, check the preview, then confirm."
-      />
+        subtitle={
+          forRequirement.target
+            ? `For ${forRequirement.target.requirement.title} at ${forRequirement.target.client.name}. Check the preview, then confirm.`
+            : "Import a .csv or .xlsx file, check the preview, then confirm."
+        }
+      >
+        {forRequirement.target && (
+          <Link href={back} className={buttonClass("secondary")}>
+            Back to requirement
+          </Link>
+        )}
+      </PageHeader>
+      {forRequirement.error && (
+        <div className="mb-4">
+          <Alert>This requirement can&apos;t be opened. {errorMessage(forRequirement.error)}</Alert>
+        </div>
+      )}
       {error && (
         <div className="mb-4">
           <Alert>{error}</Alert>
@@ -90,11 +132,15 @@ export function UploadFlow() {
         <div className="grid gap-4 lg:grid-cols-5">
           <Card
             title="Upload a file"
-            description="Candidates are added to the selected job."
+            description={
+              requirementId
+                ? "Candidates are added to this requirement for screening calls."
+                : "Candidates are added to the selected job."
+            }
             className="lg:col-span-3"
           >
             <div className="space-y-4">
-              {jobs.data?.length === 0 && (
+              {!requirementId && jobs.data?.length === 0 && (
                 <Alert>
                   No job is configured yet.{" "}
                   <Link href="/settings/job" className="underline">
@@ -105,20 +151,29 @@ export function UploadFlow() {
               )}
 
               <form onSubmit={onUpload} className="space-y-4">
-                <Field label="Job">
-                  <select
-                    value={jobId || activeJob?.id || ""}
-                    onChange={(e) => setJobId(e.target.value)}
-                    className={inputClass}
-                  >
-                    {jobs.data?.map((job) => (
-                      <option key={job.id} value={job.id}>
-                        {job.job_title} — {job.company_name}
-                        {job.is_active ? " (active)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {forRequirement.target ? (
+                  <Field label="Requirement">
+                    <div className="rounded-lg border border-[#34363d] bg-[#202226] px-3 py-2 text-sm text-zinc-200">
+                      {forRequirement.target.requirement.title} ·{" "}
+                      {forRequirement.target.client.name}
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label="Job">
+                    <select
+                      value={jobId || activeJob?.id || ""}
+                      onChange={(e) => setJobId(e.target.value)}
+                      className={inputClass}
+                    >
+                      {jobs.data?.map((job) => (
+                        <option key={job.id} value={job.id}>
+                          {job.job_title} — {job.company_name}
+                          {job.is_active ? " (active)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 <Field label="File">
                   <input
                     name="file"
@@ -128,7 +183,10 @@ export function UploadFlow() {
                     className="block w-full cursor-pointer rounded-xl border border-dashed border-[#34363d] bg-[#202226] p-5 text-sm text-zinc-400 file:mr-4 file:rounded-lg file:border-0 file:bg-[#2c2f35] file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-zinc-100 hover:border-zinc-500"
                   />
                 </Field>
-                <Button type="submit" disabled={busy || !jobs.data?.length}>
+                <Button
+                  type="submit"
+                  disabled={busy || (requirementId ? !forRequirement.target : !jobs.data?.length)}
+                >
                   {busy ? "Reading file…" : "Upload and preview"}
                 </Button>
               </form>
@@ -139,8 +197,16 @@ export function UploadFlow() {
               <li>.csv or .xlsx (save older .xls files as .xlsx), up to 5 MB and 1,000 rows.</li>
               <li>
                 The first row holds column names. Required: <b>Candidate name</b>,{" "}
-                <b>Phone number</b>, <b>Job role</b>. Optional: email, total experience, current
-                company, current location, resume URL, source, recruiter notes.
+                <b>Phone number</b>
+                {requirementId ? (
+                  <> (the job role is the requirement&apos;s)</>
+                ) : (
+                  <>
+                    , <b>Job role</b>
+                  </>
+                )}
+                . Optional: email, total experience, current company, current location, resume URL,
+                source, recruiter notes.
               </li>
               <li>
                 Format the phone column as <b>Text</b> in Excel so long numbers aren&apos;t turned
@@ -186,8 +252,8 @@ export function UploadFlow() {
                 {report.imported_candidates === 1 ? "" : "s"}.
                 {report.imported_candidates < report.valid_candidates &&
                   " Some rows were added by someone else in the meantime and were skipped as duplicates."}{" "}
-                <Link href="/candidates" className="underline">
-                  View candidates
+                <Link href={back} className="underline">
+                  {requirementId ? "Back to the requirement" : "View candidates"}
                 </Link>
               </Alert>
             ) : (
@@ -231,8 +297,8 @@ export function UploadFlow() {
 
             {done && (
               <div className="flex gap-2">
-                <Link href="/candidates" className={buttonClass("primary")}>
-                  View candidates
+                <Link href={back} className={buttonClass("primary")}>
+                  {requirementId ? "Back to the requirement" : "View candidates"}
                 </Link>
                 <Button variant="secondary" onClick={() => setPreview(null)}>
                   Upload another file

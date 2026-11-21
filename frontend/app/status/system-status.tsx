@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Button, Card } from "@/components/ui";
 import { ApiError, apiFetch } from "@/lib/api";
 
 type Readiness = {
@@ -49,69 +50,73 @@ export function SystemStatus() {
     };
   }, [check]);
 
-  if (state.kind === "loading") {
-    return <p className="text-sm text-zinc-500">Checking services…</p>;
-  }
+  const action = (
+    <Button variant="secondary" onClick={check} disabled={state.kind === "loading"}>
+      Check now
+    </Button>
+  );
 
-  if (state.kind === "unreachable") {
-    return (
-      <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-900">
-        <p className="font-medium">Backend unreachable</p>
-        <p className="text-sm">{state.message}</p>
-        <CheckedAt date={state.checkedAt} onRetry={check} />
-      </div>
-    );
-  }
-
-  const { readiness } = state;
   return (
-    <div className="space-y-4">
-      <p className="text-lg font-medium">
-        Overall:{" "}
-        <StatusText ok={readiness.status === "ok"}>
-          {readiness.status === "ok" ? "All systems ready" : "Degraded"}
-        </StatusText>
-      </p>
-      <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-        {Object.entries(readiness.components).map(([name, status]) => (
-          <li key={name} className="flex items-center justify-between px-4 py-3">
-            <span>{LABELS[name] ?? name}</span>
-            <span className="text-right">
-              <StatusText ok={status === "ok"}>{status === "ok" ? "OK" : "Error"}</StatusText>
-              {readiness.errors?.[name] && (
-                <span className="block text-xs text-zinc-500">{readiness.errors[name]}</span>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <CheckedAt date={state.checkedAt} onRetry={check} />
-    </div>
+    <Card
+      title="Services"
+      description="Database, queue and background worker. Refreshes every 10 seconds."
+      action={action}
+    >
+      {state.kind === "loading" ? (
+        <p className="text-sm text-zinc-500">Checking services…</p>
+      ) : state.kind === "unreachable" ? (
+        <div className="space-y-3">
+          <div
+            role="alert"
+            className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+          >
+            <p className="font-medium">Backend unreachable</p>
+            <p>{state.message}</p>
+          </div>
+          <CheckedAt date={state.checkedAt} />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm">
+            Overall:{" "}
+            <StatusText ok={state.readiness.status === "ok"}>
+              {state.readiness.status === "ok" ? "All systems ready" : "Degraded"}
+            </StatusText>
+          </p>
+          <ul className="divide-y divide-white/5">
+            {Object.entries(state.readiness.components).map(([name, status]) => (
+              <li key={name} className="flex items-start gap-3 py-3 text-sm">
+                <span
+                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                    status === "ok" ? "bg-[#0ca30c]" : "bg-red-400"
+                  }`}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-white">{LABELS[name] ?? name}</div>
+                  {state.readiness.errors?.[name] && (
+                    <div className="text-xs text-zinc-400">{state.readiness.errors[name]}</div>
+                  )}
+                </div>
+                <StatusText ok={status === "ok"}>{status === "ok" ? "OK" : "Error"}</StatusText>
+              </li>
+            ))}
+          </ul>
+          <CheckedAt date={state.checkedAt} />
+        </div>
+      )}
+    </Card>
   );
 }
 
 function StatusText({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
-    <span
-      className={
-        ok
-          ? "font-medium text-green-700 dark:text-green-400"
-          : "font-medium text-red-700 dark:text-red-400"
-      }
-    >
-      {ok ? "● " : "✕ "}
+    <span className={`text-xs font-medium ${ok ? "text-[#5fd35f]" : "text-red-300"}`}>
       {children}
     </span>
   );
 }
 
-function CheckedAt({ date, onRetry }: { date: Date; onRetry: () => void }) {
-  return (
-    <p className="text-xs text-zinc-500">
-      Last checked {date.toLocaleTimeString()} ·{" "}
-      <button type="button" onClick={onRetry} className="underline">
-        Check now
-      </button>
-    </p>
-  );
+function CheckedAt({ date }: { date: Date }) {
+  return <p className="text-xs text-zinc-500">Last checked {date.toLocaleTimeString()}</p>;
 }

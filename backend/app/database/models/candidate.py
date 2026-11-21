@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,10 +19,26 @@ from app.database.models.enums import ConsentSource, ScreeningStatus
 class Candidate(Base):
     __tablename__ = "candidates"
     __table_args__ = (
-        # Phone numbers are unique across all jobs (Phase 1 decision), including soft-deleted rows,
-        # so re-importing a deleted person is reported as a duplicate rather than re-created.
-        Index("uq_candidates_phone", "phone", unique=True),
+        # Job candidates: phone numbers are unique across all jobs (Phase 1 decision), including
+        # soft-deleted rows, so re-importing a deleted person is reported as a duplicate rather
+        # than re-created. Requirement candidates: unique per requirement (migration 0011).
+        Index(
+            "uq_candidates_phone",
+            "phone",
+            unique=True,
+            postgresql_where=text("requirement_id IS NULL"),
+        ),
+        Index(
+            "uq_candidates_requirement_id_phone",
+            "requirement_id",
+            "phone",
+            unique=True,
+            postgresql_where=text("requirement_id IS NOT NULL"),
+        ),
         Index("ix_candidates_job_id", "job_id"),
+        Index("ix_candidates_requirement_id", "requirement_id"),
+        # A candidate belongs to a job (original flow) or to a requirement, never both
+        CheckConstraint("(job_id IS NULL) <> (requirement_id IS NULL)", name="one_parent"),
         Index("ix_candidates_screening_status", "screening_status"),
         enum_check("screening_status", ScreeningStatus, "screening_status"),
         enum_check("consent_source", ConsentSource, "consent_source"),
@@ -32,8 +48,11 @@ class Candidate(Base):
     name: Mapped[str] = mapped_column(String(200))
     phone: Mapped[str] = mapped_column(String(20))  # E.164
     email: Mapped[str | None] = mapped_column(String(320))
-    job_id: Mapped[uuid.UUID] = mapped_column(
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="RESTRICT")
+    )
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="RESTRICT")
     )
     applied_role: Mapped[str] = mapped_column(String(200))
     source: Mapped[str | None] = mapped_column(String(200))

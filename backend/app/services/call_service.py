@@ -31,7 +31,7 @@ from app.database.models import (
 from app.providers.telephony import exotel_models as em
 from app.providers.telephony.base import ProviderCallStatus
 from app.repositories import call_repo, candidate_repo
-from app.services import call_slots, call_state, sync_service
+from app.services import call_slots, call_state, screening_job, sync_service
 from app.services.errors import conflict, not_found
 from app.utils.calling_window import CallingWindow
 from app.utils.log import get_logger
@@ -65,7 +65,7 @@ INELIGIBLE_MESSAGES = {
     Ineligible.OPTED_OUT: "Candidate opted out of calls",
     Ineligible.NO_CONSENT: "No recorded consent to call this candidate",
     Ineligible.BAD_PHONE: "Phone number is not valid",
-    Ineligible.JOB_INACTIVE: "The candidate's job is not active",
+    Ineligible.JOB_INACTIVE: "The candidate's job or requirement is not open",
     Ineligible.LIVE_ATTEMPT: "A call for this candidate is already queued or in progress",
     Ineligible.OUTSIDE_WINDOW: "Outside calling hours",
     Ineligible.NOT_CONFIGURED: "Telephony is not configured",
@@ -99,7 +99,7 @@ async def check_eligibility(
         return Ineligible.NO_CONSENT
     if not normalize_phone(candidate.phone).ok:
         return Ineligible.BAD_PHONE
-    job = await session.get(Job, candidate.job_id)
+    job = await screening_job.for_candidate(session, candidate)
     if job is None or not job.is_active:
         return Ineligible.JOB_INACTIVE
     # A scheduled retry or callback doesn't block: a call started now replaces it
@@ -151,14 +151,16 @@ async def eligibility_for(
             )
         ).scalars()
     )
-    active_jobs = set(
+    job_ids = {c.job_id for c in candidates if c.job_id is not None}
+    active_jobs: set[uuid.UUID] = set(
         (
             await session.execute(
-                select(Job.id).where(
-                    Job.id.in_({c.job_id for c in candidates}), Job.is_active.is_(True)
-                )
+                select(Job.id).where(Job.id.in_(job_ids), Job.is_active.is_(True))
             )
         ).scalars()
+    )
+    active_jobs |= await screening_job.callable_requirements(
+        session, {c.requirement_id for c in candidates if c.requirement_id is not None}
     )
     common = global_problem(settings, now=now)
     if common is None and not voice_ready:
@@ -173,7 +175,7 @@ async def eligibility_for(
             out[c.id] = Ineligible.NO_CONSENT
         elif not normalize_phone(c.phone).ok:
             out[c.id] = Ineligible.BAD_PHONE
-        elif c.job_id not in active_jobs:
+        elif (c.requirement_id or c.job_id) not in active_jobs:
             out[c.id] = Ineligible.JOB_INACTIVE
         elif c.id in live:
             out[c.id] = Ineligible.LIVE_ATTEMPT

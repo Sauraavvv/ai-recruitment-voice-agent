@@ -35,6 +35,14 @@ const ICONS = {
       <rect x="3" y="16" width="7" height="5" rx="1.5" />
     </>,
   ),
+  clients: icon(
+    <>
+      <path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" />
+      <path d="M16 9h3a2 2 0 0 1 2 2v10" />
+      <path d="M3 21h18" />
+      <path d="M8 7h4M8 11h4M8 15h4" />
+    </>,
+  ),
   candidates: icon(
     <>
       <circle cx="9" cy="8" r="3.5" />
@@ -70,6 +78,21 @@ const ICONS = {
   calls: icon(
     <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />,
   ),
+  telephonic: icon(
+    <>
+      <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
+      <path d="M15 3a6 6 0 0 1 6 6" />
+      <path d="M15 7a2 2 0 0 1 2 2" />
+    </>,
+  ),
+  accounts: icon(
+    <>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M19 8v6" />
+      <path d="M16 11h6" />
+    </>,
+  ),
   settings: icon(
     <>
       <circle cx="12" cy="12" r="3" />
@@ -99,24 +122,54 @@ const ICONS = {
   ),
 };
 
-const LINKS = [
+// disabled: shown greyed out and not clickable. "soon" = not built yet; "off" = built but
+// switched off while the recruiter flow (Clients → Requirements) is being reworked. The pages
+// still open from inside that flow (a candidate's page, the upload for a requirement).
+type NavLink = {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  isActive?: (p: string) => boolean;
+  disabled?: "soon" | "off";
+  superAdminOnly?: boolean;
+};
+
+const LINKS: NavLink[] = [
   {
     href: "/dashboard",
     label: "Dashboard",
     icon: ICONS.dashboard,
   },
   {
-    href: "/candidates",
-    label: "Candidates",
-    icon: ICONS.candidates,
-    // The list, a candidate's page and adding one; the upload flow has its own link
-    isActive: (p: string) => p === "/candidates" || /^\/candidates\/(?!upload)/.test(p),
+    href: "/clients",
+    label: "Your clients",
+    icon: ICONS.clients,
+    isActive: (p: string) => p === "/clients" || p.startsWith("/clients/"),
   },
-  { href: "/calls", label: "Calls", icon: ICONS.calls },
-  { href: "/candidates/upload", label: "Upload", icon: ICONS.upload },
-  { href: "/settings/job", label: "Job settings", icon: ICONS.job },
-  { href: "/default-questions", label: "Default questions", icon: ICONS.questions },
-  { href: "/settings", label: "Settings", icon: ICONS.settings },
+  {
+    href: "/jobs",
+    label: "Total jobs",
+    icon: ICONS.job,
+    isActive: (p: string) => p === "/jobs" || p.startsWith("/jobs/"),
+  },
+  { href: "/candidates", label: "Candidates", icon: ICONS.candidates, disabled: "off" },
+  { href: "/calls", label: "Screening calls", icon: ICONS.calls, disabled: "off" },
+  {
+    href: "/telephonic-round",
+    label: "Telephonic round",
+    icon: ICONS.telephonic,
+    disabled: "soon",
+  },
+  { href: "/candidates/upload", label: "Upload", icon: ICONS.upload, disabled: "off" },
+  {
+    href: "/default-questions",
+    label: "Default questions",
+    icon: ICONS.questions,
+    disabled: "off",
+  },
+  // Super admins only: add and manage their company's logins
+  { href: "/accounts", label: "Accounts", icon: ICONS.accounts, superAdminOnly: true },
+  { href: "/settings", label: "Settings", icon: ICONS.settings, disabled: "off" },
 ];
 
 // The collapsed choice lives in localStorage; components re-read it when it changes.
@@ -187,6 +240,34 @@ export function Sidebar() {
 
         <ul className="space-y-1">
           {LINKS.map((link) => {
+            if (link.superAdminOnly && user?.role !== "super_admin") return null;
+            if (link.disabled) {
+              const note = link.disabled === "soon" ? "coming soon" : "not available right now";
+              return (
+                <li key={link.href}>
+                  <span
+                    aria-disabled="true"
+                    title={
+                      collapsed ? `${link.label} (${note})` : note[0].toUpperCase() + note.slice(1)
+                    }
+                    aria-label={collapsed ? `${link.label} (${note})` : undefined}
+                    className={`${row} cursor-not-allowed text-zinc-600`}
+                  >
+                    {link.icon}
+                    {!collapsed && (
+                      <>
+                        <span className="truncate">{link.label}</span>
+                        {link.disabled === "soon" && (
+                          <span className="ml-auto rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-500 uppercase">
+                            Soon
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </span>
+                </li>
+              );
+            }
             const active = link.isActive ? link.isActive(pathname) : pathname === link.href;
             return (
               <li key={link.href}>
@@ -211,9 +292,23 @@ export function Sidebar() {
 
         <div className="mt-auto space-y-1 border-t border-white/5 pt-3">
           {user && !collapsed && (
-            <div className="truncate px-3 pb-2 text-sm">
-              <div className="truncate font-medium">{user.name}</div>
-              <div className="truncate text-xs text-zinc-500">{user.email}</div>
+            <div className="mb-2 rounded-2xl bg-white/[0.03] p-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-white">{user.name}</div>
+                <div className="truncate text-xs text-zinc-500">{user.email}</div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+                <span className="truncate text-xs text-zinc-400">{user.organization.name}</span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
+                    user.role === "super_admin"
+                      ? "bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/20"
+                      : "bg-white/5 text-zinc-400 ring-1 ring-white/10"
+                  }`}
+                >
+                  {user.role === "super_admin" ? "Super admin" : "Recruiter"}
+                </span>
+              </div>
             </div>
           )}
           <button

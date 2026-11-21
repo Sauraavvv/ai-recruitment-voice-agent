@@ -1,5 +1,6 @@
 // Shared building blocks in HireCall's look: black page, dark-grey cards, blue primary action.
 import type { ComponentProps, ReactNode } from "react";
+import Link from "next/link";
 
 export function PageHeader({
   title,
@@ -120,4 +121,29 @@ export function Alert({
 
 export function Muted({ children }: { children: ReactNode }) {
   return <p className="text-sm text-zinc-500">{children}</p>;
+}
+
+/** "← Back to …" above a page's title. */
+export function BackLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="group mb-3 inline-flex items-center gap-1.5 rounded-lg text-sm text-zinc-500 transition hover:text-white focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:outline-none"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4 transition group-hover:-translate-x-0.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5" />
+        <path d="m11 6-6 6 6 6" />
+      </svg>
+      {children}
+    </Link>
+  );
 }

@@ -17,7 +17,13 @@ from app.schemas.candidate import (
     ConflictResolution,
 )
 from app.schemas.common import DataResponse, PageResponse
-from app.services import call_service, candidate_service, candidate_view_service, sync_service
+from app.services import (
+    call_service,
+    candidate_service,
+    candidate_view_service,
+    requirement_service,
+    sync_service,
+)
 
 # The latest call's status, or not_called (never called)
 CALL_STATUS_PATTERN = "^(" + "|".join([*(s.value for s in CallStatus), "not_called"]) + ")$"
@@ -36,6 +42,7 @@ async def create_candidate(
 
 @router.get("", response_model=PageResponse[CandidateListItem])
 async def list_candidates(
+    user: CurrentUser,
     session: SessionDep,
     settings: EffectiveSettingsDep,
     request: Request,
@@ -49,18 +56,26 @@ async def list_candidates(
         ),
     ] = None,
     job_id: uuid.UUID | None = None,
+    requirement_id: Annotated[
+        uuid.UUID | None, Query(description="Only this requirement's candidates")
+    ] = None,
     interested: bool | None = None,
     sort: CandidateSort = "-created_at",
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
-    """Rows include `eligibility` (can_call + why not) and the latest call."""
+    """Rows include `eligibility` (can_call + why not) and the latest call. A requirement's
+    candidates are listed only for whoever can see the requirement's client."""
+    if requirement_id is not None:
+        await requirement_service.get_requirement(session, user, requirement_id)  # else 404
     items, total = await candidate_service.search(
         session,
         q=q,
         screening_status=screening_status,
         call_status=call_status,
         job_id=job_id,
+        requirement_id=requirement_id,
+        viewer=user,
         interested=interested,
         sort=sort,
         page=page,

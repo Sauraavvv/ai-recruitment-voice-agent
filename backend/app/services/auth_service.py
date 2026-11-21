@@ -12,10 +12,11 @@ from datetime import UTC, datetime
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from redis.asyncio import Redis
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import AppError
-from app.database.models import User
+from app.database.models import Organization, User, UserRole
 from app.repositories import user_repo
 from app.utils.redis import KEY_PREFIX
 
@@ -51,6 +52,44 @@ async def check_login_rate(redis: Redis, client_ip: str, email: str) -> None:
         await redis.expire(key, 60)
     if attempts > LOGIN_ATTEMPTS_PER_MINUTE:
         raise AppError(429, "too_many_attempts", "Too many login attempts; wait a minute")
+
+
+SIGNUPS_PER_HOUR = 5
+
+
+async def check_signup_rate(redis: Redis, client_ip: str) -> None:
+    digest = hashlib.sha256(client_ip.encode()).hexdigest()[:32]
+    key = f"{KEY_PREFIX}ratelimit:signup:{digest}"
+    attempts = await redis.incr(key)
+    if attempts == 1:
+        await redis.expire(key, 60 * 60)
+    if attempts > SIGNUPS_PER_HOUR:
+        raise AppError(429, "too_many_attempts", "Too many sign-ups from here; try again later")
+
+
+async def signup(
+    session: AsyncSession, *, organization_name: str, name: str, email: str, password: str
+) -> User:
+    """Create an organization and its super admin. The email must not be in use."""
+    if await user_repo.get_by_email(session, email) is not None:
+        raise AppError(409, "email_taken", "An account with this email already exists")
+    organization = Organization(name=organization_name)
+    user = User(
+        organization=organization,
+        email=email,
+        name=name,
+        password_hash=hash_password(password),
+        role=UserRole.SUPER_ADMIN.value,
+        last_login_at=datetime.now(UTC),
+    )
+    session.add_all([organization, user])
+    try:
+        await session.commit()
+    except IntegrityError:  # the same email signed up at the same moment
+        await session.rollback()
+        raise AppError(409, "email_taken", "An account with this email already exists") from None
+    await session.refresh(user)
+    return user
 
 
 async def authenticate(session: AsyncSession, email: str, password: str) -> User:

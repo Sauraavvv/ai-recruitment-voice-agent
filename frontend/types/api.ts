@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Connections
+         * @description Each connection's state (ok | problem | not_set_up) and when it was checked. Public.
+         */
+        get: operations["connections_health_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -49,6 +69,26 @@ export interface paths {
         put?: never;
         /** Login */
         post: operations["login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup
+         * @description Create an organization and its super admin, and log them in.
+         */
+        post: operations["signup_api_v1_auth_signup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -166,7 +206,8 @@ export interface paths {
         };
         /**
          * List Candidates
-         * @description Rows include `eligibility` (can_call + why not) and the latest call.
+         * @description Rows include `eligibility` (can_call + why not) and the latest call. A requirement's
+         *     candidates are listed only for whoever can see the requirement's client.
          */
         get: operations["list_candidates_api_v1_candidates_get"];
         put?: never;
@@ -235,6 +276,106 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Clients
+         * @description Search matches the name, city or contact person. Closed clients come last.
+         */
+        get: operations["list_clients_api_v1_clients_get"];
+        put?: never;
+        /** Create Client */
+        post: operations["create_client_api_v1_clients_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clients/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Client */
+        get: operations["get_client_api_v1_clients__client_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Client */
+        patch: operations["update_client_api_v1_clients__client_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/clients/{client_id}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Requirements
+         * @description Open first, then on hold, filled and closed; newest first within each. Each row carries
+         *     its candidates, how many were called and how many are interested.
+         */
+        get: operations["list_requirements_api_v1_clients__client_id__requirements_get"];
+        put?: never;
+        /** Create Requirement */
+        post: operations["create_requirement_api_v1_clients__client_id__requirements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description Every requirement (job) across the clients this account sees, with its client and its
+         *     screening numbers. Open first, then on hold, filled and closed; newest first.
+         */
+        get: operations["list_jobs_api_v1_requirements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/requirements/{requirement_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Requirement */
+        get: operations["get_requirement_api_v1_requirements__requirement_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Requirement */
+        patch: operations["update_requirement_api_v1_requirements__requirement_id__patch"];
         trace?: never;
     };
     "/api/v1/jobs": {
@@ -704,6 +845,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Members */
+        get: operations["list_members_api_v1_team_get"];
+        put?: never;
+        /**
+         * Add Member
+         * @description Create a login in the super admin's organization (recruiter by default).
+         */
+        post: operations["add_member_api_v1_team_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/team/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Member */
+        patch: operations["update_member_api_v1_team__member_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -770,6 +949,8 @@ export interface components {
             file: string;
             /** Job Id */
             job_id?: string | null;
+            /** Requirement Id */
+            requirement_id?: string | null;
         };
         /** CallAttemptOut */
         CallAttemptOut: {
@@ -1005,11 +1186,10 @@ export interface components {
             phone: string;
             /** Email */
             email: string | null;
-            /**
-             * Job Id
-             * Format: uuid
-             */
-            job_id: string;
+            /** Job Id */
+            job_id: string | null;
+            /** Requirement Id */
+            requirement_id: string | null;
             /** Applied Role */
             applied_role: string;
             /** Source */
@@ -1080,11 +1260,10 @@ export interface components {
             phone: string;
             /** Email */
             email: string | null;
-            /**
-             * Job Id
-             * Format: uuid
-             */
-            job_id: string;
+            /** Job Id */
+            job_id: string | null;
+            /** Requirement Id */
+            requirement_id: string | null;
             /** Applied Role */
             applied_role: string;
             /** Source */
@@ -1220,6 +1399,184 @@ export interface components {
             interview_availability?: string | null;
             /** Opted Out */
             opted_out?: boolean | null;
+        };
+        /** ClientCreate */
+        ClientCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Industry
+             * @enum {string}
+             */
+            industry: "IT & Software" | "BPO / KPO" | "Banking & Finance" | "Healthcare" | "Education" | "Manufacturing" | "Retail & E-commerce" | "Hospitality" | "Other";
+            /**
+             * Website
+             * @default
+             */
+            website: string;
+            /** Email */
+            email: string;
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /** City */
+            city: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "Andhra Pradesh" | "Arunachal Pradesh" | "Assam" | "Bihar" | "Chhattisgarh" | "Goa" | "Gujarat" | "Haryana" | "Himachal Pradesh" | "Jharkhand" | "Karnataka" | "Kerala" | "Madhya Pradesh" | "Maharashtra" | "Manipur" | "Meghalaya" | "Mizoram" | "Nagaland" | "Odisha" | "Punjab" | "Rajasthan" | "Sikkim" | "Tamil Nadu" | "Telangana" | "Tripura" | "Uttar Pradesh" | "Uttarakhand" | "West Bengal" | "Andaman and Nicobar Islands" | "Chandigarh" | "Dadra and Nagar Haveli and Daman and Diu" | "Delhi" | "Jammu and Kashmir" | "Ladakh" | "Lakshadweep" | "Puducherry";
+            /** Contact Name */
+            contact_name: string;
+            /**
+             * Contact Designation
+             * @default
+             */
+            contact_designation: string;
+            /** Contact Phone */
+            contact_phone: string;
+            /**
+             * Is Confidential
+             * @default false
+             */
+            is_confidential: boolean;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** @default active */
+            status: components["schemas"]["ClientStatus"];
+        };
+        /** ClientListItem */
+        ClientListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Industry */
+            industry: string;
+            /** Website */
+            website: string;
+            /** Email */
+            email: string;
+            /** Address */
+            address: string;
+            /** City */
+            city: string;
+            /** State */
+            state: string;
+            /** Contact Name */
+            contact_name: string;
+            /** Contact Designation */
+            contact_designation: string;
+            /** Contact Phone */
+            contact_phone: string;
+            /** Is Confidential */
+            is_confidential: boolean;
+            /** Notes */
+            notes: string;
+            status: components["schemas"]["ClientStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Open Requirements
+             * @default 0
+             */
+            open_requirements: number;
+        };
+        /** ClientOut */
+        ClientOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Industry */
+            industry: string;
+            /** Website */
+            website: string;
+            /** Email */
+            email: string;
+            /** Address */
+            address: string;
+            /** City */
+            city: string;
+            /** State */
+            state: string;
+            /** Contact Name */
+            contact_name: string;
+            /** Contact Designation */
+            contact_designation: string;
+            /** Contact Phone */
+            contact_phone: string;
+            /** Is Confidential */
+            is_confidential: boolean;
+            /** Notes */
+            notes: string;
+            status: components["schemas"]["ClientStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ClientStatus
+         * @description A client company the recruiters hire for.
+         * @enum {string}
+         */
+        ClientStatus: "active" | "on_hold" | "closed";
+        /**
+         * ClientUpdate
+         * @description Only the fields that are sent change; required fields can't be emptied.
+         */
+        ClientUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Industry */
+            industry?: ("IT & Software" | "BPO / KPO" | "Banking & Finance" | "Healthcare" | "Education" | "Manufacturing" | "Retail & E-commerce" | "Hospitality" | "Other") | null;
+            /** Website */
+            website?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: ("Andhra Pradesh" | "Arunachal Pradesh" | "Assam" | "Bihar" | "Chhattisgarh" | "Goa" | "Gujarat" | "Haryana" | "Himachal Pradesh" | "Jharkhand" | "Karnataka" | "Kerala" | "Madhya Pradesh" | "Maharashtra" | "Manipur" | "Meghalaya" | "Mizoram" | "Nagaland" | "Odisha" | "Punjab" | "Rajasthan" | "Sikkim" | "Tamil Nadu" | "Telangana" | "Tripura" | "Uttar Pradesh" | "Uttarakhand" | "West Bengal" | "Andaman and Nicobar Islands" | "Chandigarh" | "Dadra and Nagar Haveli and Daman and Diu" | "Delhi" | "Jammu and Kashmir" | "Ladakh" | "Lakshadweep" | "Puducherry") | null;
+            /** Contact Name */
+            contact_name?: string | null;
+            /** Contact Designation */
+            contact_designation?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
+            /** Is Confidential */
+            is_confidential?: boolean | null;
+            /** Notes */
+            notes?: string | null;
+            status?: components["schemas"]["ClientStatus"] | null;
         };
         /** Conflict */
         Conflict: {
@@ -1359,6 +1716,10 @@ export interface components {
         DataResponse_CandidateOverview_: {
             data: components["schemas"]["CandidateOverview"];
         };
+        /** DataResponse[ClientOut] */
+        DataResponse_ClientOut_: {
+            data: components["schemas"]["ClientOut"];
+        };
         /** DataResponse[DashboardStats] */
         DataResponse_DashboardStats_: {
             data: components["schemas"]["DashboardStats"];
@@ -1396,6 +1757,10 @@ export interface components {
         DataResponse_QuickStart_: {
             data: components["schemas"]["QuickStart"];
         };
+        /** DataResponse[RequirementOut] */
+        DataResponse_RequirementOut_: {
+            data: components["schemas"]["RequirementOut"];
+        };
         /** DataResponse[SettingsOut] */
         DataResponse_SettingsOut_: {
             data: components["schemas"]["SettingsOut"];
@@ -1416,6 +1781,10 @@ export interface components {
         DataResponse_StatusOut_: {
             data: components["schemas"]["StatusOut"];
         };
+        /** DataResponse[TeamMemberOut] */
+        DataResponse_TeamMemberOut_: {
+            data: components["schemas"]["TeamMemberOut"];
+        };
         /** DataResponse[Union[JobOut, NoneType]] */
         DataResponse_Union_JobOut__NoneType__: {
             data: components["schemas"]["JobOut"] | null;
@@ -1434,10 +1803,25 @@ export interface components {
             /** Data */
             data: components["schemas"]["AttentionItem"][];
         };
+        /** DataResponse[list[ClientListItem]] */
+        DataResponse_list_ClientListItem__: {
+            /** Data */
+            data: components["schemas"]["ClientListItem"][];
+        };
+        /** DataResponse[list[JobListItem]] */
+        DataResponse_list_JobListItem__: {
+            /** Data */
+            data: components["schemas"]["JobListItem"][];
+        };
         /** DataResponse[list[JobOut]] */
         DataResponse_list_JobOut__: {
             /** Data */
             data: components["schemas"]["JobOut"][];
+        };
+        /** DataResponse[list[RequirementListItem]] */
+        DataResponse_list_RequirementListItem__: {
+            /** Data */
+            data: components["schemas"]["RequirementListItem"][];
         };
         /** DataResponse[list[ScreeningQuestion]] */
         DataResponse_list_ScreeningQuestion__: {
@@ -1448,6 +1832,11 @@ export interface components {
         DataResponse_list_StartCallResult__: {
             /** Data */
             data: components["schemas"]["StartCallResult"][];
+        };
+        /** DataResponse[list[TeamMemberOut]] */
+        DataResponse_list_TeamMemberOut__: {
+            /** Data */
+            data: components["schemas"]["TeamMemberOut"][];
         };
         /** DefaultQuestionsOut */
         DefaultQuestionsOut: {
@@ -1556,11 +1945,10 @@ export interface components {
             status: components["schemas"]["ImportBatchStatus"];
             /** Filename */
             filename: string;
-            /**
-             * Job Id
-             * Format: uuid
-             */
-            job_id: string;
+            /** Job Id */
+            job_id: string | null;
+            /** Requirement Id */
+            requirement_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1689,6 +2077,89 @@ export interface components {
              * @default
              */
             agent_instructions: string;
+        };
+        /**
+         * JobListItem
+         * @description A requirement in the list of all jobs, with its client.
+         */
+        JobListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Title */
+            title: string;
+            /** Location */
+            location: string;
+            /**
+             * Work Mode
+             * @enum {string}
+             */
+            work_mode: "" | "onsite" | "hybrid" | "remote";
+            /** Openings */
+            openings: number;
+            /** Experience Min */
+            experience_min: number | null;
+            /** Experience Max */
+            experience_max: number | null;
+            /** Ctc Min */
+            ctc_min: number | null;
+            /** Ctc Max */
+            ctc_max: number | null;
+            /** Notice Max Days */
+            notice_max_days: number | null;
+            /** Skills */
+            skills: string[];
+            /** Must Haves */
+            must_haves: string[];
+            /** Job Description */
+            job_description: string;
+            /** Deadline */
+            deadline: string | null;
+            /** Notes */
+            notes: string;
+            status: components["schemas"]["RequirementStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Candidates
+             * @default 0
+             */
+            candidates: number;
+            /**
+             * Called
+             * @default 0
+             */
+            called: number;
+            /**
+             * Interested
+             * @default 0
+             */
+            interested: number;
+            /**
+             * Client Name
+             * @default
+             */
+            client_name: string;
+            /**
+             * Client Status
+             * @default
+             */
+            client_status: string;
         };
         /** JobOut */
         JobOut: {
@@ -1845,6 +2316,16 @@ export interface components {
                 [key: string]: number | null;
             };
         };
+        /** OrganizationOut */
+        OrganizationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** PageMeta */
         PageMeta: {
             /** Page */
@@ -1928,6 +2409,225 @@ export interface components {
             field: string;
             /** Message */
             message: string;
+        };
+        /** RequirementCreate */
+        RequirementCreate: {
+            /** Title */
+            title: string;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /**
+             * Work Mode
+             * @default
+             * @enum {string}
+             */
+            work_mode: "" | "onsite" | "hybrid" | "remote";
+            /**
+             * Openings
+             * @default 1
+             */
+            openings: number;
+            /** Experience Min */
+            experience_min?: number | null;
+            /** Experience Max */
+            experience_max?: number | null;
+            /** Ctc Min */
+            ctc_min?: number | null;
+            /** Ctc Max */
+            ctc_max?: number | null;
+            /** Notice Max Days */
+            notice_max_days?: number | null;
+            /** Skills */
+            skills?: string[];
+            /** Must Haves */
+            must_haves?: string[];
+            /**
+             * Job Description
+             * @default
+             */
+            job_description: string;
+            /** Deadline */
+            deadline?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** @default open */
+            status: components["schemas"]["RequirementStatus"];
+        };
+        /**
+         * RequirementListItem
+         * @description A row in a client's requirements list, with its screening numbers.
+         */
+        RequirementListItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Title */
+            title: string;
+            /** Location */
+            location: string;
+            /**
+             * Work Mode
+             * @enum {string}
+             */
+            work_mode: "" | "onsite" | "hybrid" | "remote";
+            /** Openings */
+            openings: number;
+            /** Experience Min */
+            experience_min: number | null;
+            /** Experience Max */
+            experience_max: number | null;
+            /** Ctc Min */
+            ctc_min: number | null;
+            /** Ctc Max */
+            ctc_max: number | null;
+            /** Notice Max Days */
+            notice_max_days: number | null;
+            /** Skills */
+            skills: string[];
+            /** Must Haves */
+            must_haves: string[];
+            /** Job Description */
+            job_description: string;
+            /** Deadline */
+            deadline: string | null;
+            /** Notes */
+            notes: string;
+            status: components["schemas"]["RequirementStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Candidates
+             * @default 0
+             */
+            candidates: number;
+            /**
+             * Called
+             * @default 0
+             */
+            called: number;
+            /**
+             * Interested
+             * @default 0
+             */
+            interested: number;
+        };
+        /** RequirementOut */
+        RequirementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Title */
+            title: string;
+            /** Location */
+            location: string;
+            /**
+             * Work Mode
+             * @enum {string}
+             */
+            work_mode: "" | "onsite" | "hybrid" | "remote";
+            /** Openings */
+            openings: number;
+            /** Experience Min */
+            experience_min: number | null;
+            /** Experience Max */
+            experience_max: number | null;
+            /** Ctc Min */
+            ctc_min: number | null;
+            /** Ctc Max */
+            ctc_max: number | null;
+            /** Notice Max Days */
+            notice_max_days: number | null;
+            /** Skills */
+            skills: string[];
+            /** Must Haves */
+            must_haves: string[];
+            /** Job Description */
+            job_description: string;
+            /** Deadline */
+            deadline: string | null;
+            /** Notes */
+            notes: string;
+            status: components["schemas"]["RequirementStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * RequirementStatus
+         * @description An opening at a client.
+         * @enum {string}
+         */
+        RequirementStatus: "open" | "on_hold" | "filled" | "closed";
+        /**
+         * RequirementUpdate
+         * @description Only the fields that are sent change. null clears the optional numbers and the
+         *     deadline; for the other fields null means "leave as it is".
+         */
+        RequirementUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Work Mode */
+            work_mode?: ("" | "onsite" | "hybrid" | "remote") | null;
+            /** Openings */
+            openings?: number | null;
+            /** Experience Min */
+            experience_min?: number | null;
+            /** Experience Max */
+            experience_max?: number | null;
+            /** Ctc Min */
+            ctc_min?: number | null;
+            /** Ctc Max */
+            ctc_max?: number | null;
+            /** Notice Max Days */
+            notice_max_days?: number | null;
+            /** Skills */
+            skills?: string[] | null;
+            /** Must Haves */
+            must_haves?: string[] | null;
+            /** Job Description */
+            job_description?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Notes */
+            notes?: string | null;
+            status?: components["schemas"]["RequirementStatus"] | null;
         };
         /** RetryCallRequest */
         RetryCallRequest: {
@@ -2158,6 +2858,20 @@ export interface components {
             /** Checked At */
             checked_at: string | null;
         };
+        /**
+         * SignupRequest
+         * @description A new organization and its super admin.
+         */
+        SignupRequest: {
+            /** Organization Name */
+            organization_name: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
         /** StartCallError */
         StartCallError: {
             /** Code */
@@ -2199,6 +2913,52 @@ export interface components {
             providers: components["schemas"]["ProviderStatus"][];
             google_sheets: components["schemas"]["SheetsStatus"];
         };
+        /** TeamMemberCreate */
+        TeamMemberCreate: {
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /** @default recruiter */
+            role: components["schemas"]["UserRole"];
+        };
+        /** TeamMemberOut */
+        TeamMemberOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            role: components["schemas"]["UserRole"];
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Login At */
+            last_login_at: string | null;
+        };
+        /**
+         * TeamMemberUpdate
+         * @description Only the fields that are sent change.
+         */
+        TeamMemberUpdate: {
+            /** Name */
+            name?: string | null;
+            role?: components["schemas"]["UserRole"] | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Password */
+            password?: string | null;
+        };
         /** TranscriptEntry */
         TranscriptEntry: {
             /** Seq */
@@ -2236,13 +2996,15 @@ export interface components {
             /** Name */
             name: string;
             role: components["schemas"]["UserRole"];
+            organization: components["schemas"]["OrganizationOut"];
         };
         /**
          * UserRole
-         * @description Admins may also change integration settings (the Google Sheet), phase-08.
+         * @description Super admins own the organization and may also change integration settings (the Google
+         *     Sheet). Recruiters use the app day to day.
          * @enum {string}
          */
-        UserRole: "admin" | "recruiter";
+        UserRole: "super_admin" | "recruiter";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -2307,6 +3069,28 @@ export interface operations {
             };
         };
     };
+    connections_health_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
@@ -2322,6 +3106,39 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_UserOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    signup_api_v1_auth_signup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2523,6 +3340,8 @@ export interface operations {
                 /** @description Status of the latest call; not_called = never called */
                 call_status?: string | null;
                 job_id?: string | null;
+                /** @description Only this requirement's candidates */
+                requirement_id?: string | null;
                 interested?: boolean | null;
                 sort?: "created_at" | "-created_at" | "name" | "-name" | "updated_at" | "-updated_at";
                 page?: number;
@@ -2738,6 +3557,289 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_CandidateOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clients_api_v1_clients_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                status?: components["schemas"]["ClientStatus"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_ClientListItem__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_client_api_v1_clients_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ClientOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_client_api_v1_clients__client_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ClientOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_client_api_v1_clients__client_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_ClientOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_requirements_api_v1_clients__client_id__requirements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_RequirementListItem__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_requirement_api_v1_clients__client_id__requirements_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequirementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RequirementOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_v1_requirements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_JobListItem__"];
+                };
+            };
+        };
+    };
+    get_requirement_api_v1_requirements__requirement_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RequirementOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_requirement_api_v1_requirements__requirement_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequirementUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RequirementOut_"];
                 };
             };
             /** @description Validation Error */
@@ -3554,6 +4656,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_StatusOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_api_v1_team_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_TeamMemberOut__"];
+                };
+            };
+        };
+    };
+    add_member_api_v1_team_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamMemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TeamMemberOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_member_api_v1_team__member_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamMemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TeamMemberOut_"];
                 };
             };
             /** @description Validation Error */

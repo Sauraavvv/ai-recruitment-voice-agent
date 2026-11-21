@@ -12,7 +12,6 @@ import { useLoad } from "@/lib/use-load";
 import { getSettings, updateSettings } from "@/services/settings";
 import type { GeneralUpdate, SettingsPage } from "@/types";
 
-import { ProviderCards } from "./provider-cards";
 import { SheetsCard } from "./sheets-card";
 
 const DAYS: [string, string][] = [
@@ -42,7 +41,10 @@ export function SettingsView() {
   const settings = useLoad("settings", getSettings);
   return (
     <>
-      <PageHeader title="Settings" subtitle="Calling, the AI's introduction, and connections.">
+      <PageHeader
+        title="Settings"
+        subtitle="Calling, the AI's introduction, retries and the Google Sheet."
+      >
         <Link href="/settings/job" className={buttonClass("secondary")}>
           Job settings
         </Link>
@@ -64,7 +66,6 @@ export function SettingsView() {
           )}
         </div>
         <div className="space-y-4">
-          <ProviderCards />
           <SheetsCard />
           {settings.data && <RetryCard data={settings.data} onSaved={settings.setData} />}
         </div>

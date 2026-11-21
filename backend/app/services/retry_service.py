@@ -42,7 +42,7 @@ from app.database.models import (
 )
 from app.providers.telephony import exotel_models as em
 from app.repositories import call_repo
-from app.services import call_service, call_state, settings_service, sync_service
+from app.services import call_service, call_state, screening_job, settings_service, sync_service
 from app.utils.calling_window import CallingWindow, Half
 from app.utils.clock import SYSTEM_CLOCK, Clock
 from app.utils.log import get_logger
@@ -344,7 +344,7 @@ async def evaluate(
         return Evaluation("awaiting_finalization")
 
     candidate = await session.get(Candidate, attempt.candidate_id, with_for_update=True)
-    job = await session.get(Job, candidate.job_id) if candidate else None
+    job = await screening_job.for_candidate(session, candidate)
     rules = RetryRules.from_settings(settings)
     outcome = classify(attempt, result, final)
 
@@ -520,7 +520,7 @@ async def dispatch_due(
     )
     for attempt in rows:
         candidate = await session.get(Candidate, attempt.candidate_id)
-        job = await session.get(Job, candidate.job_id) if candidate else None
+        job = await screening_job.for_candidate(session, candidate)
         problem = stop_reason(candidate, job)
         if problem is None:
             problem = await call_service.check_eligibility(

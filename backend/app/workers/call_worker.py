@@ -17,7 +17,7 @@ from arq import Retry
 
 from app.config import Settings, get_settings
 from app.database.connection import get_sessionmaker
-from app.database.models import CallAttempt, CallAttemptType, CallEndReason, CallStatus, Job
+from app.database.models import CallAttempt, CallAttemptType, CallEndReason, CallStatus
 from app.providers.telephony import create_telephony_provider, status_callback_url
 from app.providers.telephony.base import (
     ProviderCallStatus,
@@ -31,6 +31,7 @@ from app.services import (
     call_slots,
     call_state,
     retry_service,
+    screening_job,
     settings_service,
     sync_service,
 )
@@ -100,7 +101,7 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
         )
         automatic = attempt.attempt_type in (CallAttemptType.RETRY, CallAttemptType.CALLBACK)
         if automatic and problem is None:
-            job = await session.get(Job, candidate.job_id) if candidate else None
+            job = await screening_job.for_candidate(session, candidate)
             problem = retry_service.stop_reason(candidate, job)  # e.g. declined meanwhile
         if automatic and problem in RESCHEDULE_ON:
             # A retry or callback that waited too long for a line: back on the schedule

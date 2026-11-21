@@ -4,11 +4,12 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, false, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import CallAttempt, Candidate
+from app.database.models import CallAttempt, Candidate, Client, Requirement, User
+from app.database.models.enums import UserRole
 
 SORT_COLUMNS = {
     "created_at": Candidate.created_at,
@@ -30,17 +31,30 @@ async def get(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def get_by_phone(session: AsyncSession, phone: str) -> Candidate | None:
+def _phone_scope(requirement_id: uuid.UUID | None) -> ColumnElement[bool]:
+    """Job candidates share one phone space; each requirement has its own."""
+    if requirement_id is None:
+        return Candidate.requirement_id.is_(None)
+    return Candidate.requirement_id == requirement_id
+
+
+async def get_by_phone(
+    session: AsyncSession, phone: str, requirement_id: uuid.UUID | None = None
+) -> Candidate | None:
     """Includes soft-deleted candidates: phones stay unique after deletion."""
-    stmt = select(Candidate).where(Candidate.phone == phone)
+    stmt = select(Candidate).where(Candidate.phone == phone, _phone_scope(requirement_id))
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def ids_by_phone(session: AsyncSession, phones: Sequence[str]) -> dict[str, str]:
+async def ids_by_phone(
+    session: AsyncSession, phones: Sequence[str], requirement_id: uuid.UUID | None = None
+) -> dict[str, str]:
     """Phone -> candidate id for phones that already exist (including soft-deleted)."""
     if not phones:
         return {}
-    stmt = select(Candidate.phone, Candidate.id).where(Candidate.phone.in_(set(phones)))
+    stmt = select(Candidate.phone, Candidate.id).where(
+        Candidate.phone.in_(set(phones)), _phone_scope(requirement_id)
+    )
     return {phone: str(cid) for phone, cid in (await session.execute(stmt)).all()}
 
 
@@ -64,8 +78,25 @@ def _filtered(
     job_id: uuid.UUID | None,
     interested: bool | None,
     call_status: str | None = None,
+    requirement_id: uuid.UUID | None = None,
+    viewer: User | None = None,
 ) -> Select[Candidate]:
     stmt = select(Candidate).where(Candidate.deleted_at.is_(None))
+    if viewer is not None:
+        # A requirement's candidates are seen only by whoever sees its client: the
+        # organization's super admins (recruiters don't see clients yet)
+        visible = (
+            select(Requirement.id)
+            .join(Client, Client.id == Requirement.client_id)
+            .where(Client.organization_id == viewer.organization_id)
+        )
+        if viewer.role != UserRole.SUPER_ADMIN:
+            visible = visible.where(false())
+        stmt = stmt.where(
+            or_(Candidate.requirement_id.is_(None), Candidate.requirement_id.in_(visible))
+        )
+    if requirement_id:
+        stmt = stmt.where(Candidate.requirement_id == requirement_id)
     if q:
         pattern = f"%{escape_like(q.strip())}%"
         conditions: list[ColumnElement[bool]] = [
@@ -103,8 +134,10 @@ async def search(
     page: int,
     page_size: int,
     call_status: str | None = None,
+    requirement_id: uuid.UUID | None = None,
+    viewer: User | None = None,
 ) -> tuple[list[Candidate], int]:
-    stmt = _filtered(q, screening_status, job_id, interested, call_status)
+    stmt = _filtered(q, screening_status, job_id, interested, call_status, requirement_id, viewer)
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
 
     descending = sort.startswith("-")
@@ -116,18 +149,23 @@ async def search(
 
 
 async def insert_ignoring_duplicates(
-    session: AsyncSession, rows: list[dict[str, Any]]
+    session: AsyncSession, rows: list[dict[str, Any]], requirement_id: uuid.UUID | None = None
 ) -> list[uuid.UUID]:
-    """INSERT ... ON CONFLICT (phone) DO NOTHING; returns the ids actually inserted.
+    """INSERT ... ON CONFLICT DO NOTHING on the phone index of the scope (job candidates, or
+    this requirement); returns the ids actually inserted.
 
     A concurrent import can't create a duplicate: the unique index decides.
     """
     if not rows:
         return []
-    stmt = (
-        insert(Candidate)
-        .values(rows)
-        .on_conflict_do_nothing(index_elements=[Candidate.phone])
-        .returning(Candidate.id)
-    )
+    if requirement_id is None:
+        conflict = insert(Candidate).on_conflict_do_nothing(
+            index_elements=[Candidate.phone], index_where=Candidate.requirement_id.is_(None)
+        )
+    else:
+        conflict = insert(Candidate).on_conflict_do_nothing(
+            index_elements=[Candidate.requirement_id, Candidate.phone],
+            index_where=Candidate.requirement_id.is_not(None),
+        )
+    stmt = conflict.values(rows).returning(Candidate.id)
     return list((await session.execute(stmt)).scalars())

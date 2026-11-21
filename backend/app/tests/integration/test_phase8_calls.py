@@ -514,6 +514,40 @@ async def test_status_never_contains_secrets(
         assert not any(s in body for s in SECRETS.values() if "SECRET" in s)
 
 
+async def test_public_connections_summary(
+    api: AsyncClient, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """/health/connections needs no login and shows a state only: no provider names, models,
+    phone numbers, messages or keys, and no way to force a fresh check."""
+    async for key in get_redis().scan_iter("rcai:provider-status:*"):
+        await get_redis().delete(key)
+    seen: list[str] = []
+
+    async def fake_get(url: str, transport: Any, **kwargs: Any) -> httpx.Response:
+        seen.append(url)
+        return httpx.Response(401 if "deepgram" in url else 200, json={})
+
+    monkeypatch.setattr(provider_status_service, "_get", fake_get)
+
+    response = await api.get("/health/connections")
+    assert response.status_code == 200, response.text
+    states = {c["name"]: (c["label"], c["state"]) for c in response.json()["data"]}
+    assert states == {
+        "agent": ("AI agent", "ok"),
+        "speech": ("Speech recognition", "problem"),
+        "telephony": ("Telephony", "ok"),
+        "voice": ("AI voice", "problem"),
+    }
+    text = response.text.lower()
+    for word in ("openai", "deepgram", "exotel", "kitten", "gpt-test", "refused", "secret"):
+        assert word not in text
+    assert str(EXOTEL["exotel_caller_id"]) not in response.text
+    assert len(seen) == 3
+    # cached, and `refresh` is ignored here
+    await api.get("/health/connections", params={"refresh": "true"})
+    assert len(seen) == 3
+
+
 # --- Admin-only sheet change ------------------------------------------------------------------
 
 
@@ -556,7 +590,7 @@ async def test_only_an_admin_changes_the_sheet(
     me = (await authed.get("/api/v1/auth/me")).json()["data"]
     assert me["role"] == "recruiter"
 
-    user.role = "admin"
+    user.role = "super_admin"
     await db_session.flush()
     bad_link = await authed.post(
         "/api/v1/integrations/google-sheets/check", json={"link": "not a link"}
@@ -597,23 +631,23 @@ async def test_only_an_admin_changes_the_sheet(
     assert json.dumps(status).count("none.json") == 0
 
 
-async def test_admin_role_from_migration_and_script(
-    api: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_super_admin_role(api: AsyncClient, db_session: AsyncSession) -> None:
+    from app.database.models import Organization
     from app.services.auth_service import hash_password
 
     admin = User(
+        organization=Organization(name="Test Org"),
         email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
         name="Admin",
         password_hash=hash_password(TEST_PASSWORD),
-        role="admin",
+        role="super_admin",
     )
     db_session.add(admin)
     await db_session.flush()
     response = await api.post(
         "/api/v1/auth/login", json={"email": admin.email, "password": TEST_PASSWORD}
     )
-    assert response.json()["data"]["role"] == "admin"
+    assert response.json()["data"]["role"] == "super_admin"
 
 
 async def test_parallel_status_requests_run_one_sheets_check(

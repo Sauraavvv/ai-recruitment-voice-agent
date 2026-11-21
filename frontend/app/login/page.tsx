@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 
 import { Logo } from "@/components/logo";
@@ -33,7 +34,12 @@ export default function LoginPage() {
             <LoginForm />
           </Suspense>
           <p className="mt-8 text-center text-sm text-zinc-500">
-            No account? Ask your administrator to create one.
+            New company?{" "}
+            <Link href="/signup" className="font-medium text-white hover:underline">
+              Create an account
+            </Link>
+            <br />
+            Joining your team? Ask your super admin for a login.
           </p>
         </div>
       </section>

@@ -109,7 +109,8 @@ class CandidateOut(BaseModel):
     name: str
     phone: str
     email: str | None
-    job_id: uuid.UUID
+    job_id: uuid.UUID | None
+    requirement_id: uuid.UUID | None  # set for a requirement's candidates (then job_id is null)
     applied_role: str
     source: str | None
     resume_url: str | None

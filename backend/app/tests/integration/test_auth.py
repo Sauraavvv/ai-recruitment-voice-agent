@@ -1,4 +1,4 @@
-"""P1-AC6: every /api/v1 route except login requires a session."""
+"""P1-AC6: every /api/v1 route except login and sign-up requires a session."""
 
 from typing import Any
 
@@ -9,7 +9,7 @@ from app.config import AppEnv
 from app.main import create_app
 from app.tests.conftest import TEST_PASSWORD, make_settings
 
-PUBLIC_ROUTES = {("POST", "/api/v1/auth/login")}
+PUBLIC_ROUTES = {("POST", "/api/v1/auth/login"), ("POST", "/api/v1/auth/signup")}
 SAMPLE_ID = "00000000-0000-0000-0000-000000000001"
 
 
@@ -35,7 +35,7 @@ def test_route_list_is_not_empty() -> None:
 @pytest.mark.parametrize(("method", "path"), PROTECTED)
 async def test_requires_login(api: AsyncClient, method: str, path: str) -> None:
     url = path
-    for name in ("candidate_id", "job_id", "import_id"):
+    for name in ("candidate_id", "job_id", "import_id", "member_id", "client_id", "requirement_id"):
         url = url.replace("{" + name + "}", SAMPLE_ID)
     response = await api.request(method, url)
     assert response.status_code == 401, response.text
@@ -108,3 +108,70 @@ async def test_mutations_require_frontend_origin(authed: AsyncClient) -> None:
     assert via_referer.status_code == 201
     # Reads don't need an Origin header.
     assert (await authed.get("/api/v1/jobs", headers={"Origin": ""})).status_code == 200
+
+
+SIGNUP = {
+    "organization_name": "  Acme Hiring  ",
+    "name": "Asha Rao",
+    "email": "Owner@Acme-Hiring.example",
+    "password": " long enough password ",
+}
+
+
+async def test_signup_creates_organization_and_super_admin(api: AsyncClient) -> None:
+    response = await api.post("/api/v1/auth/signup", json=SIGNUP)
+    assert response.status_code == 201, response.text
+    data = response.json()["data"]
+    assert data["role"] == "super_admin"
+    assert data["email"] == "owner@acme-hiring.example"
+    assert data["organization"]["name"] == "Acme Hiring"
+    assert "rcai_session=" in response.headers["set-cookie"]
+
+    # logged in straight away
+    me = (await api.get("/api/v1/auth/me")).json()["data"]
+    assert me["organization"] == data["organization"]
+
+    # the password is kept as typed (spaces included)
+    await api.post("/api/v1/auth/logout")
+    login = await api.post(
+        "/api/v1/auth/login", json={"email": data["email"], "password": SIGNUP["password"]}
+    )
+    assert login.status_code == 200
+
+
+async def test_signup_rejects_taken_email(api: AsyncClient, user: Any) -> None:
+    response = await api.post("/api/v1/auth/signup", json=SIGNUP | {"email": user.email.upper()})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "email_taken"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"password": "short"},
+        {"email": "not-an-email"},
+        {"organization_name": " "},
+        {"name": ""},
+        {"role": "super_admin"},  # unknown fields are refused
+    ],
+)
+async def test_signup_validation(api: AsyncClient, change: dict[str, str]) -> None:
+    response = await api.post("/api/v1/auth/signup", json=SIGNUP | change)
+    assert response.status_code == 422, response.text
+
+
+async def test_signup_rate_limited(api: AsyncClient) -> None:
+    for i in range(5):
+        body = SIGNUP | {"email": f"owner{i}@acme-hiring.example"}
+        assert (await api.post("/api/v1/auth/signup", json=body)).status_code == 201
+    limited = await api.post("/api/v1/auth/signup", json=SIGNUP)
+    assert limited.status_code == 429
+
+
+async def test_signup_off_in_production_unless_enabled() -> None:
+    base = make_settings()
+    production = base.model_copy(update={"app_env": AppEnv.PRODUCTION})
+    assert not production.signup_allowed
+    assert production.model_copy(update={"signup_enabled": True}).signup_allowed
+    assert base.signup_allowed
+    assert not base.model_copy(update={"signup_enabled": False}).signup_allowed

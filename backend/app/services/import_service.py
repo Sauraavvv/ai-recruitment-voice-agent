@@ -11,9 +11,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import ConsentSource, ImportBatch, ImportBatchStatus, User
+from app.api.responses import AppError
+from app.database.models import ConsentSource, ImportBatch, ImportBatchStatus, Requirement, User
 from app.repositories import candidate_repo, import_repo
-from app.services import job_service, sync_service
+from app.services import job_service, requirement_service, sync_service
 from app.services.errors import conflict, gone, not_found, unprocessable
 from app.services.import_validation import (
     FIELD_LABELS,
@@ -39,16 +40,25 @@ def _mapping(batch: ImportBatch) -> ColumnMapping:
     return {f: batch.column_mapping.get(f) for f in IMPORT_FIELDS}
 
 
+async def _default_role(session: AsyncSession, batch: ImportBatch) -> str | None:
+    """A requirement's upload doesn't need a job-role column: the role is its title."""
+    if batch.requirement_id is None:
+        return None
+    requirement = await session.get(Requirement, batch.requirement_id)
+    return requirement.title if requirement else None
+
+
 async def _validate(session: AsyncSession, batch: ImportBatch) -> list[ValidatedRow]:
     stored = batch.rows or []
     cells = [r["cells"] for r in stored]
     numbers = [r["row"] for r in stored]
     mapping = _mapping(batch)
+    role = await _default_role(session, batch)
     # First pass to learn the phones, then look them all up in one query.
-    first = validate_rows(cells, numbers, mapping, {})
+    first = validate_rows(cells, numbers, mapping, {}, role)
     phones = [r.values["phone"] for r in first if r.values.get("phone")]
-    existing = await candidate_repo.ids_by_phone(session, phones)
-    return validate_rows(cells, numbers, mapping, existing)
+    existing = await candidate_repo.ids_by_phone(session, phones, batch.requirement_id)
+    return validate_rows(cells, numbers, mapping, existing, role)
 
 
 def _is_expired(batch: ImportBatch) -> bool:
@@ -80,6 +90,7 @@ def present(batch: ImportBatch, rows: list[ValidatedRow] | None) -> dict[str, An
         "status": status,
         "filename": batch.filename,
         "job_id": batch.job_id,
+        "requirement_id": batch.requirement_id,
         "created_at": batch.created_at,
         "confirmed_at": batch.confirmed_at,
         "expires_at": batch.created_at + PREVIEW_TTL
@@ -89,7 +100,13 @@ def present(batch: ImportBatch, rows: list[ValidatedRow] | None) -> dict[str, An
         "column_mapping": mapping,
         "unmapped_columns": unmapped_columns(batch.headers, mapping),
         "fields": [
-            {"key": f, "label": FIELD_LABELS[f], "required": f in REQUIRED_FIELDS}
+            {
+                "key": f,
+                "label": FIELD_LABELS[f],
+                # a requirement's upload takes the role from the requirement
+                "required": f in REQUIRED_FIELDS
+                and not (f == "applied_role" and batch.requirement_id is not None),
+            }
             for f in IMPORT_FIELDS
         ],
         "rows": [asdict(r) for r in rows] if rows is not None else [],
@@ -103,8 +120,20 @@ async def upload(
     job_id: uuid.UUID | None,
     filename: str,
     content: bytes,
+    requirement_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
-    job = await job_service.resolve(session, job_id)
+    """An upload for a requirement (`requirement_id`, which the user must be able to see), or
+    else for `job_id` / the active job."""
+    if requirement_id is not None:
+        if job_id is not None:
+            raise unprocessable("one_target", "Upload for a job or for a requirement, not both")
+        requirement, _client = await requirement_service.get_requirement(
+            session, user, requirement_id
+        )
+        target: dict[str, uuid.UUID | None] = {"job_id": None, "requirement_id": requirement.id}
+    else:
+        job = await job_service.resolve(session, job_id)
+        target = {"job_id": job.id, "requirement_id": None}
     try:
         parsed = await asyncio.to_thread(parse_upload, filename, content)
     except FileParseError as exc:
@@ -113,7 +142,7 @@ async def upload(
     mapping = auto_map(parsed.headers)
     batch = ImportBatch(
         uploaded_by=user.id,
-        job_id=job.id,
+        **target,
         filename=filename[:255],
         status=ImportBatchStatus.PREVIEW,
         headers=parsed.headers,
@@ -136,6 +165,18 @@ async def upload(
         valid=batch.report["valid_candidates"],
     )
     return present(batch, rows)
+
+
+async def check_access(session: AsyncSession, user: User, import_id: uuid.UUID) -> None:
+    """A requirement's upload is only for those who can see the requirement."""
+    batch = await import_repo.get(session, import_id)
+    if batch is None:
+        raise not_found("import_not_found", "Import not found")
+    if batch.requirement_id is not None:
+        try:
+            await requirement_service.get_requirement(session, user, batch.requirement_id)
+        except AppError:
+            raise not_found("import_not_found", "Import not found") from None
 
 
 async def get(session: AsyncSession, import_id: uuid.UUID) -> dict[str, Any]:
@@ -180,13 +221,16 @@ async def confirm(
         {
             **row.values,
             "job_id": batch.job_id,
+            "requirement_id": batch.requirement_id,
             "consent_source": ConsentSource.RECRUITER_ATTESTED_IMPORT.value,
             "consent_at": now,
         }
         for row in rows
         if row.status == RowStatus.VALID
     ]
-    inserted = await candidate_repo.insert_ignoring_duplicates(session, to_insert)
+    inserted = await candidate_repo.insert_ignoring_duplicates(
+        session, to_insert, batch.requirement_id
+    )
     sync_service.record_changes(session, inserted)  # new rows for the sheet, same transaction
 
     batch.status = ImportBatchStatus.CONFIRMED

@@ -49,8 +49,11 @@ function Header() {
         <a href="#responsible" className="hidden rounded-lg px-3 py-2 text-zinc-400 hover:text-white md:block">
           Calling responsibly
         </a>
-        <Link href="/login" className={`${primaryButton} ml-2 px-4 py-2`}>
+        <Link href="/login" className="ml-2 rounded-lg px-3 py-2 text-zinc-300 hover:text-white">
           Log in
+        </Link>
+        <Link href="/signup" className={`${primaryButton} px-4 py-2`}>
+          Sign up
         </Link>
       </nav>
     </header>
@@ -79,8 +82,11 @@ function Hero() {
             the people worth talking to.
           </p>
           <div className="pointer-events-auto mt-9 flex flex-wrap gap-3">
-            <Link href="/login" className={primaryButton}>
-              Log in to HireCall
+            <Link href="/signup" className={primaryButton}>
+              Create your account
+            </Link>
+            <Link href="/login" className={secondaryButton}>
+              Log in
             </Link>
             <a href="#how-it-works" className={secondaryButton}>
               See how it works
@@ -351,12 +357,17 @@ function FinalCta() {
           Spend your time on interviews, not first calls.
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-zinc-400">
-          Log in to add candidates and start screening. No account yet? Ask your administrator to
-          create one.
+          Create an account for your company and start screening today. Your team can join with
+          logins from you.
         </p>
-        <Link href="/login" className={`${primaryButton} pointer-events-auto mt-8`}>
-          Log in to HireCall
-        </Link>
+        <div className="pointer-events-auto mt-8 flex flex-wrap justify-center gap-3">
+          <Link href="/signup" className={primaryButton}>
+            Create your account
+          </Link>
+          <Link href="/login" className={secondaryButton}>
+            Log in
+          </Link>
+        </div>
       </div>
     </section>
   );

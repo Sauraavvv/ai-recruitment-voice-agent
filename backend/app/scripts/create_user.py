@@ -1,11 +1,16 @@
-"""Create or reset a recruiter account. There is no public sign-up.
+"""Create or reset an account (until the super admin can add users in the app).
 
-    python -m app.scripts.create_user --email you@example.com --name "Your Name" [--role admin]
+    python -m app.scripts.create_user --email you@example.com --name "Your Name" \
+        [--role super_admin] [--organization "Acme Hiring"]
+
+New accounts join the organization named by --organization (created if there is none with that
+name); without it, the only organization there is (or a new "My organization" when there are
+none). With several organizations, --organization is required.
 
 The password is prompted for (never pass it on the command line). Running it again for an
 existing email resets that user's password and re-activates the account; --role changes the
-role only when it's given (new accounts default to recruiter). Admins may also change the
-Google Sheet the candidates are copied to.
+role only when it's given (new accounts default to recruiter). Super admins may also change
+the Google Sheet the candidates are copied to.
 """
 
 import argparse
@@ -13,14 +18,16 @@ import asyncio
 import getpass
 import sys
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_settings
 from app.database.connection import dispose_engine, get_sessionmaker, init_engine
-from app.database.models import User, UserRole
+from app.database.models import Organization, User, UserRole
 from app.repositories import user_repo
+from app.schemas.auth import MIN_PASSWORD_LENGTH
 from app.services.auth_service import hash_password
 from app.utils.candidate_fields import normalize_email
-
-MIN_PASSWORD_LENGTH = 10
 
 
 def _read_password() -> str:
@@ -33,7 +40,20 @@ def _read_password() -> str:
     return first
 
 
-async def _save(email: str, name: str, password: str, role: str | None) -> str:
+async def _organization(session: AsyncSession, name: str | None) -> Organization:
+    if name:
+        stmt = select(Organization).where(func.lower(Organization.name) == name.lower())
+        found = (await session.execute(stmt)).scalars().first()
+        return found or Organization(name=name)
+    existing = (await session.execute(select(Organization).limit(2))).scalars().all()
+    if len(existing) > 1:
+        raise SystemExit("There are several organizations: pass --organization")
+    return existing[0] if existing else Organization(name="My organization")
+
+
+async def _save(
+    email: str, name: str, password: str, role: str | None, organization: str | None
+) -> str:
     init_engine(get_settings().database_url.get_secret_value())
     try:
         async with get_sessionmaker()() as session:
@@ -41,6 +61,7 @@ async def _save(email: str, name: str, password: str, role: str | None) -> str:
             if user is None:
                 session.add(
                     User(
+                        organization=await _organization(session, organization),
                         email=email,
                         name=name,
                         password_hash=hash_password(password),
@@ -66,6 +87,7 @@ def main() -> None:
     parser.add_argument("--email", required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--role", choices=[r.value for r in UserRole], default=None)
+    parser.add_argument("--organization", default=None, help="new accounts only")
     args = parser.parse_args()
 
     try:
@@ -76,7 +98,7 @@ def main() -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise SystemExit(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
 
-    action = asyncio.run(_save(email, args.name.strip(), password, args.role))
+    action = asyncio.run(_save(email, args.name.strip(), password, args.role, args.organization))
     print(f"{action} account {email}" + (f" ({args.role})" if args.role else ""))
 
 

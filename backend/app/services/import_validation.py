@@ -136,10 +136,17 @@ def _text(values: dict[str, Any], errors: list[RowError], name: str, raw: str, l
         values[name] = raw
 
 
-def validate_row(row_number: int, cells: list[str], mapping: ColumnMapping) -> ValidatedRow:
+def validate_row(
+    row_number: int, cells: list[str], mapping: ColumnMapping, default_role: str | None = None
+) -> ValidatedRow:
+    """`default_role` fills an empty job role (a requirement's upload: the role is its title)."""
+
     def cell(field_name: str) -> str:
         index = mapping.get(field_name)
-        return cells[index].strip() if index is not None and index < len(cells) else ""
+        value = cells[index].strip() if index is not None and index < len(cells) else ""
+        if field_name == "applied_role" and not value and default_role:
+            return default_role
+        return value
 
     values: dict[str, Any] = {}
     errors: list[RowError] = []
@@ -206,6 +213,7 @@ def validate_rows(
     row_numbers: list[int],
     mapping: ColumnMapping,
     existing_phones: dict[str, str],
+    default_role: str | None = None,
 ) -> list[ValidatedRow]:
     """Validate every row and flag duplicates.
 
@@ -215,7 +223,7 @@ def validate_rows(
     seen: dict[str, int] = {}
     result = []
     for row_number, cells in zip(row_numbers, rows, strict=True):
-        validated = validate_row(row_number, cells, mapping)
+        validated = validate_row(row_number, cells, mapping, default_role)
         if validated.status == RowStatus.VALID:
             phone = validated.values["phone"]
             if phone in seen:

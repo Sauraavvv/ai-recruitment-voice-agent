@@ -50,7 +50,8 @@ class ImportOut(BaseModel):
     id: uuid.UUID
     status: ImportBatchStatus
     filename: str
-    job_id: uuid.UUID
+    job_id: uuid.UUID | None
+    requirement_id: uuid.UUID | None
     created_at: datetime
     confirmed_at: datetime | None
     expires_at: datetime | None

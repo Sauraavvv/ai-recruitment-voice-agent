@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.schemas import FieldName
-from app.database.models import Candidate, ConsentSource, Conversation, ScreeningStatus
+from app.database.models import Candidate, ConsentSource, Conversation, ScreeningStatus, User
 from app.repositories import candidate_repo
 from app.schemas.candidate import CandidateCreate, CandidateUpdate
 from app.services import call_service, job_service, sync_service
@@ -25,9 +25,13 @@ STANDARD_FIELDS = frozenset(f.value for f in FieldName)
 
 
 async def _ensure_phone_free(
-    session: AsyncSession, phone: str, *, exclude_id: uuid.UUID | None = None
+    session: AsyncSession,
+    phone: str,
+    *,
+    exclude_id: uuid.UUID | None = None,
+    requirement_id: uuid.UUID | None = None,
 ) -> None:
-    existing = await candidate_repo.get_by_phone(session, phone)
+    existing = await candidate_repo.get_by_phone(session, phone, requirement_id)
     if existing is None or existing.id == exclude_id:
         return
     deleted = existing.deleted_at is not None
@@ -88,6 +92,8 @@ async def search(
     page: int = 1,
     page_size: int = 25,
     call_status: str | None = None,
+    requirement_id: uuid.UUID | None = None,
+    viewer: User | None = None,
 ) -> tuple[list[Candidate], int]:
     return await candidate_repo.search(
         session,
@@ -96,6 +102,8 @@ async def search(
         job_id=job_id,
         interested=interested,
         call_status=call_status,
+        requirement_id=requirement_id,
+        viewer=viewer,
         sort=sort,
         page=max(page, 1),
         page_size=min(max(page_size, 1), MAX_PAGE_SIZE),
@@ -111,7 +119,16 @@ async def update(
     if changes.get("opted_out") is False and candidate.opted_out:
         raise conflict("opt_out_irreversible", "A candidate who opted out can't be opted back in")
     if "phone" in changes and changes["phone"] != candidate.phone:
-        await _ensure_phone_free(session, changes["phone"], exclude_id=candidate.id)
+        await _ensure_phone_free(
+            session,
+            changes["phone"],
+            exclude_id=candidate.id,
+            requirement_id=candidate.requirement_id,
+        )
+    if "job_id" in changes and candidate.requirement_id is not None:
+        raise unprocessable(
+            "requirement_candidate", "This candidate belongs to a requirement, not to a job"
+        )
     if "job_id" in changes and changes["job_id"] != candidate.job_id:
         await job_service.get(session, changes["job_id"])
     if changes.get("opted_out") and not candidate.opted_out:
@@ -130,7 +147,12 @@ async def update(
     except IntegrityError:
         await session.rollback()
         if "phone" in changes:
-            await _ensure_phone_free(session, changes["phone"], exclude_id=candidate_id)
+            await _ensure_phone_free(
+                session,
+                changes["phone"],
+                exclude_id=candidate_id,
+                requirement_id=candidate.requirement_id,
+            )
         raise
     await session.refresh(candidate)
     logger.info("candidate_updated", candidate_id=str(candidate.id), fields=sorted(changes))
