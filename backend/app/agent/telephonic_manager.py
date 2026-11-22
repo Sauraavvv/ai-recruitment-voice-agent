@@ -54,6 +54,14 @@ from app.providers.llm.base import LLMError, LLMProvider
 
 log = structlog.get_logger(__name__)
 
+
+def _lower_first(text: str) -> str:
+    """ "Which product?" → "which product?" (after "follow-up:"), but "AI tools?" stays."""
+    if len(text) > 1 and text[0].isupper() and text[1].islower():
+        return text[0].lower() + text[1:]
+    return text
+
+
 MAX_TURNS = 60
 MAX_IDENTITY_ATTEMPTS = 3
 MAX_PERMISSION_ATTEMPTS = 3
@@ -62,6 +70,11 @@ MAX_CLOSING_QUESTIONS = 3  # "any questions for me?" rounds
 MAX_LLM_ERRORS = 3  # in a row: then close politely
 MAX_REPLY_WORDS = 55
 MAX_FOLLOW_UP_WORDS = 25
+# Follow-ups are rare (real call: one on every question felt like extra questions): at most two
+# per call, only after a short answer, and announced as a follow-up
+MAX_FOLLOW_UPS = 2
+FOLLOW_UP_BELOW_WORDS = 20  # an answer this long or longer never gets a follow-up
+FOLLOW_UP_LEAD = "Just one quick follow-up:"
 MAX_OUTPUT_TOKENS = 1500  # the model's reasoning counts as output
 DEFAULT_TIMEOUT_S = 5.0
 NO_DETAIL = "I don't have that detail, but the recruiter will share it."
@@ -436,8 +449,12 @@ class TelephonicManager:
             follow_up=record.follow_up,
             question_number=(s.current or 0) + 1,
             total_questions=total,
-            follow_up_allowed=not record.follow_up_asked,
+            follow_up_allowed=self._follow_up_left(record),
         )
+
+    def _follow_up_left(self, record: AnswerRecord) -> bool:
+        asked = sum(a.follow_up_asked and not a.from_earlier_call for a in self.state.answers)
+        return not record.follow_up_asked and asked < MAX_FOLLOW_UPS
 
     def _on_model_error(self, text: str, exc: Exception) -> AgentReply:
         """The model failed or was too slow. Never hang: keep the words and move on."""
@@ -531,6 +548,15 @@ class TelephonicManager:
 
     def _question_turn(self, t: TelephonicTurn, text: str) -> AgentReply:
         record, q = self._current()
+        if record.follow_up_asked and t.kind in ("asks_question", "off_topic"):
+            # Pushback on the follow-up ("I already answered", "why another question?"): answer
+            # if they asked something, then move on. The main question is never asked again.
+            answer = ""
+            if t.kind == "asks_question":
+                self._note_question(t, text)
+                answer = clean_for_speech(t.reply, max_words=MAX_REPLY_WORDS).rstrip("?")
+            record.status = AnswerStatus.PARTIAL if record.parts else AnswerStatus.DECLINED
+            return self._advance(prefix=f"{answer} No problem." if answer else "No problem.")
         if t.kind == "asks_question":
             self._note_question(t, text)
             answer = clean_for_speech(t.reply, max_words=MAX_REPLY_WORDS) or NO_DETAIL
@@ -552,9 +578,12 @@ class TelephonicManager:
         if t.kind == "partial":
             follow_up = clean_for_speech(t.follow_up or "", max_words=MAX_FOLLOW_UP_WORDS)
             record.status = AnswerStatus.PARTIAL
-            if not record.follow_up_asked and follow_up.endswith("?"):
+            short = len(" ".join(record.parts).split()) < FOLLOW_UP_BELOW_WORDS
+            if self._follow_up_left(record) and short and follow_up.endswith("?"):
                 record.follow_up_asked, record.follow_up = True, follow_up
-                return self._ask(follow_up, asked=q.id, kind=AskKind.CLARIFY)
+                return self._ask(
+                    f"{FOLLOW_UP_LEAD} {_lower_first(follow_up)}", asked=q.id, kind=AskKind.CLARIFY
+                )
             return self._advance()
         record.status = AnswerStatus.ANSWERED  # "answer" (and anything else said as one)
         return self._advance()

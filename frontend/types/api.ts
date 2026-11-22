@@ -721,6 +721,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calls/{call_attempt_id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reevaluate
+         * @description Evaluate a finished telephonic round call again with the AI (e.g. after editing a
+         *     rubric). Returns the answers with the evaluation pending; the previous result stays until
+         *     the new one is saved. 409 not_finalized / not_telephonic, 503 ai_not_configured.
+         */
+        post: operations["reevaluate_api_v1_calls__call_attempt_id__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calls/{call_attempt_id}/retry": {
         parameters: {
             query?: never;
@@ -1156,6 +1178,7 @@ export interface components {
             start_time: string | null;
             /** Duration Seconds */
             duration_seconds: number | null;
+            evaluation?: components["schemas"]["RoundEvaluation"] | null;
         };
         /** CallAttemptOut */
         CallAttemptOut: {
@@ -1298,6 +1321,7 @@ export interface components {
             /** Has Transcript */
             has_transcript: boolean;
             round?: components["schemas"]["RoundRef"] | null;
+            evaluation?: components["schemas"]["EvaluationBadge"] | null;
         };
         /**
          * CallPurpose
@@ -2112,6 +2136,61 @@ export interface components {
             /** Message */
             message: string | null;
         };
+        /**
+         * EvaluationBadge
+         * @description The score on a row: from the latest evaluated call.
+         */
+        EvaluationBadge: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "done" | "failed" | "skipped";
+            /** Score */
+            score: number | null;
+            /** Verdict */
+            verdict: ("strong_fit" | "possible_fit" | "not_a_fit") | null;
+            /** Incomplete */
+            incomplete: boolean;
+        };
+        /**
+         * EvaluationResult
+         * @description An AI recommendation; the recruiter decides.
+         */
+        EvaluationResult: {
+            /** Score */
+            score: number | null;
+            /** Verdict */
+            verdict: ("strong_fit" | "possible_fit" | "not_a_fit") | null;
+            /** Incomplete */
+            incomplete: boolean;
+            /** Strengths */
+            strengths: string;
+            /** Gaps */
+            gaps: string;
+            /** Not Covered */
+            not_covered: string[];
+            /** Questions */
+            questions: components["schemas"]["QuestionScore"][];
+            /** Model */
+            model: string;
+            /** Rubric Version */
+            rubric_version: number | null;
+            /** Rubric Hash */
+            rubric_hash: string;
+            /** Level */
+            level?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Evaluated At
+             * Format: date-time
+             */
+            evaluated_at: string;
+        };
         /** GeneralSettings */
         GeneralSettings: {
             /** Organization Name */
@@ -2160,6 +2239,12 @@ export interface components {
              * @default
              */
             focus: string;
+            /**
+             * Level
+             * @default easy
+             * @enum {string}
+             */
+            level: "easy" | "medium" | "hard";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2673,6 +2758,41 @@ export interface components {
              */
             weight: number;
         };
+        /** QuestionScore */
+        QuestionScore: {
+            /** Question Id */
+            question_id: string;
+            /** Question */
+            question: string;
+            /** Weight */
+            weight: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "partial" | "dont_know" | "declined" | "not_asked";
+            /** Score */
+            score: number | null;
+            /** Quote */
+            quote: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "model" | "declined" | "dont_know" | "no_words" | "not_asked";
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
+            /**
+             * From Earlier Call
+             * @default false
+             */
+            from_earlier_call: boolean;
+        };
         /** QuestionSetOut */
         QuestionSetOut: {
             /**
@@ -2689,6 +2809,8 @@ export interface components {
             questions: components["schemas"]["Question"][];
             /** Model */
             model: string;
+            /** Level */
+            level?: ("easy" | "medium" | "hard") | null;
             /** Approved At */
             approved_at: string | null;
             /**
@@ -3120,6 +3242,19 @@ export interface components {
             /** Questions */
             questions: number;
         };
+        /** RoundEvaluation */
+        RoundEvaluation: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "done" | "failed" | "skipped";
+            /** Error */
+            error?: string | null;
+            result?: components["schemas"]["EvaluationResult"] | null;
+            /** Requested At */
+            requested_at?: string | null;
+        };
         /**
          * RoundRef
          * @description The requirement a telephonic round call asked questions for.
@@ -3170,6 +3305,7 @@ export interface components {
             /** Done Before */
             done_before: boolean;
             eligibility: components["schemas"]["Eligibility"];
+            evaluation?: components["schemas"]["EvaluationBadge"] | null;
         };
         /** RowIssue */
         RowIssue: {
@@ -5027,6 +5163,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CallAnswers_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reevaluate_api_v1_calls__call_attempt_id__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

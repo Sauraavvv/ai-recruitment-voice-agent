@@ -155,9 +155,12 @@ if unclear. In phase "callback_time" (you asked when to call back): true only if
 to go ahead now. Otherwise null.
 - In phase "follow_up" the candidate is answering the follow-up to the current question: \
 judge their words for the question and follow-up together.
-- follow_up: only when kind is "partial" and STAGE says follow_up_allowed: one short, open \
-follow-up question (at most 20 words) that asks for what's missing. Never a new topic. \
-Otherwise null.
+- follow_up: rarely. Only when kind is "partial", STAGE says follow_up_allowed, and the answer \
+is too thin to judge at all (a few words, or it doesn't say what they did). Never to collect a \
+detail the rubric lists when they already gave a real answer. One short, open question (at \
+most 20 words) about what's missing; never a new topic. Otherwise null.
+- In phase "follow_up", if they say they already answered or ask why there's another \
+question, use kind "off_topic" (the program moves on).
 - reply, by kind:
   - "asks_question": answer only from the JOB block, in at most two short sentences. If the \
 answer isn't there, say "I don't have that detail, but the recruiter will share it." Never ask \

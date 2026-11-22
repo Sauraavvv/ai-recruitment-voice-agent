@@ -70,6 +70,22 @@ HANGUP_GRACE_S = 4.0  # caller hung up mid-turn: let the agent finish extracting
 # continuation ("Total work… four years") merges instead of being talked over (real call P6).
 FLOOR_GAP_S = 0.7
 FLOOR_MAX_WAIT_S = 2.5
+# An answer that stops on one of these words is mid-sentence: the candidate is thinking
+UNFINISHED_WORDS = frozenset(
+    "a an the of to in on at for from with by and or but so because which that who where when "
+    "like using use used my our their his her its is are was were be been have has had will "
+    "would can could also then than as into about".split()
+)
+
+
+def answer_gap_s(text: str, settings: Settings) -> float:
+    """How long the candidate must be quiet after answering a question before the agent replies:
+    longer when the words so far stop mid-sentence."""
+    said = words(text)
+    unfinished = bool(said) and said[-1] in UNFINISHED_WORDS
+    return settings.answer_gap_s + (settings.answer_unfinished_extra_s if unfinished else 0.0)
+
+
 # Said at the start of many replies; with the job's questions, synthesized during the greeting
 WARM_PHRASES = ("Thanks.", "Great, thank you.", "Got it.")
 
@@ -259,6 +275,7 @@ class CallSession[R: AgentResult]:
         self._checkpoint: Any = None
         self._pending_text = ""
         self._pending_conf: float | None = None
+        self._turn_phase: Phase | None = None  # the phase the candidate answered in
         self._reply_label: str | None = None  # the playback whose events count
         self._reply_entry: TranscriptEntry | None = None
         self._ack_played: str | None = None
@@ -576,8 +593,14 @@ class CallSession[R: AgentResult]:
     def _hello_heard(self) -> bool:
         return self.vad.stats.speech_runs > 0 and not self.vad.in_speech
 
+    def _patient(self) -> bool:
+        """The candidate is answering a question (not "yes", not their name): wait longer for
+        them to finish before replying (the telephonic round; screening keeps 0.7 s)."""
+        return self._turn_phase is Phase.SCREENING and self.settings.answer_gap_s > FLOOR_GAP_S
+
     async def _act_run_agent(self, event: TurnEvent, payload: Any) -> None:
         utterance: Utterance = payload
+        self._turn_phase = self.manager.state.phase
         self._silences = 0
         self._pending_text, self._pending_conf = utterance.text, utterance.confidence
         self._metrics = TurnMetrics(
@@ -643,6 +666,8 @@ class CallSession[R: AgentResult]:
             return
         if self.manager.state.phase in NO_ACK_PHASES or self.manager.state.ended:
             return
+        if self._patient():
+            return  # "Thank you." into a thinking pause would cut the answer short
         if utterance.confidence is not None and utterance.confidence < LOW_CONFIDENCE:
             return  # the reply will be "sorry, could you say that again?"
         choices = [a for a in ACKNOWLEDGEMENTS if a != self._last_ack] or list(ACKNOWLEDGEMENTS)
@@ -714,7 +739,13 @@ class CallSession[R: AgentResult]:
                 await asyncio.wait({ack_task})  # never talk over our own "Okay."
             if hold_task is not None:
                 await asyncio.wait({hold_task})  # or over "One moment."
-            await self._wait_for_floor()
+            if self._patient():
+                await self._wait_for_floor(
+                    answer_gap_s(self._pending_text, self.settings),
+                    self.settings.answer_max_wait_s,
+                )
+            else:
+                await self._wait_for_floor()
             if not text:
                 self._post(TurnEvent.PLAYBACK_DONE, label)
                 return
@@ -723,12 +754,15 @@ class CallSession[R: AgentResult]:
 
         self._speak_task = self._spawn(speak(), "speak")
 
-    async def _wait_for_floor(self) -> None:
-        """Until the candidate has been quiet for FLOOR_GAP_S (or FLOOR_MAX_WAIT_S passed)."""
-        deadline = time.monotonic() + FLOOR_MAX_WAIT_S
+    async def _wait_for_floor(
+        self, gap_s: float = FLOOR_GAP_S, max_wait_s: float = FLOOR_MAX_WAIT_S
+    ) -> None:
+        """Until the candidate has been quiet for `gap_s` (or `max_wait_s` passed). If they
+        speak again meanwhile, their words arrive as an utterance and merge into this turn."""
+        deadline = time.monotonic() + max_wait_s
         while time.monotonic() < deadline:
             quiet_for = time.monotonic() - (self.vad.last_voice_at or 0.0)
-            if not self.vad.in_speech and quiet_for >= FLOOR_GAP_S:
+            if not self.vad.in_speech and quiet_for >= gap_s:
                 return
             await asyncio.sleep(0.05)
 

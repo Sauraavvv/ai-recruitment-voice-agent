@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.database.models.enums import CallAttemptType, CallEndReason, CallPurpose, CallStatus
+from app.schemas.telephonic import EvaluationBadge
 
 
 class StartCallsRequest(BaseModel):
@@ -84,6 +85,7 @@ class CallListItem(CallAttemptOut):
     applied_role: str
     has_transcript: bool
     round: RoundRef | None = None  # telephonic calls only
+    evaluation: EvaluationBadge | None = None  # telephonic calls: the AI evaluation (step 6c)
 
 
 class TranscriptEntry(BaseModel):

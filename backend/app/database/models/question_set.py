@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +28,7 @@ class QuestionSet(Base):
     __table_args__ = (
         enum_check("status", QuestionSetStatus, "status"),
         UniqueConstraint("requirement_id", "version"),
+        CheckConstraint("level IS NULL OR level IN ('easy', 'medium', 'hard')", name="level"),
         Index(
             "uq_question_sets_one_draft",
             "requirement_id",
@@ -53,6 +54,8 @@ class QuestionSet(Base):
     )
     model: Mapped[str] = mapped_column(String(100), server_default="")  # the AI model, if any
     jd_hash: Mapped[str] = mapped_column(String(64), server_default="")  # JD it was made from
+    # easy | medium | hard: how hard the AI was asked to make the questions (None: not known)
+    level: Mapped[str | None] = mapped_column(String(8))
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )

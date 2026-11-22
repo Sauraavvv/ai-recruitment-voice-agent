@@ -10,6 +10,7 @@ import { Alert, Button } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { useLoad } from "@/lib/use-load";
 import {
+  type QuestionLevel,
   approveQuestions,
   discardDraft,
   generateQuestions,
@@ -26,7 +27,25 @@ const TYPES: { value: QType; label: string }[] = [
   { value: "logistics", label: "Logistics" },
 ];
 const WEIGHTS: Record<number, string> = { 1: "Nice to have", 2: "Important", 3: "Critical" };
-const COUNTS = [6, 8, 10];
+export const MIN_COUNT = 3;
+export const MAX_COUNT = 12;
+export const LEVELS: { value: QuestionLevel; label: string; hint: string }[] = [
+  {
+    value: "easy",
+    label: "Easy",
+    hint: "Like an HR screening call: what they've worked on, tools used, a recent project.",
+  },
+  {
+    value: "medium",
+    label: "Medium",
+    hint: "Practical: how they did something the job needs, with a real example.",
+  },
+  {
+    value: "hard",
+    label: "Hard",
+    hint: "Specialist: trade-offs, troubleshooting and design choices.",
+  },
+];
 const MAX_QUESTIONS = 15;
 
 // A question while editing; `key` keeps React rows stable before the server assigns an id
@@ -66,6 +85,7 @@ export function TelephonicCard({
   const [problem, setProblem] = useState<string | null>(null);
   const [count, setCount] = useState(8);
   const [focus, setFocus] = useState("");
+  const [level, setLevel] = useState<QuestionLevel>("easy");
   const [confirm, setConfirm] = useState<"regenerate" | "discard" | null>(null);
 
   const draft = data?.draft ?? null;
@@ -88,7 +108,7 @@ export function TelephonicCard({
 
   const generate = () =>
     run("generate", async () => {
-      await generateQuestions(requirementId, count, focus);
+      await generateQuestions(requirementId, count, focus, level);
       setEditing(null);
       reload();
       notify("success", "Questions ready. Check them, then approve.");
@@ -165,11 +185,13 @@ export function TelephonicCard({
           {approved && (
             <span className="rounded-full bg-green-500/10 px-2.5 py-1 font-medium text-green-300">
               Approved · v{approved.version} · {shortDate(approved.approved_at)}
+              {approved.level && ` · ${levelLabel(approved.level)} level`}
             </span>
           )}
           {(draft || editing) && (
             <span className="rounded-full bg-amber-400/10 px-2.5 py-1 font-medium text-amber-300">
               {draft ? `Draft · v${draft.version}` : "New draft"}
+              {draft?.level && ` · ${levelLabel(draft.level)} level`}
               {dirty && " · unsaved"}
             </span>
           )}
@@ -262,10 +284,17 @@ export function TelephonicCard({
             ) : (
               <Start
                 aiReady={data.ai_ready}
-                count={count}
-                focus={focus}
-                onCount={setCount}
-                onFocus={setFocus}
+                options={
+                  <GenerateOptions
+                    count={count}
+                    level={level}
+                    focus={focus}
+                    onCount={setCount}
+                    onLevel={setLevel}
+                    onFocus={setFocus}
+                    centered
+                  />
+                }
                 onGenerate={() => void generate()}
                 onManual={() => setEditing([blank()])}
               />
@@ -285,14 +314,14 @@ export function TelephonicCard({
         onClose={() => setConfirm(null)}
       >
         <p>The AI writes {count} new questions from the JD. They replace the current draft.</p>
-        <div className="mt-4 space-y-3">
-          <Counts value={count} onChange={setCount} />
-          <input
-            value={focus}
-            onChange={(e) => setFocus(e.target.value)}
-            maxLength={300}
-            placeholder="Anything to focus on? (optional)"
-            className="w-full border-0 border-b border-white/10 bg-transparent px-0 py-2 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#2563eb]"
+        <div className="mt-4">
+          <GenerateOptions
+            count={count}
+            level={level}
+            focus={focus}
+            onCount={setCount}
+            onLevel={setLevel}
+            onFocus={setFocus}
           />
         </div>
       </ConfirmDialog>
@@ -340,48 +369,97 @@ function Generating() {
   );
 }
 
-function Counts({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+export function levelLabel(level: string): string {
+  return LEVELS.find((l) => l.value === level)?.label ?? level;
+}
+
+/** What the AI writes: how many questions (a slider), how hard, and what to focus on. */
+export function GenerateOptions({
+  count,
+  level,
+  focus,
+  onCount,
+  onLevel,
+  onFocus,
+  centered = false,
+}: {
+  count: number;
+  level: QuestionLevel;
+  focus: string;
+  onCount: (n: number) => void;
+  onLevel: (l: QuestionLevel) => void;
+  onFocus: (v: string) => void;
+  centered?: boolean;
+}) {
+  const hint = LEVELS.find((l) => l.value === level)?.hint;
   return (
-    <div
-      role="radiogroup"
-      aria-label="How many questions"
-      className="flex items-center gap-2 text-xs"
-    >
-      <span className="text-zinc-500">Questions</span>
-      {COUNTS.map((n) => (
-        <button
-          key={n}
-          type="button"
-          role="radio"
-          aria-checked={value === n}
-          onClick={() => onChange(n)}
-          className={`rounded-full border px-3 py-1 transition ${
-            value === n
-              ? "border-[#2563eb] bg-[#2563eb]/15 text-white"
-              : "border-white/10 text-zinc-400 hover:border-white/25 hover:text-zinc-200"
-          }`}
-        >
-          {n}
-        </button>
-      ))}
+    <div className={`w-full max-w-md space-y-4 text-left ${centered ? "mx-auto" : ""}`}>
+      <label className="block text-xs">
+        <span className="flex items-baseline justify-between">
+          <span className="text-zinc-500">Questions</span>
+          <span className="font-display text-sm font-semibold text-white tabular-nums">
+            {count}
+          </span>
+        </span>
+        <input
+          type="range"
+          min={MIN_COUNT}
+          max={MAX_COUNT}
+          step={1}
+          value={count}
+          onChange={(e) => onCount(Number(e.target.value))}
+          aria-label="How many questions"
+          className="mt-2 w-full cursor-pointer accent-[#2563eb]"
+        />
+        <span className="flex justify-between text-[11px] text-zinc-600 tabular-nums">
+          <span>{MIN_COUNT}</span>
+          <span>{MAX_COUNT}</span>
+        </span>
+      </label>
+
+      <div className="text-xs">
+        <span className="text-zinc-500">Level</span>
+        <div role="radiogroup" aria-label="How hard" className="mt-2 grid grid-cols-3 gap-1.5">
+          {LEVELS.map((l) => (
+            <button
+              key={l.value}
+              type="button"
+              role="radio"
+              aria-checked={level === l.value}
+              onClick={() => onLevel(l.value)}
+              className={`rounded-lg border px-3 py-1.5 transition ${
+                level === l.value
+                  ? "border-[#2563eb] bg-[#2563eb]/15 text-white"
+                  : "border-white/10 text-zinc-400 hover:border-white/25 hover:text-zinc-200"
+              }`}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+        {hint && <p className="mt-1.5 text-zinc-500">{hint}</p>}
+      </div>
+
+      <input
+        value={focus}
+        onChange={(e) => onFocus(e.target.value)}
+        maxLength={300}
+        placeholder="Anything to focus on? e.g. B2B sales, Excel (optional)"
+        aria-label="What to focus on"
+        className="w-full border-0 border-b border-white/10 bg-transparent px-0 py-2 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#2563eb]"
+      />
     </div>
   );
 }
 
 function Start({
   aiReady,
-  count,
-  focus,
-  onCount,
-  onFocus,
+  options,
   onGenerate,
   onManual,
 }: {
   aiReady: boolean;
-  count: number;
-  focus: string;
-  onCount: (n: number) => void;
-  onFocus: (v: string) => void;
+  options: ReactNode;
   onGenerate: () => void;
   onManual: () => void;
 }) {
@@ -394,15 +472,7 @@ function Start({
           change anything, then approve.
         </p>
         <div className="mt-6 flex flex-col items-center gap-4">
-          <Counts value={count} onChange={onCount} />
-          <input
-            value={focus}
-            onChange={(e) => onFocus(e.target.value)}
-            maxLength={300}
-            placeholder="Anything to focus on? e.g. B2B sales, Excel (optional)"
-            aria-label="What to focus on"
-            className="w-full max-w-md border-0 border-b border-white/10 bg-transparent px-0 py-2 text-center text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#2563eb]"
-          />
+          {options}
           <div className="flex flex-wrap justify-center gap-2">
             <Button
               disabled={!aiReady}

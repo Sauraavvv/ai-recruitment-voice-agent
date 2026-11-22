@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { RoundAnswers } from "@/components/round-answers";
+import { AI_NOTE, EvaluationBadge } from "@/components/round-evaluation";
 import {
   MAX_CALLS_PER_ACTION,
   StartCallsDialog,
@@ -61,6 +62,15 @@ export function canStart(row: RoundRow): boolean {
   return row.eligibility.can_call || OVERRIDABLE.has(row.eligibility.reason ?? "");
 }
 
+/** Highest AI score first; rows without a score keep their order, after the scored ones. */
+export function byScore(rows: RoundRow[]): RoundRow[] {
+  const score = (r: RoundRow) => r.evaluation?.score ?? -1;
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => score(b.r) - score(a.r) || a.i - b.i)
+    .map(({ r }) => r);
+}
+
 /** The telephonic round's calls on the requirement page: the interested candidates, where
  * each stands, call buttons, and each finished call's answers. */
 export function TelephonicCalls({
@@ -73,11 +83,14 @@ export function TelephonicCalls({
   const [targets, setTargets] = useState<CallTarget[] | null>(null);
   const [filter, setFilter] = useState<Group | "all">("all");
   const [open, setOpen] = useState<string | null>(null);
+  const [sortByScore, setSortByScore] = useState(false);
   const { data, error, reload } = useLoad(`round-roster:${requirementId}:${refreshKey}`, () =>
     telephonicRoster(requirementId),
   );
   const rows = useMemo(() => data?.rows ?? [], [data]);
-  const live = rows.some((r) => r.status === "queued" || r.status === "on_call");
+  const live = rows.some(
+    (r) => r.status === "queued" || r.status === "on_call" || r.evaluation?.state === "pending",
+  );
   usePolling(reload, live);
 
   const counts = useMemo(() => {
@@ -92,7 +105,9 @@ export function TelephonicCalls({
     return out;
   }, [rows]);
   const notCalled = rows.filter((r) => r.status === "not_called" && r.eligibility.can_call);
-  const shown = filter === "all" ? rows : rows.filter((r) => GROUP_OF[r.status] === filter);
+  const filtered = filter === "all" ? rows : rows.filter((r) => GROUP_OF[r.status] === filter);
+  const shown = sortByScore ? byScore(filtered) : filtered;
+  const scored = rows.some((r) => r.evaluation?.score != null);
   const starter: Starter = (ids, options) => startTelephonicCalls(requirementId, ids, options);
 
   if (data && data.approved_version == null) return null; // nothing to ask yet
@@ -152,6 +167,21 @@ export function TelephonicCalls({
                   {g.label}
                 </Tab>
               ))}
+              {scored && (
+                <button
+                  type="button"
+                  onClick={() => setSortByScore(!sortByScore)}
+                  aria-pressed={sortByScore}
+                  title={AI_NOTE}
+                  className={`ml-auto rounded-lg px-2.5 py-1 text-xs transition ${
+                    sortByScore
+                      ? "bg-white/10 text-white"
+                      : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  {sortByScore ? "Sorted by AI score" : "Sort by AI score"}
+                </button>
+              )}
             </div>
             {shown.length === 0 ? (
               <p className="py-8 text-center text-sm text-zinc-500">Nobody here.</p>
@@ -167,6 +197,7 @@ export function TelephonicCalls({
                       setOpen(open === r.last_call?.id ? null : (r.last_call?.id ?? null))
                     }
                     onCall={() => setTargets([{ id: r.candidate_id, name: r.name }])}
+                    onEvaluated={reload}
                   />
                 ))}
               </ul>
@@ -193,12 +224,14 @@ export function RoundRowView({
   open,
   onToggle,
   onCall,
+  onEvaluated,
 }: {
   row: RoundRow;
   current: number | null;
   open: boolean;
   onToggle: () => void;
   onCall: () => void;
+  onEvaluated?: () => void;
 }) {
   const status = ROUND_STATUS[r.status];
   const last = r.last_call;
@@ -240,6 +273,7 @@ export function RoundRowView({
           >
             {status.label}
           </span>
+          <EvaluationBadge badge={r.evaluation} />
           {when && <span className="text-xs text-zinc-500">{when}</span>}
           {last?.version != null && (
             <span
@@ -290,6 +324,7 @@ export function RoundRowView({
         <div className="px-3 pb-4 md:pl-[60px]">
           <RoundAnswers
             attemptId={last.id}
+            onEvaluated={onEvaluated}
             transcriptHref={
               last.has_transcript ? `/candidates/${r.candidate_id}?call=${last.id}` : undefined
             }

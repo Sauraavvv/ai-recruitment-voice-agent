@@ -5,10 +5,11 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import {
   RoundRowView,
+  byScore,
   canStart,
 } from "@/app/(recruiter)/clients/[id]/requirements/[rid]/telephonic-calls";
 import { RoundAnswersView } from "@/components/round-answers";
-import type { CallAnswers, RoundRow } from "@/types";
+import type { CallAnswers, EvaluationResult, RoundEvaluation, RoundRow } from "@/types";
 
 afterEach(cleanup);
 
@@ -167,5 +168,174 @@ describe("RoundAnswersView", () => {
     expect(screen.getByRole("link", { name: "Transcript" }).getAttribute("href")).toBe(
       "/candidates/c1?call=a1",
     );
+  });
+});
+
+describe("AI evaluation", () => {
+  const badge = (score: number, verdict: "strong_fit" | "possible_fit" | "not_a_fit") => ({
+    call_attempt_id: "a1",
+    state: "done" as const,
+    score,
+    verdict,
+    incomplete: false,
+  });
+
+  it("shows the verdict and score on a row, marked as the AI's", () => {
+    render(
+      <ul>
+        <RoundRowView
+          row={row({
+            status: "incomplete",
+            last_call: DONE_CALL,
+            evaluation: { ...badge(58, "possible_fit"), incomplete: true },
+          })}
+          current={1}
+          open={false}
+          onToggle={() => {}}
+          onCall={() => {}}
+        />
+      </ul>,
+    );
+    const shown = screen.getByText(/Possible fit · 58/);
+    expect(shown.textContent).toContain("incomplete");
+    expect(shown.getAttribute("title")).toMatch(/AI recommendation — the recruiter decides/);
+  });
+
+  it("sorts by score, unscored rows last in their order", () => {
+    const rows = [
+      row({ candidate_id: "none1" }),
+      row({ candidate_id: "low", evaluation: badge(30, "not_a_fit") }),
+      row({ candidate_id: "none2" }),
+      row({ candidate_id: "high", evaluation: badge(82, "strong_fit") }),
+    ];
+    expect(byScore(rows).map((r) => r.candidate_id)).toEqual(["high", "low", "none1", "none2"]);
+  });
+
+  const result: EvaluationResult = {
+    score: 47,
+    verdict: "possible_fit",
+    incomplete: true,
+    strengths: "Knows RAG basics.",
+    gaps: "No depth on drift.",
+    not_covered: ["Last question?"],
+    questions: [
+      {
+        question_id: "q1",
+        question: "Tell me about a RAG pipeline you built.",
+        weight: 3,
+        status: "partial",
+        score: 3,
+        quote: "with Pinecone",
+        reason: "Names a vector store, little else.",
+        rule: "model",
+        checked: true,
+        from_earlier_call: false,
+      },
+      {
+        question_id: "q2",
+        question: "How do you debug drift?",
+        weight: 2,
+        status: "dont_know",
+        score: 0,
+        quote: "",
+        reason: "Said they don't know.",
+        rule: "dont_know",
+        checked: false,
+        from_earlier_call: false,
+      },
+      {
+        question_id: "q3",
+        question: "Last question?",
+        weight: 1,
+        status: "not_asked",
+        score: null,
+        quote: "",
+        reason: "Not asked on the call.",
+        rule: "not_asked",
+        checked: true,
+        from_earlier_call: false,
+      },
+    ],
+    model: "m",
+    rubric_version: 2,
+    rubric_hash: "h",
+    evaluated_at: new Date().toISOString(),
+  };
+
+  function answers(evaluation: RoundEvaluation): CallAnswers {
+    return {
+      call_attempt_id: "a1",
+      candidate_id: "c1",
+      question_set_id: "s1",
+      version: 2,
+      answers: result.questions.map((q) => ({
+        question_id: q.question_id,
+        question: q.question,
+        status: q.status,
+        answer: q.status === "not_asked" ? "" : "I built one. With Pinecone.",
+        follow_up_asked: false,
+        follow_up: null,
+        checked: q.checked,
+        from_earlier_call: false,
+      })),
+      candidate_questions: [],
+      summary: null,
+      finalized: true,
+      call_status: "completed",
+      end_reason: "max_duration",
+      start_time: null,
+      duration_seconds: 300,
+      evaluation,
+    };
+  }
+
+  it("shows the overall verdict and each answer's score, reason and quote", () => {
+    const onReevaluate = vi.fn();
+    render(
+      <RoundAnswersView
+        data={answers({ state: "done", result, error: null, requested_at: null })}
+        onReevaluate={onReevaluate}
+      />,
+    );
+    expect(screen.getByText("Possible fit · 47/100")).toBeTruthy();
+    expect(screen.getByText("Incomplete")).toBeTruthy();
+    expect(screen.getByText("AI recommendation — the recruiter decides")).toBeTruthy();
+    expect(screen.getByText("Knows RAG basics.")).toBeTruthy();
+    expect(screen.getByText(/Not asked, so not scored: Last question\?/)).toBeTruthy();
+    expect(screen.getByText("3/5")).toBeTruthy();
+    expect(screen.getByText(/Names a vector store/)).toBeTruthy();
+    expect(screen.getByText(/“with Pinecone”/)).toBeTruthy();
+    expect(screen.getByText("0/5")).toBeTruthy();
+    expect(screen.queryByText("Not asked on the call.")).toBeNull(); // no score for it
+    fireEvent.click(screen.getByRole("button", { name: "Re-evaluate" }));
+    expect(onReevaluate).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the old result while evaluating again, and says when it failed", () => {
+    const { rerender } = render(
+      <RoundAnswersView
+        data={answers({ state: "pending", result, error: null, requested_at: null })}
+        onReevaluate={() => {}}
+      />,
+    );
+    expect(screen.getByText("Possible fit · 47/100")).toBeTruthy();
+    expect(screen.getByText("Evaluating again…")).toBeTruthy();
+    const button = screen.getByRole("button", { name: "Evaluating…" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+
+    rerender(
+      <RoundAnswersView
+        data={answers({
+          state: "failed",
+          result: null,
+          error: "ai_unavailable",
+          requested_at: null,
+        })}
+        onReevaluate={() => {}}
+      />,
+    );
+    expect(screen.getByText("The AI evaluation didn't finish.")).toBeTruthy();
+    expect(screen.getByText(/the AI service was busy/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Evaluate" })).toBeTruthy();
   });
 });

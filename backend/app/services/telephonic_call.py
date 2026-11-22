@@ -68,9 +68,29 @@ def best_answers(answer_lists: list[list[dict[str, Any]]]) -> dict[str, dict[str
     return out
 
 
-async def _prior_answers(session: AsyncSession, attempt: CallAttempt) -> dict[str, dict[str, Any]]:
+def open_round(
+    calls: list[tuple[int, list[dict[str, Any]]]], *, callback: bool = False
+) -> list[tuple[int, list[dict[str, Any]]]]:
+    """The earlier calls (oldest first) that belong to the round still open. A call that asked
+    every question finished its round, so the next call starts a new one ("Call again" after a
+    done round asks everything again). A call cut short leaves it open, and a callback always
+    continues the call before it."""
+    out: list[tuple[int, list[dict[str, Any]]]] = []
+    for i, (number, answers) in enumerate(calls):
+        out.append((number, answers))
+        finished = bool(answers) and all(a.get("status") != "not_asked" for a in answers)
+        if finished and not (callback and i == len(calls) - 1):
+            out = []
+    return out
+
+
+async def earlier_calls(
+    session: AsyncSession, attempt: CallAttempt
+) -> list[tuple[int, list[dict[str, Any]]]]:
+    """Answers of the earlier calls of the same round (same question set), oldest first."""
     rows = await session.execute(
-        select(Conversation.extracted_data)
+        select(CallAttempt.attempt_number, Conversation.extracted_data)
+        .select_from(Conversation)
         .join(CallAttempt, CallAttempt.id == Conversation.call_attempt_id)
         .where(
             CallAttempt.candidate_id == attempt.candidate_id,
@@ -81,12 +101,16 @@ async def _prior_answers(session: AsyncSession, attempt: CallAttempt) -> dict[st
         )
         .order_by(CallAttempt.attempt_number)
     )
-    lists = []
-    for data in rows.scalars():
+    calls = []
+    for number, data in rows.all():
         answers = ((data or {}).get("telephonic") or {}).get("answers")
         if isinstance(answers, list):
-            lists.append([a for a in answers if isinstance(a, dict)])
-    return best_answers(lists)
+            calls.append((int(number), [a for a in answers if isinstance(a, dict)]))
+    return open_round(calls, callback=attempt.attempt_type == CallAttemptType.CALLBACK)
+
+
+async def _prior_answers(session: AsyncSession, attempt: CallAttempt) -> dict[str, dict[str, Any]]:
+    return best_answers([answers for _number, answers in await earlier_calls(session, attempt)])
 
 
 async def for_attempt(session: AsyncSession, attempt: CallAttempt) -> TelephonicContext:

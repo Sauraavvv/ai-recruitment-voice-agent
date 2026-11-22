@@ -91,7 +91,10 @@ async def test_a_whole_round() -> None:
     follow = "Which product was it, and who were the customers?"
     llm.push(t("partial", follow_up=follow))
     reply = await m.handle_utterance("Software.")
-    assert (reply.text, reply.ask_kind) == (follow, AskKind.CLARIFY)
+    assert (reply.text, reply.ask_kind) == (
+        "Just one quick follow-up: which product was it, and who were the customers?",
+        AskKind.CLARIFY,
+    )
     llm.push(t("answer"))
     reply = await m.handle_utterance("A billing app, to grocery stores.")
     assert reply.text == "Thanks. Next, how do you find new customers?"
@@ -174,6 +177,67 @@ async def test_at_most_one_follow_up() -> None:
     reply = await m.handle_utterance("A thing.")
     assert reply.text == "Thanks. Next, how do you find new customers?"
     assert answers(m)["q1"] == ("partial", "Something. A thing.")
+
+
+async def test_at_most_two_follow_ups_per_call() -> None:
+    llm = ScriptedLLM()
+    m = make(llm)
+    await to_questions(m, llm)
+    for _ in range(2):  # q1 and q2: a follow-up each
+        llm.push(t("partial", follow_up="Which one?"))
+        reply = await m.handle_utterance("Something.")
+        assert reply.text == "Just one quick follow-up: which one?"
+        llm.push(t("answer"))
+        await m.handle_utterance("This one.")
+    llm.push(t("partial", follow_up="Which one?"))  # q3: none left
+    reply = await m.handle_utterance("Something.")
+    assert reply.phase is Phase.CLOSING
+    assert answers(m)["q3"] == ("partial", "Something.")
+
+
+async def test_a_real_answer_gets_no_follow_up() -> None:
+    llm = ScriptedLLM()
+    m = make(llm)
+    await to_questions(m, llm)
+    llm.push(t("partial", follow_up="Who were the customers?"))
+    long = (
+        "I sold a billing and stock app to small grocery stores across Pune for two years, "
+        "mostly by visiting the owners and showing them a demo on my phone."
+    )
+    reply = await m.handle_utterance(long)
+    assert reply.asked_field == "q2"  # moved on: the rubric's missing detail isn't chased
+    assert answers(m)["q1"] == ("partial", long)
+
+
+async def test_pushback_on_a_follow_up_moves_on() -> None:
+    """Real call: "There's only four questions, why a fifth?" → the agent explained, then asked
+    the main question again. Now it moves on."""
+    llm = ScriptedLLM()
+    m = make(llm)
+    await to_questions(m, llm)
+    llm.push(t("partial", follow_up="Which product?"))
+    await m.handle_utterance("Software.")
+    llm.push(
+        t(
+            "asks_question",
+            reply="That was a short follow-up on your answer.",
+            candidate_question="why another question",
+        )
+    )
+    reply = await m.handle_utterance("Why are you asking a fifth question?")
+    assert reply.text == (
+        "That was a short follow-up on your answer. No problem. Next, how do you find new "
+        "customers?"
+    )
+    assert answers(m)["q1"] == ("partial", "Software.")
+    llm.push(t("off_topic", reply="Let's continue."))
+    await m.handle_utterance("Hmm.")  # q2 asked normally: off topic re-asks it
+    llm.push(t("partial", follow_up="How many?"))
+    await m.handle_utterance("Referrals.")
+    llm.push(t("off_topic", reply="Let's continue."))
+    reply = await m.handle_utterance("I already answered that.")
+    assert reply.text == "No problem. And my last question: which CRM tools have you used?"
+    assert answers(m)["q2"] == ("partial", "Referrals.")
 
 
 async def test_follow_up_must_be_a_question() -> None:

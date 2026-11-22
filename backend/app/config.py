@@ -133,6 +133,12 @@ class Settings(BaseSettings):
     # Open questions need thinking time: wait longer before "are you still there?" (real
     # call 2026-11-22: 7 s re-asked a question while the candidate was still thinking)
     telephonic_silence_timeout_s: float = Field(default=12.0, ge=2, le=60)
+    # While the candidate answers a round question: the quiet needed before the agent replies
+    # (they pause to think mid-answer), more when the words so far end mid-sentence ("…using"),
+    # and the longest the agent waits for that quiet. Screening calls keep 0.7 s / 2.5 s.
+    telephonic_answer_gap_s: float = Field(default=1.8, ge=0.3, le=6)
+    telephonic_unfinished_extra_s: float = Field(default=1.2, ge=0, le=6)
+    telephonic_answer_max_wait_s: float = Field(default=10.0, ge=1, le=30)
     # Calling window in APP_TIMEZONE (phase-05 §6 decision: Mon-Sat 10:00-19:00)
     calling_days: str = "mon,tue,wed,thu,fri,sat"
     calling_hour_start: int = Field(default=10, ge=0, le=23)
@@ -170,6 +176,12 @@ class Settings(BaseSettings):
     backchannel_max_ms: int = Field(default=600, ge=0, le=3000)  # "yes"/"okay" shorter than this
     greeting_wait_ms: int = Field(default=1200, ge=0, le=5000)  # wait for "Hello?" first
     silence_timeout_s: float = Field(default=7.0, ge=2, le=60)  # no speech after the agent
+    # Quiet needed before replying to an answer to a question (the SCREENING phase), extra when
+    # the answer stops mid-sentence, and the longest wait. The telephonic round sets its own
+    # (for_telephonic_call); these defaults keep screening calls as they were.
+    answer_gap_s: float = Field(default=0.7, ge=0.3, le=6)
+    answer_unfinished_extra_s: float = Field(default=0.0, ge=0, le=6)
+    answer_max_wait_s: float = Field(default=2.5, ge=1, le=30)
     max_utterance_s: float = Field(default=30.0, ge=5, le=120)
     call_wrap_up_s: int = Field(default=600, ge=60, le=3600)  # then read back and close
     stt_unavailable_s: float = Field(default=5.0, ge=1, le=60)
@@ -288,6 +300,9 @@ class Settings(BaseSettings):
                 "max_call_duration_s": self.telephonic_max_call_duration_s,
                 "call_wrap_up_s": self.telephonic_wrap_up_s,
                 "silence_timeout_s": self.telephonic_silence_timeout_s,
+                "answer_gap_s": self.telephonic_answer_gap_s,
+                "answer_unfinished_extra_s": self.telephonic_unfinished_extra_s,
+                "answer_max_wait_s": self.telephonic_answer_max_wait_s,
             }
         )
 

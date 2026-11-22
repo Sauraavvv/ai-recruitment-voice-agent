@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import func, select
 
-from app.api.deps import CurrentUser, EffectiveSettingsDep, RedisDep, SessionDep
+from app.api.deps import CurrentUser, EffectiveSettingsDep, RedisDep, SessionDep, SettingsDep
 from app.api.responses import ok
 from app.config import Settings
 from app.database.models import (
@@ -37,7 +37,7 @@ from app.schemas.common import DataResponse, PageResponse
 from app.schemas.telephonic import CallAnswers
 from app.services import call_service, sync_service, telephonic_calls
 from app.services.errors import conflict, not_found
-from app.utils.queue import enqueue_initiate_call
+from app.utils.queue import enqueue_evaluate_round, enqueue_initiate_call
 from app.voice.session_registry import REGISTRY
 
 router = APIRouter(prefix="/calls", tags=["calls"])
@@ -131,6 +131,9 @@ async def list_calls(
             )
         ).all()
     }
+    badges = await telephonic_calls.call_badges(
+        session, [a.id for a, _, _ in rows if a.purpose == CallPurpose.TELEPHONIC]
+    )
     items = [
         CallAttemptOut.model_validate(a).model_dump()
         | {
@@ -138,6 +141,7 @@ async def list_calls(
             "applied_role": role,
             "has_transcript": a.id in with_transcript,
             "round": rounds.get(a.question_set_id) if a.question_set_id else None,
+            "evaluation": badges.get(a.id),
         }
         for a, name, role in rows
     ]
@@ -200,6 +204,24 @@ async def get_answers(
     """A telephonic round call's answers, question by question, with its summary. 409
     not_telephonic for a screening call."""
     return ok(await telephonic_calls.call_answers(session, user, call_attempt_id))
+
+
+@router.post(
+    "/{call_attempt_id}/evaluate",
+    response_model=DataResponse[CallAnswers],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def reevaluate(
+    call_attempt_id: uuid.UUID, user: CurrentUser, session: SessionDep, settings: SettingsDep
+) -> dict[str, Any]:
+    """Evaluate a finished telephonic round call again with the AI (e.g. after editing a
+    rubric). Returns the answers with the evaluation pending; the previous result stays until
+    the new one is saved. 409 not_finalized / not_telephonic, 503 ai_not_configured."""
+    return ok(
+        await telephonic_calls.reevaluate(
+            session, user, call_attempt_id, settings, enqueue_evaluate_round
+        )
+    )
 
 
 @router.post(

@@ -92,7 +92,9 @@ async def test_generate_edit_approve(authed: AsyncClient) -> None:
     state = (await authed.get(base)).json()["data"]
     assert state | {"draft": None, "approved": None, "has_jd": True, "jd_changed": False} == state
 
-    generated = await authed.post(f"{base}/generate", json={"count": 6, "focus": "B2B"})
+    generated = await authed.post(
+        f"{base}/generate", json={"count": 6, "focus": "B2B", "level": "medium"}
+    )
     assert generated.status_code == 200, generated.text
     draft = generated.json()["data"]
     assert (draft["status"], draft["version"], draft["source"], draft["model"]) == (
@@ -101,6 +103,7 @@ async def test_generate_edit_approve(authed: AsyncClient) -> None:
         "ai",
         "fake",
     )
+    assert draft["level"] == "medium"  # the level asked for is kept with the set
     questions = draft["questions"]
     assert len(questions) == 3
     assert [(q["type"], q["weight"]) for q in questions] == [
@@ -111,6 +114,7 @@ async def test_generate_edit_approve(authed: AsyncClient) -> None:
     assert all(q["id"] for q in questions)
     prompt = fake.calls[0][1].content
     assert "exactly 6 questions" in prompt and "B2B" in prompt and JD in prompt
+    assert "Level: MEDIUM:" in prompt
 
     # the recruiter edits: reorder, change one, drop one, add one
     edited = [questions[1], questions[0] | {"text": "How would you pitch our CRM to a shop?"}]
@@ -130,7 +134,7 @@ async def test_generate_edit_approve(authed: AsyncClient) -> None:
 
     # editing after approval starts version 2; v1 stays the approved one until v2 is approved
     v2 = (await authed.put(f"{base}/draft", json={"questions": edited[:2]})).json()["data"]
-    assert (v2["version"], v2["status"]) == (2, "draft")
+    assert (v2["version"], v2["status"], v2["level"]) == (2, "draft", "medium")  # level kept
     state = (await authed.get(base)).json()["data"]
     assert (state["draft"]["version"], state["approved"]["version"]) == (2, 1)
     await authed.post(f"{base}/approve")
@@ -188,7 +192,12 @@ async def test_validation(authed: AsyncClient) -> None:
     for body in drafts:
         response = await authed.put(f"{base}/draft", json=body)
         assert response.status_code == 422, body
-    requests: list[dict[str, Any]] = [{"count": 3}, {"count": 13}, {"focus": "x" * 301}]
+    requests: list[dict[str, Any]] = [
+        {"count": 2},
+        {"count": 13},
+        {"focus": "x" * 301},
+        {"level": "expert"},
+    ]
     for request in requests:
         response = await authed.post(f"{base}/generate", json=request)
         assert response.status_code == 422, request
@@ -239,3 +248,24 @@ def test_prompt_and_hash() -> None:
         in user.content
     )
     assert jd_hash("a  b\n") == jd_hash("a b")
+
+
+def test_the_level_decides_how_hard_the_questions_are() -> None:
+    from types import SimpleNamespace
+
+    from app.schemas.telephonic import GenerateRequest
+
+    requirement: Any = SimpleNamespace(
+        title="AI Engineer",
+        experience_min=None,
+        experience_max=None,
+        skills=["RAG"],
+        must_haves=[],
+        job_description="Build RAG chatbots.",
+    )
+    _, easy = build_prompt(requirement, GenerateRequest(count=3))  # easy is the default
+    assert "Level: EASY: the level of an HR or recruiter screening call" in easy.content
+    assert "Write exactly 3 questions." in easy.content
+    for level in ("medium", "hard"):
+        _, user = build_prompt(requirement, GenerateRequest(count=6, level=level))
+        assert f"Level: {level.upper()}:" in user.content and "EASY" not in user.content

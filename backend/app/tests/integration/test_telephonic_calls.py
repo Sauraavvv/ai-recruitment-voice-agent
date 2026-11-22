@@ -464,6 +464,37 @@ async def test_a_callback_resumes_the_round(
     assert ctx.telephonic.prior_answers[qid]["answer"] == "A billing app."
 
 
+async def test_calling_again_after_a_finished_round_starts_fresh(
+    admin: AsyncClient, db_session: AsyncSession, enqueued: list[str], sessions: None
+) -> None:
+    """Real call: "Call again" after a round that asked every question said "I only have 0
+    questions left". A finished round is never resumed."""
+    _, people, first = await _queued(admin, db_session)
+    first.call_status, first.end_reason = "completed", "agent_completed"
+    first.retry_evaluated_at = datetime.now(UTC)
+    qid = (await telephonic_call.for_attempt(db_session, first)).questions[0].id
+    answered = {"question_id": qid, "status": "partial", "answer": "Software."}
+    db_session.add(
+        Conversation(
+            call_attempt_id=first.id, extracted_data={"telephonic": {"answers": [answered]}}
+        )
+    )
+    again = _ended(
+        people["ravi"],
+        first.attempt_number + 1,
+        "queued",
+        purpose="telephonic",
+        question_set_id=first.question_set_id,
+    )
+    again.retry_evaluated_at = None
+    db_session.add(again)
+    await db_session.commit()
+
+    ctx = await wh.load_context(again.id, "sid", make_settings())
+    assert ctx.candidate.call_kind == "first"
+    assert ctx.telephonic is not None and ctx.telephonic.prior_answers == {}
+
+
 async def test_the_conversation_built_for_a_round(
     admin: AsyncClient,
     db_session: AsyncSession,

@@ -14,10 +14,19 @@ export async function getTelephonic(requirementId: string) {
   return (await apiFetch<TelephonicState>(base(requirementId), { cache: "no-store" })).data;
 }
 
-/** Ask the AI for questions from the JD (replaces the draft). Can take up to a minute. */
-export async function generateQuestions(requirementId: string, count: number, focus: string) {
-  return (await send<QuestionSet>("POST", `${base(requirementId)}/generate`, { count, focus }))
-    .data;
+export type QuestionLevel = "easy" | "medium" | "hard";
+
+/** Ask the AI for questions from the JD (replaces the draft). Can take up to a minute.
+ *  `level`: how hard (easy = an HR screening call). */
+export async function generateQuestions(
+  requirementId: string,
+  count: number,
+  focus: string,
+  level: QuestionLevel,
+) {
+  return (
+    await send<QuestionSet>("POST", `${base(requirementId)}/generate`, { count, focus, level })
+  ).data;
 }
 
 export async function saveDraft(requirementId: string, questions: QuestionIn[]) {
@@ -61,4 +70,10 @@ export async function startTelephonicCalls(
 export async function callAnswers(attemptId: string) {
   return (await apiFetch<CallAnswers>(`/api/v1/calls/${attemptId}/answers`, { cache: "no-store" }))
     .data;
+}
+
+/** Ask the AI to evaluate a finished round call again (e.g. after a rubric was sharpened).
+ *  Returns the answers with the evaluation pending; the old result stays until the new one. */
+export async function reevaluateCall(attemptId: string) {
+  return (await send<CallAnswers>("POST", `/api/v1/calls/${attemptId}/evaluate`)).data;
 }

@@ -1,7 +1,8 @@
 """ARQ worker configuration.
 
 Run with: arq app.workers.settings.WorkerSettings
-Jobs: initiate_call (Phase 5), finalize_call (Phase 6/7), sync_sheets (Phase 7).
+Jobs: initiate_call (Phase 5), finalize_call (Phase 6/7), sync_sheets (Phase 7),
+evaluate_round (phase-11 step 6c).
 Crons: reconcilers, and the retry dispatcher (Phase 9) every 5 minutes.
 """
 
@@ -26,6 +27,7 @@ from app.workers.call_worker import (
     reconcile_calls,
     reconcile_finalize,
 )
+from app.workers.evaluation_worker import evaluate_round, reconcile_evaluations
 from app.workers.retry_worker import dispatch_retries
 from app.workers.sync_worker import reconcile_sync, sync_sheets
 
@@ -76,6 +78,9 @@ class WorkerSettings:
         # Retries are ours (backoff in sync_logs), not ARQ's; no result kept, so any number of
         # drains can be queued
         func(sync_sheets, max_tries=1, keep_result=0),
+        # Step 6c: one try (a failure is stored and the reconciler retries); no result kept, so
+        # "Re-evaluate" can queue it again
+        func(evaluate_round, max_tries=1, keep_result=0, timeout=600),
     ]
     cron_jobs: ClassVar[list[Any]] = [
         cron(heartbeat, second={0, 30}, run_at_startup=False),
@@ -87,6 +92,8 @@ class WorkerSettings:
         cron(reconcile_sync, minute=set(range(3, 60, 10)), second={45}, run_at_startup=True),
         # Phase 9: due retries and callbacks, missed retry decisions, lost call jobs
         cron(dispatch_retries, minute=set(range(0, 60, 5)), second={50}, run_at_startup=True),
+        # Step 6c: missing, failed or lost evaluations of round calls
+        cron(reconcile_evaluations, minute=set(range(5, 60, 10)), second={20}),
     ]
     on_startup = on_startup
     on_shutdown = on_shutdown

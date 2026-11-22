@@ -219,9 +219,51 @@ async def _print_round(attempt_id: uuid.UUID) -> None:
                 f"retry decision {attempt.retry_decision}"
             )
             print(f"\n--- summary ---\n{conv.summary}\n")
+            await _print_evaluation(attempt_id)
             return
         await asyncio.sleep(1)
     print("\n(not finalized yet: is the worker running? `docker compose logs worker`)")
+
+
+async def _print_evaluation(attempt_id: uuid.UUID) -> None:
+    """The AI evaluation the worker runs after finalization (step 6c), up to 3 minutes."""
+    from sqlalchemy import select
+
+    from app.database.models import Conversation
+    from app.services.telephonic_evaluation import stored
+
+    print("waiting for the AI evaluation…")
+    for _ in range(180):
+        async with get_sessionmaker()() as session:
+            conv = await session.scalar(
+                select(Conversation).where(Conversation.call_attempt_id == attempt_id)
+            )
+        evaluation = stored(conv)
+        state = evaluation.get("state")
+        if state in ("done", "skipped", "failed"):
+            result = evaluation.get("result") or {}
+            if state != "done" or not result:
+                print(f"\n--- AI evaluation: {state} ({evaluation.get('error')}) ---\n")
+                return
+            verdict = str(result.get("verdict") or "").replace("_", " ")
+            model = result.get("model") or "rules only"
+            print(
+                f"\n--- AI evaluation (AI recommendation, the recruiter decides) ---\n"
+                f"{verdict} · {result.get('score')}/100"
+                f"{' · incomplete' if result.get('incomplete') else ''}"
+                f" · rubrics v{result.get('rubric_version')} · {model}"
+            )
+            for n, q in enumerate(result.get("questions") or [], start=1):
+                score = "-" if q.get("score") is None else f"{q['score']}/5"
+                quote = f' "{q["quote"]}"' if q.get("quote") else ""
+                print(f"{n}. {score} (weight {q.get('weight')}) {q.get('reason')}{quote}")
+            for label in ("strengths", "gaps"):
+                if result.get(label):
+                    print(f"{label}: {result[label]}")
+            print()
+            return
+        await asyncio.sleep(1)
+    print("\n(no evaluation yet: `docker compose logs worker | grep evaluat`)")
 
 
 def print_percentiles(metrics: list[dict[str, object]]) -> None:
@@ -266,6 +308,7 @@ async def main(args: argparse.Namespace) -> int:
                 ignore_window=True,
                 purpose=CallPurpose.TELEPHONIC if telephonic else CallPurpose.SCREENING,
                 call_again=args.call_again,
+                override_limit=args.override_limit,
             )
         if not result.ok or result.attempt_id is None:
             print(f"Not started: {result.as_dict()['error']}")
@@ -286,5 +329,10 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="Test Candidate")
     parser.add_argument("--mode", choices=MODES, default="screen")
     parser.add_argument("--call-again", action="store_true", help="telephonic: a second round")
+    parser.add_argument(
+        "--override-limit",
+        action="store_true",
+        help="call beyond max attempts (as the UI's confirm)",
+    )
     parser.add_argument("--no-watch", action="store_true")
     sys.exit(asyncio.run(main(parser.parse_args())))

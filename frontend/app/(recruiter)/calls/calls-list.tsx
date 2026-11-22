@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 
 import { RoundAnswers } from "@/components/round-answers";
+import { AI_NOTE, EvaluationBadge } from "@/components/round-evaluation";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/states";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, Card, PageHeader, inputClass } from "@/components/ui";
@@ -161,6 +162,11 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
                   <th className="py-3 pr-4 font-medium">Started</th>
                   <th className="py-3 pr-4 font-medium">Length</th>
                   {!round && <th className="py-3 pr-4 font-medium">Provider</th>}
+                  {round && (
+                    <th className="py-3 pr-4 font-medium" title={AI_NOTE}>
+                      AI score
+                    </th>
+                  )}
                   <th className="py-3 font-medium">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -217,6 +223,11 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
                           {c.provider_status ?? "—"}
                         </td>
                       )}
+                      {round && (
+                        <td className="py-3 pr-4">
+                          <EvaluationBadge badge={c.evaluation} />
+                        </td>
+                      )}
                       <td className="py-3 text-right whitespace-nowrap">
                         {round && c.has_transcript && (
                           <button
@@ -241,7 +252,7 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
                     {open === c.id && (
                       <tr>
                         <td colSpan={7} className="pt-1 pb-4">
-                          <RoundAnswers attemptId={c.id} />
+                          <RoundAnswers attemptId={c.id} onEvaluated={reload} />
                         </td>
                       </tr>
                     )}

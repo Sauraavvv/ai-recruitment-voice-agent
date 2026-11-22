@@ -48,6 +48,7 @@ from app.services import (
     retry_service,
     screening_job,
     sync_service,
+    telephonic_evaluation,
     telephonic_finalization,
 )
 from app.services.summary_service import generate_summary
@@ -259,7 +260,7 @@ async def finalize_attempt(
         round_call = attempt.purpose == CallPurpose.TELEPHONIC
         already = conv.finalized_at is not None
     if round_call:
-        return await _finalize_round(attempt_id, already=already, settings=settings)
+        return await _finalize_round(attempt_id, already=already, settings=settings, pool=pool)
 
     async with get_sessionmaker()() as session:
         attempt = await session.get(CallAttempt, attempt_id)
@@ -310,8 +311,15 @@ async def finalize_attempt(
     return outcome
 
 
-async def _finalize_round(attempt_id: uuid.UUID, *, already: bool, settings: Settings) -> str:
-    """A telephonic round call: answers kept as stored, no screening fields, no Sheet."""
+async def _finalize_round(
+    attempt_id: uuid.UUID,
+    *,
+    already: bool,
+    settings: Settings,
+    pool: sync_service.JobPool | None,
+) -> str:
+    """A telephonic round call: answers kept as stored, no screening fields, no Sheet. Then the
+    AI evaluation of the answers is queued (step 6c; the reconciler catches a miss)."""
     outcome = "summarized"
     if not already:
         if not await telephonic_finalization.save_final(attempt_id):
@@ -322,6 +330,7 @@ async def _finalize_round(attempt_id: uuid.UUID, *, already: bool, settings: Set
         await telephonic_finalization.save_summary(attempt_id, note)
     except Exception:
         logger.exception("summary_failed", call_attempt_id=str(attempt_id))
+    await telephonic_evaluation.request_after_finalize(attempt_id, settings, pool)
     return outcome
 
 

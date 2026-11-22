@@ -4,11 +4,13 @@
   screening, an approved question set, not already done unless the recruiter confirms. This
   scopes the request to one requirement (access follows it) and picks "everyone not called".
 - `roster`: the requirement's interested candidates with where each stands in the round.
-- `call_answers`: what one round call recorded, question by question.
+- `call_answers`: what one round call recorded, question by question, with its AI evaluation.
+- `reevaluate`: a recruiter asks for the AI evaluation again (step 6c).
 """
 
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import exists, select
@@ -34,6 +36,7 @@ from app.schemas.candidate import Eligibility
 from app.schemas.telephonic import (
     MAX_TELEPHONIC_BATCH,
     CallAnswers,
+    EvaluationBadge,
     RoundAnswer,
     RoundCall,
     RoundRoster,
@@ -41,7 +44,13 @@ from app.schemas.telephonic import (
     RoundStatus,
     TelephonicCallsRequest,
 )
-from app.services import call_service, call_state, requirement_service, telephonic_service
+from app.services import (
+    call_service,
+    call_state,
+    requirement_service,
+    telephonic_evaluation,
+    telephonic_service,
+)
 from app.services.call_service import Ineligible, StartResult
 
 Enqueue = Callable[[str], Awaitable[None]]
@@ -219,6 +228,7 @@ async def roster(
         ).scalars()
     }
     approved = await telephonic_service.latest_approved_id(session, requirement.id)
+    badges = await latest_badges(session, ids)
     rows = []
     for c in candidates:
         attempt = latest.get(c.id)
@@ -253,6 +263,7 @@ async def roster(
                 last_call=last,
                 done_before=c.id in done,
                 eligibility=Eligibility.model_validate(call_service.eligibility_dict(code)),
+                evaluation=badges.get(c.id),
             )
         )
     approved_version = None
@@ -260,6 +271,59 @@ async def roster(
         approved_set = await session.get(QuestionSet, approved)
         approved_version = approved_set.version if approved_set else None
     return RoundRoster(approved_version=approved_version, rows=rows)
+
+
+async def latest_badges(
+    session: AsyncSession, candidate_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, EvaluationBadge]:
+    """Candidate → the evaluation of their latest evaluated round call (a scheduled callback has
+    no answers yet, so the score of the call before it stays on the row)."""
+    if not candidate_ids:
+        return {}
+    rows = await session.execute(
+        select(CallAttempt.candidate_id, CallAttempt.id, Conversation.extracted_data)
+        .join(Conversation, Conversation.call_attempt_id == CallAttempt.id)
+        .where(
+            CallAttempt.candidate_id.in_(candidate_ids),
+            CallAttempt.purpose == CallPurpose.TELEPHONIC.value,
+            Conversation.extracted_data["telephonic"].has_key("evaluation"),
+        )
+        .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())
+    )
+    out: dict[uuid.UUID, EvaluationBadge] = {}
+    for candidate_id, attempt_id, data in rows.all():
+        if candidate_id in out:
+            continue
+        evaluation = ((data or {}).get("telephonic") or {}).get("evaluation")
+        found = telephonic_evaluation.badge(
+            attempt_id, evaluation if isinstance(evaluation, dict) else {}
+        )
+        if found is not None:
+            out[candidate_id] = found
+    return out
+
+
+async def call_badges(
+    session: AsyncSession, attempt_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, EvaluationBadge]:
+    """Call attempt → its own evaluation (the calls list)."""
+    if not attempt_ids:
+        return {}
+    rows = await session.execute(
+        select(Conversation.call_attempt_id, Conversation.extracted_data).where(
+            Conversation.call_attempt_id.in_(attempt_ids),
+            Conversation.extracted_data["telephonic"].has_key("evaluation"),
+        )
+    )
+    out: dict[uuid.UUID, EvaluationBadge] = {}
+    for attempt_id, data in rows.all():
+        evaluation = ((data or {}).get("telephonic") or {}).get("evaluation")
+        found = telephonic_evaluation.badge(
+            attempt_id, evaluation if isinstance(evaluation, dict) else {}
+        )
+        if found is not None:
+            out[attempt_id] = found
+    return out
 
 
 async def call_answers(session: AsyncSession, user: User, attempt_id: uuid.UUID) -> CallAnswers:
@@ -273,7 +337,9 @@ async def call_answers(session: AsyncSession, user: User, attempt_id: uuid.UUID)
     if attempt.purpose != CallPurpose.TELEPHONIC:
         raise AppError(409, "not_telephonic", "This is a screening call, not a telephonic round")
     conv = await session.scalar(
-        select(Conversation).where(Conversation.call_attempt_id == attempt.id)
+        select(Conversation)
+        .where(Conversation.call_attempt_id == attempt.id)
+        .execution_options(populate_existing=True)
     )
     stored = ((conv.extracted_data or {}) if conv else {}).get("telephonic") or {}
     version = stored.get("version")
@@ -293,4 +359,28 @@ async def call_answers(session: AsyncSession, user: User, attempt_id: uuid.UUID)
         end_reason=CallEndReason(attempt.end_reason) if attempt.end_reason else None,
         start_time=attempt.start_time,
         duration_seconds=attempt.duration_seconds,
+        evaluation=telephonic_evaluation.to_out(telephonic_evaluation.stored(conv)),
     )
+
+
+EnqueueEvaluation = Callable[[str, str | None], Awaitable[None]]
+
+
+async def reevaluate(
+    session: AsyncSession,
+    user: User,
+    attempt_id: uuid.UUID,
+    settings: Settings,
+    enqueue: EnqueueEvaluation,
+) -> CallAnswers:
+    """Queue the AI evaluation of a finished round call again (e.g. after a rubric was
+    sharpened). The previous result stays visible until the new one is saved."""
+    answers = await call_answers(session, user, attempt_id)  # access; 409 for a screening call
+    if not answers.finalized:
+        raise AppError(409, "not_finalized", "The call's answers aren't saved yet. Try again soon.")
+    if not settings.groq_keys:
+        raise AppError(503, "ai_not_configured", "The evaluating AI isn't set up yet.")
+    token = datetime.now(UTC).isoformat()
+    await telephonic_evaluation.mark_pending(session, attempt_id, token, user.id)
+    await enqueue(str(attempt_id), token)
+    return await call_answers(session, user, attempt_id)

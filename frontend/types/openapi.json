@@ -2269,6 +2269,50 @@
         }
       }
     },
+    "/api/v1/calls/{call_attempt_id}/evaluate": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Reevaluate",
+        "description": "Evaluate a finished telephonic round call again with the AI (e.g. after editing a\nrubric). Returns the answers with the evaluation pending; the previous result stays until\nthe new one is saved. 409 not_finalized / not_telephonic, 503 ai_not_configured.",
+        "operationId": "reevaluate_api_v1_calls__call_attempt_id__evaluate_post",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CallAnswers_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/calls/{call_attempt_id}/retry": {
       "post": {
         "tags": [
@@ -3260,6 +3304,16 @@
               }
             ],
             "title": "Duration Seconds"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoundEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3698,6 +3752,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RoundRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationBadge"
               },
               {
                 "type": "null"
@@ -6542,6 +6606,179 @@
         ],
         "title": "Eligibility"
       },
+      "EvaluationBadge": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "done",
+              "failed",
+              "skipped"
+            ],
+            "title": "State"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "strong_fit",
+                  "possible_fit",
+                  "not_a_fit"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "incomplete": {
+            "type": "boolean",
+            "title": "Incomplete"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "state",
+          "score",
+          "verdict",
+          "incomplete"
+        ],
+        "title": "EvaluationBadge",
+        "description": "The score on a row: from the latest evaluated call."
+      },
+      "EvaluationResult": {
+        "properties": {
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "strong_fit",
+                  "possible_fit",
+                  "not_a_fit"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "incomplete": {
+            "type": "boolean",
+            "title": "Incomplete"
+          },
+          "strengths": {
+            "type": "string",
+            "title": "Strengths"
+          },
+          "gaps": {
+            "type": "string",
+            "title": "Gaps"
+          },
+          "not_covered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Not Covered"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionScore"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "rubric_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric Version"
+          },
+          "rubric_hash": {
+            "type": "string",
+            "title": "Rubric Hash"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "easy",
+                  "medium",
+                  "hard"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "evaluated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Evaluated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "verdict",
+          "incomplete",
+          "strengths",
+          "gaps",
+          "not_covered",
+          "questions",
+          "model",
+          "rubric_version",
+          "rubric_hash",
+          "evaluated_at"
+        ],
+        "title": "EvaluationResult",
+        "description": "An AI recommendation; the recruiter decides."
+      },
       "GeneralSettings": {
         "properties": {
           "organization_name": {
@@ -6706,7 +6943,7 @@
           "count": {
             "type": "integer",
             "maximum": 12.0,
-            "minimum": 4.0,
+            "minimum": 3.0,
             "title": "Count",
             "default": 8
           },
@@ -6715,6 +6952,16 @@
             "maxLength": 300,
             "title": "Focus",
             "default": ""
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ],
+            "title": "Level",
+            "default": "easy"
           }
         },
         "additionalProperties": false,
@@ -8032,6 +8279,85 @@
         "title": "QuestionIn",
         "description": "A question as the recruiter saves it. A new question has no id yet."
       },
+      "QuestionScore": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "weight": {
+            "type": "integer",
+            "title": "Weight"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "partial",
+              "dont_know",
+              "declined",
+              "not_asked"
+            ],
+            "title": "Status"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "rule": {
+            "type": "string",
+            "enum": [
+              "model",
+              "declined",
+              "dont_know",
+              "no_words",
+              "not_asked"
+            ],
+            "title": "Rule"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
+          },
+          "from_earlier_call": {
+            "type": "boolean",
+            "title": "From Earlier Call",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "question",
+          "weight",
+          "status",
+          "score",
+          "quote",
+          "reason",
+          "rule"
+        ],
+        "title": "QuestionScore"
+      },
       "QuestionSetOut": {
         "properties": {
           "id": {
@@ -8060,6 +8386,22 @@
           "model": {
             "type": "string",
             "title": "Model"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "easy",
+                  "medium",
+                  "hard"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
           },
           "approved_at": {
             "anyOf": [
@@ -9279,6 +9621,58 @@
         "title": "RoundCall",
         "description": "A candidate's latest telephonic round call."
       },
+      "RoundEvaluation": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "done",
+              "failed",
+              "skipped"
+            ],
+            "title": "State"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "RoundEvaluation"
+      },
       "RoundRef": {
         "properties": {
           "requirement_id": {
@@ -9387,6 +9781,16 @@
           },
           "eligibility": {
             "$ref": "#/components/schemas/Eligibility"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationBadge"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
