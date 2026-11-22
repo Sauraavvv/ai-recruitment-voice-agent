@@ -101,6 +101,11 @@ export const CALL_STATUS_TONE: Record<string, string> = {
   cancelled: "bg-white/5 text-zinc-400",
 };
 
+export const CALL_PURPOSE_LABELS: Record<string, string> = {
+  screening: "Screening",
+  telephonic: "Telephonic round",
+};
+
 export const ATTEMPT_TYPE_LABELS: Record<string, string> = {
   initial: "First call",
   manual: "Manual",

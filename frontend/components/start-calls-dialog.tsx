@@ -9,12 +9,22 @@ import { errorMessage } from "@/lib/api";
 import { useLoad } from "@/lib/use-load";
 import { startCalls } from "@/services/calls";
 import { getSettings } from "@/services/settings";
+import type { StartOptions } from "@/services/telephonic";
 import type { SettingsPage, StartCallResult } from "@/types";
 
 export const MAX_CALLS_PER_ACTION = 20;
 const LIMIT_REACHED = "max_attempts_reached";
+const ROUND_DONE = "telephonic_done";
+// Reasons the recruiter may override for one candidate, with the checkbox text
+const OVERRIDES: Record<string, string> = {
+  [LIMIT_REACHED]: "Call anyway (one more attempt beyond the limit)",
+  [ROUND_DONE]: "Call again (a second telephonic round)",
+};
 
 export type CallTarget = { id: string; name: string };
+export type Starter = (ids: string[], options: StartOptions) => Promise<StartCallResult[]>;
+
+const screeningStarter: Starter = (ids, o) => startCalls(ids, o.dryRun, o.overrideLimit);
 
 type Check = { results: StartCallResult[]; settings: SettingsPage | null };
 
@@ -27,10 +37,16 @@ export function StartCallsDialog({
   targets,
   onClose,
   onStarted,
+  starter = screeningStarter,
+  title = "Start screening calls?",
+  note = "The AI assistant introduces itself as an AI and asks the job's screening questions.",
 }: {
   targets: CallTarget[] | null; // null = closed
   onClose: () => void;
   onStarted?: (queued: number) => void;
+  starter?: Starter; // screening calls by default; the telephonic round passes its own
+  title?: string;
+  note?: string;
 }) {
   const notify = useToast();
   const [busy, setBusy] = useState(false);
@@ -38,9 +54,13 @@ export function StartCallsDialog({
   const [overrides, setOverrides] = useState<Set<string>>(new Set());
   const key = targets?.map((t) => t.id).join(",") ?? null;
   // A dry run each time the dialog opens: who could be called right now, and why not
-  const loaded = useLoad<Check>(key && `start-check:${key}`, async () => {
+  const loaded = useLoad<Check>(key && `start-check:${title}:${key}`, async () => {
     const [results, settings] = await Promise.all([
-      startCalls((key as string).split(","), true),
+      starter((key as string).split(","), {
+        dryRun: true,
+        overrideLimit: false,
+        callAgain: false,
+      }),
       getSettings().catch(() => null),
     ]);
     return { results, settings };
@@ -52,7 +72,7 @@ export function StartCallsDialog({
   const ok = check?.results.filter((r) => r.ok) ?? [];
   const skipped = check?.results.filter((r) => !r.ok) ?? [];
   const forced = skipped.filter(
-    (r) => r.error?.code === LIMIT_REACHED && overrides.has(r.candidate_id),
+    (r) => (r.error?.code ?? "") in OVERRIDES && overrides.has(r.candidate_id),
   );
   const toCall = [...ok, ...forced];
 
@@ -73,10 +93,13 @@ export function StartCallsDialog({
   async function confirm() {
     setBusy(true);
     try {
-      const results = await startCalls(
+      const results = await starter(
         toCall.map((r) => r.candidate_id),
-        false,
-        forced.length > 0,
+        {
+          dryRun: false,
+          overrideLimit: forced.some((r) => r.error?.code === LIMIT_REACHED),
+          callAgain: forced.some((r) => r.error?.code === ROUND_DONE),
+        },
       );
       const queued = results.filter((r) => r.ok).length;
       const refused = results.length - queued;
@@ -100,9 +123,7 @@ export function StartCallsDialog({
   return (
     <ConfirmDialog
       open={targets !== null}
-      title={
-        targets && targets.length === 1 ? `Call ${targets[0].name}?` : "Start screening calls?"
-      }
+      title={targets && targets.length === 1 ? `Call ${targets[0].name}?` : title}
       confirmLabel={toCall.length ? `Call ${toCall.length} candidate${plural}` : "Nobody to call"}
       confirmDisabled={!check || toCall.length === 0}
       busy={busy}
@@ -166,7 +187,7 @@ export function StartCallsDialog({
                         {r.error?.message ?? "Can't be called"}
                       </span>
                     </div>
-                    {r.error?.code === LIMIT_REACHED && (
+                    {(r.error?.code ?? "") in OVERRIDES && (
                       <label className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
                         <input
                           type="checkbox"
@@ -174,7 +195,7 @@ export function StartCallsDialog({
                           onChange={() => toggleOverride(r.candidate_id)}
                           className="accent-[#1d4ed8]"
                         />
-                        Call anyway (one more attempt beyond the limit)
+                        {OVERRIDES[r.error?.code ?? ""]}
                       </label>
                     )}
                   </li>
@@ -182,9 +203,7 @@ export function StartCallsDialog({
               </ul>
             </div>
           )}
-          <p className="text-xs text-zinc-500">
-            The AI assistant introduces itself as an AI and asks the job&apos;s screening questions.
-          </p>
+          <p className="text-xs text-zinc-500">{note}</p>
         </div>
       )}
     </ConfirmDialog>

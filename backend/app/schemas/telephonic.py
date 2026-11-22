@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.database.models.enums import QuestionSetStatus
+from app.database.models.enums import CallEndReason, CallStatus, QuestionSetStatus
+from app.schemas.candidate import Eligibility
 
 QuestionType = Literal["experience", "skill", "situational", "logistics"]
 QUESTION_TYPES: tuple[str, ...] = ("experience", "skill", "situational", "logistics")
@@ -127,3 +128,88 @@ class TelephonicCallsRequest(BaseModel):
     override_limit: bool = False
     # The recruiter confirmed a second round for candidates who have done it
     call_again: bool = False
+
+
+# --- The interested candidates and their telephonic round calls (step 6b, build step 4) ---
+
+# Where a candidate stands in the round (from their latest telephonic call):
+#   not_called · queued · on_call · retry_scheduled · callback · done (the round finished) ·
+#   incomplete (answered, but the round didn't finish) · no_answer · declined · opted_out ·
+#   failed
+RoundStatus = Literal[
+    "not_called",
+    "queued",
+    "on_call",
+    "retry_scheduled",
+    "callback",
+    "done",
+    "incomplete",
+    "no_answer",
+    "declined",
+    "opted_out",
+    "failed",
+]
+AnswerStatus = Literal["answered", "partial", "dont_know", "declined", "not_asked"]
+
+
+class RoundCall(BaseModel):
+    """A candidate's latest telephonic round call."""
+
+    id: uuid.UUID
+    attempt_number: int
+    call_status: CallStatus
+    end_reason: CallEndReason | None
+    at: datetime
+    terminal: bool
+    next_retry_at: datetime | None
+    question_set_id: uuid.UUID | None
+    version: int | None  # the question set's version this call asked
+    finalized: bool
+    has_transcript: bool
+    answered: int  # questions with an answer (answered or partly)
+    questions: int
+
+
+class RoundRow(BaseModel):
+    candidate_id: uuid.UUID
+    name: str
+    phone: str
+    status: RoundStatus
+    last_call: RoundCall | None
+    done_before: bool  # finished the round on some call (another one needs a confirmation)
+    eligibility: Eligibility
+
+
+class RoundRoster(BaseModel):
+    """The requirement's interested candidates, for the telephonic round."""
+
+    approved_version: int | None  # the version a new call would ask
+    rows: list[RoundRow]
+
+
+class RoundAnswer(BaseModel):
+    question_id: str
+    question: str
+    status: AnswerStatus
+    answer: str
+    follow_up_asked: bool = False
+    follow_up: str | None = None
+    checked: bool = True  # False: kept as said, the AI was busy on that turn
+    from_earlier_call: bool = False
+
+
+class CallAnswers(BaseModel):
+    """What a telephonic round call recorded, question by question."""
+
+    call_attempt_id: uuid.UUID
+    candidate_id: uuid.UUID
+    question_set_id: uuid.UUID | None
+    version: int | None
+    answers: list[RoundAnswer]
+    candidate_questions: list[str]
+    summary: str | None
+    finalized: bool
+    call_status: CallStatus
+    end_reason: CallEndReason | None
+    start_time: datetime | None
+    duration_seconds: int | None

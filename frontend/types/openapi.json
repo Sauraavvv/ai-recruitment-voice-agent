@@ -1590,6 +1590,50 @@
         }
       }
     },
+    "/api/v1/requirements/{requirement_id}/telephonic/candidates": {
+      "get": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Telephonic Candidates",
+        "description": "The requirement's interested candidates and where each stands in the round: status,\nlatest round call (and the question set version it asked), whether they can be called.",
+        "operationId": "telephonic_candidates_api_v1_requirements__requirement_id__telephonic_candidates_get",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_RoundRoster_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "tags": [
@@ -2146,6 +2190,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DataResponse_CallTranscript_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calls/{call_attempt_id}/answers": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Get Answers",
+        "description": "A telephonic round call's answers, question by question, with its summary. 409\nnot_telephonic for a screening call.",
+        "operationId": "get_answers_api_v1_calls__call_attempt_id__answers_get",
+        "parameters": [
+          {
+            "name": "call_attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_CallAnswers_"
                 }
               }
             }
@@ -3054,6 +3142,125 @@
           "file"
         ],
         "title": "Body_upload_import_api_v1_candidates_import_post"
+      },
+      "CallAnswers": {
+        "properties": {
+          "call_attempt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Call Attempt Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "question_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Set Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/RoundAnswer"
+            },
+            "type": "array",
+            "title": "Answers"
+          },
+          "candidate_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Candidate Questions"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "finalized": {
+            "type": "boolean",
+            "title": "Finalized"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "call_attempt_id",
+          "candidate_id",
+          "question_set_id",
+          "version",
+          "answers",
+          "candidate_questions",
+          "summary",
+          "finalized",
+          "call_status",
+          "end_reason",
+          "start_time",
+          "duration_seconds"
+        ],
+        "title": "CallAnswers",
+        "description": "What a telephonic round call recorded, question by question."
       },
       "CallAttemptOut": {
         "properties": {
@@ -5717,6 +5924,18 @@
         ],
         "title": "DataResponse[BackfillResult]"
       },
+      "DataResponse_CallAnswers_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CallAnswers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[CallAnswers]"
+      },
       "DataResponse_CallAttemptOut_": {
         "properties": {
           "data": {
@@ -5909,6 +6128,18 @@
           "data"
         ],
         "title": "DataResponse[RequirementOut]"
+      },
+      "DataResponse_RoundRoster_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RoundRoster"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[RoundRoster]"
       },
       "DataResponse_SettingsOut_": {
         "properties": {
@@ -8854,6 +9085,262 @@
         "type": "object",
         "title": "RetryUpdate",
         "description": "PATCH body for the retry section: fields left out are unchanged."
+      },
+      "RoundAnswer": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "partial",
+              "dont_know",
+              "declined",
+              "not_asked"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "follow_up_asked": {
+            "type": "boolean",
+            "title": "Follow Up Asked",
+            "default": false
+          },
+          "follow_up": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
+          },
+          "from_earlier_call": {
+            "type": "boolean",
+            "title": "From Earlier Call",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "question",
+          "status",
+          "answer"
+        ],
+        "title": "RoundAnswer"
+      },
+      "RoundCall": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "call_status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "terminal": {
+            "type": "boolean",
+            "title": "Terminal"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "question_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Set Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "finalized": {
+            "type": "boolean",
+            "title": "Finalized"
+          },
+          "has_transcript": {
+            "type": "boolean",
+            "title": "Has Transcript"
+          },
+          "answered": {
+            "type": "integer",
+            "title": "Answered"
+          },
+          "questions": {
+            "type": "integer",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "attempt_number",
+          "call_status",
+          "end_reason",
+          "at",
+          "terminal",
+          "next_retry_at",
+          "question_set_id",
+          "version",
+          "finalized",
+          "has_transcript",
+          "answered",
+          "questions"
+        ],
+        "title": "RoundCall",
+        "description": "A candidate's latest telephonic round call."
+      },
+      "RoundRoster": {
+        "properties": {
+          "approved_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Version"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RoundRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved_version",
+          "rows"
+        ],
+        "title": "RoundRoster",
+        "description": "The requirement's interested candidates, for the telephonic round."
+      },
+      "RoundRow": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_called",
+              "queued",
+              "on_call",
+              "retry_scheduled",
+              "callback",
+              "done",
+              "incomplete",
+              "no_answer",
+              "declined",
+              "opted_out",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "last_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoundCall"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "done_before": {
+            "type": "boolean",
+            "title": "Done Before"
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/Eligibility"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "name",
+          "phone",
+          "status",
+          "last_call",
+          "done_before",
+          "eligibility"
+        ],
+        "title": "RoundRow"
       },
       "RowIssue": {
         "properties": {

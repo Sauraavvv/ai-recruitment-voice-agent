@@ -1,5 +1,12 @@
 import { apiFetch, send } from "@/lib/api";
-import type { QuestionIn, QuestionSet, TelephonicState } from "@/types";
+import type {
+  CallAnswers,
+  QuestionIn,
+  QuestionSet,
+  RoundRoster,
+  StartCallResult,
+  TelephonicState,
+} from "@/types";
 
 const base = (requirementId: string) => `/api/v1/requirements/${requirementId}/telephonic`;
 
@@ -23,4 +30,35 @@ export async function discardDraft(requirementId: string) {
 
 export async function approveQuestions(requirementId: string) {
   return (await send<QuestionSet>("POST", `${base(requirementId)}/approve`)).data;
+}
+
+/** The requirement's interested candidates and where each stands in the round. */
+export async function telephonicRoster(requirementId: string) {
+  return (await apiFetch<RoundRoster>(`${base(requirementId)}/candidates`, { cache: "no-store" }))
+    .data;
+}
+
+export type StartOptions = { dryRun: boolean; overrideLimit: boolean; callAgain: boolean };
+
+/** Queue telephonic round calls (each asks the latest approved questions). No ids: up to 20
+ *  interested candidates not called yet. `dryRun`: only check who could be called. */
+export async function startTelephonicCalls(
+  requirementId: string,
+  candidateIds: string[],
+  options: StartOptions,
+) {
+  return (
+    await send<StartCallResult[]>("POST", `${base(requirementId)}/calls`, {
+      candidate_ids: candidateIds,
+      dry_run: options.dryRun,
+      override_limit: options.overrideLimit,
+      call_again: options.callAgain,
+    })
+  ).data;
+}
+
+/** What a telephonic round call recorded, question by question. */
+export async function callAnswers(attemptId: string) {
+  return (await apiFetch<CallAnswers>(`/api/v1/calls/${attemptId}/answers`, { cache: "no-store" }))
+    .data;
 }

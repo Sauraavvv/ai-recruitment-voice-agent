@@ -50,9 +50,11 @@ function shortDate(iso: string | null | undefined) {
 export function TelephonicCard({
   requirementId,
   editHref,
+  onApproved,
 }: {
   requirementId: string;
   editHref: string;
+  onApproved?: () => void; // the calls list below shows the new version
 }) {
   const notify = useToast();
   const { data, error, reload } = useLoad(`telephonic:${requirementId}`, () =>
@@ -119,6 +121,7 @@ export function TelephonicCard({
       setEditing(null);
       reload();
       notify("success", `Questions approved (version ${set.version})`);
+      onApproved?.();
     });
 
   const discard = () =>

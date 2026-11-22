@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { RoundAnswers } from "@/components/round-answers";
 import { ErrorState, SkeletonRows } from "@/components/states";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/components/toast";
@@ -12,6 +13,7 @@ import { errorMessage } from "@/lib/api";
 import {
   ACTIVE_CALL_STATUSES,
   ATTEMPT_TYPE_LABELS,
+  CALL_PURPOSE_LABELS,
   END_REASON_LABELS,
   LIVE_CALL_STATUSES,
   duration,
@@ -64,7 +66,9 @@ export function CallsPanel({
   const notify = useToast();
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);
-  const latest = calls.data?.[0];
+  const [answersOf, setAnswersOf] = useState<string | null>(null);
+  // "Retry call" here is about screening; telephonic round calls start from the requirement
+  const latest = calls.data?.find((c) => c.purpose !== "telephonic");
 
   async function run() {
     if (!pending) return;
@@ -152,6 +156,15 @@ export function CallsPanel({
                 />
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-medium text-white">#{call.attempt_number}</span>
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[11px] ${
+                      call.purpose === "telephonic"
+                        ? "bg-blue-500/10 text-blue-300"
+                        : "bg-white/5 text-zinc-400"
+                    }`}
+                  >
+                    {CALL_PURPOSE_LABELS[call.purpose ?? "screening"]}
+                  </span>
                   <StatusBadge kind="call" status={call.call_status} />
                   <span className="text-xs text-zinc-500">
                     {ATTEMPT_TYPE_LABELS[call.attempt_type] ?? call.attempt_type}
@@ -199,6 +212,16 @@ export function CallsPanel({
                   >
                     Transcript
                   </button>
+                  {call.purpose === "telephonic" && call.call_status === "completed" && (
+                    <button
+                      type="button"
+                      onClick={() => setAnswersOf(answersOf === call.id ? null : call.id)}
+                      aria-expanded={answersOf === call.id}
+                      className="text-xs text-[#93b4ff] hover:underline"
+                    >
+                      {answersOf === call.id ? "Hide answers" : "Answers"}
+                    </button>
+                  )}
                   {CANCELLABLE.has(call.call_status) && (
                     <button
                       type="button"
@@ -218,6 +241,11 @@ export function CallsPanel({
                     </button>
                   )}
                 </div>
+                {answersOf === call.id && (
+                  <div className="mt-3">
+                    <RoundAnswers attemptId={call.id} />
+                  </div>
+                )}
               </li>
             ))}
           </ol>

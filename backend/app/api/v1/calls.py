@@ -27,7 +27,8 @@ from app.schemas.call import (
     StartCallsRequest,
 )
 from app.schemas.common import DataResponse, PageResponse
-from app.services import call_service, sync_service
+from app.schemas.telephonic import CallAnswers
+from app.services import call_service, sync_service, telephonic_calls
 from app.services.errors import conflict, not_found
 from app.utils.queue import enqueue_initiate_call
 from app.voice.session_registry import REGISTRY
@@ -154,6 +155,15 @@ async def get_transcript(call_attempt_id: uuid.UUID, session: SessionDep) -> dic
             "estimated_cost_usd": session_info.get("estimated_cost_usd"),
         }
     )
+
+
+@router.get("/{call_attempt_id}/answers", response_model=DataResponse[CallAnswers])
+async def get_answers(
+    call_attempt_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> dict[str, Any]:
+    """A telephonic round call's answers, question by question, with its summary. 409
+    not_telephonic for a screening call."""
+    return ok(await telephonic_calls.call_answers(session, user, call_attempt_id))
 
 
 @router.post(

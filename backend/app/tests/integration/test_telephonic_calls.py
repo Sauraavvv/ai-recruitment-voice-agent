@@ -691,3 +691,94 @@ async def test_round_calls_never_change_the_screening_numbers(
     await _answered(db_session, attempt, _round(attempt, EndReason.NO_RESPONSE, ["not_asked"]))
     after = await numbers()  # ended, and a telephonic retry is now scheduled
     assert after == before
+
+
+# --- Build step 4: the roster and a call's answers (the UI's data) -----------------------------
+
+
+async def test_the_roster_and_a_calls_answers(
+    admin: AsyncClient, db_session: AsyncSession, enqueued: list[str], sessions: None
+) -> None:
+    rid, people, _ = await _setup(admin, db_session)
+    url = f"/api/v1/requirements/{rid}/telephonic/candidates"
+
+    async def roster() -> dict[str, Any]:
+        response = await admin.get(url)
+        assert response.status_code == 200, response.text
+        data: dict[str, Any] = response.json()["data"]
+        return data
+
+    data = await roster()
+    rows = {r["name"].split()[0].lower(): r for r in data["rows"]}
+    assert data["approved_version"] == 1
+    assert set(rows) == {"ravi", "priya", "neha"}  # interested only (Amit isn't)
+    assert (rows["ravi"]["status"], rows["ravi"]["eligibility"]["can_call"]) == ("not_called", True)
+    assert rows["priya"]["eligibility"]["reason"] == "screening_not_completed"
+    assert rows["neha"]["eligibility"]["reason"] == "opted_out"
+
+    def ravi_of(data: dict[str, Any]) -> dict[str, Any]:
+        row: dict[str, Any] = next(r for r in data["rows"] if r["name"] == "Ravi Kumar")
+        return row
+
+    (result,) = await _call(admin, rid)
+    ravi = ravi_of(await roster())
+    assert ravi["status"] == "queued" and ravi["last_call"]["version"] == 1
+
+    attempt = await db_session.get(CallAttempt, uuid.UUID(result["call_attempt_id"]))
+    assert attempt is not None
+    await _answered(
+        db_session, attempt, _round(attempt, EndReason.COMPLETED, ["answered", "dont_know"])
+    )
+    await _approve(admin, rid, "A newer question.")
+    data = await roster()
+    ravi = ravi_of(data)
+    assert data["approved_version"] == 2
+    assert (ravi["status"], ravi["done_before"]) == ("done", True)
+    assert ravi["eligibility"]["reason"] == "telephonic_done"  # "call again" asks first
+    last = ravi["last_call"]
+    assert (last["version"], last["finalized"], last["answered"], last["questions"]) == (
+        1,
+        True,
+        1,
+        2,
+    )
+
+    answers = (await admin.get(f"/api/v1/calls/{attempt.id}/answers")).json()["data"]
+    assert answers["version"] == 1 and answers["finalized"]
+    assert [(a["question_id"], a["status"]) for a in answers["answers"]] == [
+        ("q1", "answered"),
+        ("q2", "dont_know"),
+    ]
+    assert answers["summary"].startswith("Telephonic round (questions v1).")
+
+    screening = _ended(people["ravi"], 99, "completed")
+    db_session.add(screening)
+    await db_session.commit()
+    response = await admin.get(f"/api/v1/calls/{screening.id}/answers")
+    assert (response.status_code, response.json()["error"]["code"]) == (409, "not_telephonic")
+    assert (await admin.get(f"/api/v1/calls/{uuid.uuid4()}/answers")).status_code == 404
+
+
+def test_where_a_candidate_stands() -> None:
+    from app.services.telephonic_calls import round_status
+
+    def attempt(status: str, end: str | None = None) -> CallAttempt:
+        return CallAttempt(call_status=status, end_reason=end)
+
+    assert round_status(None) == "not_called"
+    cases = {
+        ("queued", None): "queued",
+        ("ringing", None): "on_call",
+        ("retry_scheduled", None): "retry_scheduled",
+        ("callback_requested", None): "callback",
+        ("busy", "busy"): "no_answer",
+        ("exhausted", "no_answer"): "no_answer",
+        ("exhausted", "technical_failure"): "failed",
+        ("completed", "agent_completed"): "done",
+        ("completed", "declined"): "declined",
+        ("completed", "opted_out"): "opted_out",
+        ("completed", "max_duration"): "incomplete",
+        ("completed", "candidate_hangup"): "incomplete",
+    }
+    for (status, end), expected in cases.items():
+        assert round_status(attempt(status, end)) == expected, (status, end)

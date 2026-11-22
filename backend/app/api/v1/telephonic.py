@@ -18,6 +18,7 @@ from app.schemas.telephonic import (
     DraftUpdate,
     GenerateRequest,
     QuestionSetOut,
+    RoundRoster,
     TelephonicCallsRequest,
     TelephonicOut,
 )
@@ -121,3 +122,24 @@ async def start_telephonic_calls(
         voice_ready=voice_ready(request, settings),
     )
     return ok([r.as_dict() for r in results])  # the sheet shows screening calls only
+
+
+@router.get("/candidates", response_model=DataResponse[RoundRoster])
+async def telephonic_candidates(
+    requirement_id: uuid.UUID,
+    user: CurrentUser,
+    session: SessionDep,
+    settings: EffectiveSettingsDep,
+    request: Request,
+) -> dict[str, Any]:
+    """The requirement's interested candidates and where each stands in the round: status,
+    latest round call (and the question set version it asked), whether they can be called."""
+    return ok(
+        await telephonic_calls.roster(
+            session,
+            user,
+            requirement_id,
+            settings,
+            voice_ready=voice_ready(request, settings),
+        )
+    )

@@ -507,6 +507,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/requirements/{requirement_id}/telephonic/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Telephonic Candidates
+         * @description The requirement's interested candidates and where each stands in the round: status,
+         *     latest round call (and the question set version it asked), whether they can be called.
+         */
+        get: operations["telephonic_candidates_api_v1_requirements__requirement_id__telephonic_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs": {
         parameters: {
             query?: never;
@@ -671,6 +692,27 @@ export interface paths {
          * @description The call's transcript (empty for a call nobody answered), and its summary.
          */
         get: operations["get_transcript_api_v1_calls__call_attempt_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calls/{call_attempt_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Answers
+         * @description A telephonic round call's answers, question by question, with its summary. 409
+         *     not_telephonic for a screening call.
+         */
+        get: operations["get_answers_api_v1_calls__call_attempt_id__answers_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1080,6 +1122,40 @@ export interface components {
             job_id?: string | null;
             /** Requirement Id */
             requirement_id?: string | null;
+        };
+        /**
+         * CallAnswers
+         * @description What a telephonic round call recorded, question by question.
+         */
+        CallAnswers: {
+            /**
+             * Call Attempt Id
+             * Format: uuid
+             */
+            call_attempt_id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Question Set Id */
+            question_set_id: string | null;
+            /** Version */
+            version: number | null;
+            /** Answers */
+            answers: components["schemas"]["RoundAnswer"][];
+            /** Candidate Questions */
+            candidate_questions: string[];
+            /** Summary */
+            summary: string | null;
+            /** Finalized */
+            finalized: boolean;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /** Start Time */
+            start_time: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
         };
         /** CallAttemptOut */
         CallAttemptOut: {
@@ -1844,6 +1920,10 @@ export interface components {
         DataResponse_BackfillResult_: {
             data: components["schemas"]["BackfillResult"];
         };
+        /** DataResponse[CallAnswers] */
+        DataResponse_CallAnswers_: {
+            data: components["schemas"]["CallAnswers"];
+        };
         /** DataResponse[CallAttemptOut] */
         DataResponse_CallAttemptOut_: {
             data: components["schemas"]["CallAttemptOut"];
@@ -1908,6 +1988,10 @@ export interface components {
         /** DataResponse[RequirementOut] */
         DataResponse_RequirementOut_: {
             data: components["schemas"]["RequirementOut"];
+        };
+        /** DataResponse[RoundRoster] */
+        DataResponse_RoundRoster_: {
+            data: components["schemas"]["RoundRoster"];
         };
         /** DataResponse[SettingsOut] */
         DataResponse_SettingsOut_: {
@@ -2967,6 +3051,104 @@ export interface components {
             max_callbacks?: number | null;
             /** Alternate Slots */
             alternate_slots?: boolean | null;
+        };
+        /** RoundAnswer */
+        RoundAnswer: {
+            /** Question Id */
+            question_id: string;
+            /** Question */
+            question: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "partial" | "dont_know" | "declined" | "not_asked";
+            /** Answer */
+            answer: string;
+            /**
+             * Follow Up Asked
+             * @default false
+             */
+            follow_up_asked: boolean;
+            /** Follow Up */
+            follow_up?: string | null;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
+            /**
+             * From Earlier Call
+             * @default false
+             */
+            from_earlier_call: boolean;
+        };
+        /**
+         * RoundCall
+         * @description A candidate's latest telephonic round call.
+         */
+        RoundCall: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Attempt Number */
+            attempt_number: number;
+            call_status: components["schemas"]["CallStatus"];
+            end_reason: components["schemas"]["CallEndReason"] | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Terminal */
+            terminal: boolean;
+            /** Next Retry At */
+            next_retry_at: string | null;
+            /** Question Set Id */
+            question_set_id: string | null;
+            /** Version */
+            version: number | null;
+            /** Finalized */
+            finalized: boolean;
+            /** Has Transcript */
+            has_transcript: boolean;
+            /** Answered */
+            answered: number;
+            /** Questions */
+            questions: number;
+        };
+        /**
+         * RoundRoster
+         * @description The requirement's interested candidates, for the telephonic round.
+         */
+        RoundRoster: {
+            /** Approved Version */
+            approved_version: number | null;
+            /** Rows */
+            rows: components["schemas"]["RoundRow"][];
+        };
+        /** RoundRow */
+        RoundRow: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_called" | "queued" | "on_call" | "retry_scheduled" | "callback" | "done" | "incomplete" | "no_answer" | "declined" | "opted_out" | "failed";
+            last_call: components["schemas"]["RoundCall"] | null;
+            /** Done Before */
+            done_before: boolean;
+            eligibility: components["schemas"]["Eligibility"];
         };
         /** RowIssue */
         RowIssue: {
@@ -4402,6 +4584,37 @@ export interface operations {
             };
         };
     };
+    telephonic_candidates_api_v1_requirements__requirement_id__telephonic_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_RoundRoster_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_jobs_api_v1_jobs_get: {
         parameters: {
             query?: never;
@@ -4765,6 +4978,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_CallTranscript_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_answers_api_v1_calls__call_attempt_id__answers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_CallAnswers_"];
                 };
             };
             /** @description Validation Error */

@@ -295,7 +295,7 @@ function Breakdown({ counts }: { counts: Record<Filter, number> }) {
   );
 }
 
-function Tab({
+export function Tab({
   on,
   onClick,
   count,

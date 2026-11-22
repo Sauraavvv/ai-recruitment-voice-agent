@@ -10,6 +10,7 @@ import { usePolling } from "@/hooks/use-polling";
 import {
   ACTIVE_CALL_STATUSES,
   ATTEMPT_TYPE_LABELS,
+  CALL_PURPOSE_LABELS,
   CALL_STATUS_LABELS,
   END_REASON_LABELS,
   duration,
@@ -164,6 +165,7 @@ export function CallsList() {
                       #{c.attempt_number}{" "}
                       <span className="text-xs text-zinc-500">
                         {ATTEMPT_TYPE_LABELS[c.attempt_type] ?? c.attempt_type}
+                        {c.purpose === "telephonic" && ` · ${CALL_PURPOSE_LABELS.telephonic}`}
                       </span>
                     </td>
                     <td className="py-3 pr-4">

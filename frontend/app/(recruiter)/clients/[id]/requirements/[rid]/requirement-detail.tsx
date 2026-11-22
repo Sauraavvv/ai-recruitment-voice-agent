@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 import { ErrorState, Skeleton } from "@/components/states";
 import { BackLink, PageHeader, buttonClass } from "@/components/ui";
@@ -11,6 +12,7 @@ import { getRequirement } from "@/services/requirements";
 
 import { REQUIREMENT_STATUS, RequirementCard, WORK_MODES } from "../requirement-form";
 import { ScreeningCard } from "./screening-card";
+import { TelephonicCalls } from "./telephonic-calls";
 import { TelephonicCard } from "./telephonic-card";
 
 /** Where a requirement's pages live: under its client, or under Jobs (so the sidebar keeps
@@ -35,6 +37,7 @@ export function RequirementView({
   section: Section;
 }) {
   const { data: req, error, reload } = useLoad(`requirement:${rid}`, () => getRequirement(rid));
+  const [approvals, setApprovals] = useState(0);
   const clientId = req?.client_id;
   const { data: client } = useLoad(clientId ? `client:${clientId}` : null, () =>
     getClient(clientId ?? ""),
@@ -95,7 +98,9 @@ export function RequirementView({
         <TelephonicCard
           requirementId={req.id}
           editHref={`${requirementPath(section, req.client_id, rid)}/edit`}
+          onApproved={() => setApprovals((n) => n + 1)}
         />
+        <TelephonicCalls requirementId={req.id} refreshKey={approvals} />
       </div>
     </>
   );

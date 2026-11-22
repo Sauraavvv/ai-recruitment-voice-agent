@@ -69,7 +69,9 @@ export function TranscriptView({
           >
             {attempts.map((a) => (
               <option key={a.id} value={a.id}>
-                #{a.attempt_number} · {formatDate(a.start_time ?? a.created_at)}
+                #{a.attempt_number}
+                {a.purpose === "telephonic" ? " · Telephonic round" : ""} ·{" "}
+                {formatDate(a.start_time ?? a.created_at)}
               </option>
             ))}
           </select>
