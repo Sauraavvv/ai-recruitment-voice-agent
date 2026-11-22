@@ -1,4 +1,4 @@
-/** HireCall mark: rounded voice bars, read as a call in progress. */
+/** CallZest mark: rounded voice bars, read as a call in progress. */
 export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" className={className} aria-hidden="true" fill="currentColor">
@@ -22,7 +22,7 @@ export function Logo({
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <LogoMark className={markClassName} />
-      <span className={`font-display font-semibold tracking-tight ${textClassName}`}>HireCall</span>
+      <span className={`font-display font-semibold tracking-tight ${textClassName}`}>CallZest</span>
     </span>
   );
 }

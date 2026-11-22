@@ -8,7 +8,7 @@ import { LogoMark } from "@/components/logo";
 import { useLoad } from "@/lib/use-load";
 import { logout, me } from "@/services/auth";
 
-const STORAGE_KEY = "hirecall.sidebar.collapsed";
+const STORAGE_KEY = "callzest.sidebar.collapsed";
 
 // 20×20 stroke icons (inline, no icon library)
 const icon = (path: ReactNode) => (
@@ -164,7 +164,7 @@ const LINKS: NavLink[] = [
 ];
 
 // The collapsed choice lives in localStorage; components re-read it when it changes.
-const CHANGE_EVENT = "hirecall:sidebar";
+const CHANGE_EVENT = "callzest:sidebar";
 
 function readCollapsed(): boolean {
   try {
@@ -224,7 +224,7 @@ export function Sidebar() {
           <LogoMark className="h-6 w-6 shrink-0" />
           {!collapsed && (
             <span className="font-display ml-2.5 text-lg font-semibold tracking-tight">
-              HireCall
+              CallZest
             </span>
           )}
         </div>

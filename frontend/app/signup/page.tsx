@@ -5,7 +5,7 @@ import { Logo } from "@/components/logo";
 import { WavePanel } from "../login/wave-panel";
 import { SignupForm } from "./signup-form";
 
-export const metadata = { title: "Sign up · HireCall" };
+export const metadata = { title: "Sign up · CallZest" };
 
 export default function SignupPage() {
   return (

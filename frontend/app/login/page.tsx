@@ -6,7 +6,7 @@ import { Logo } from "@/components/logo";
 import { WavePanel } from "./wave-panel";
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Log in · HireCall" };
+export const metadata = { title: "Log in · CallZest" };
 
 export default function LoginPage() {
   return (

@@ -32,7 +32,7 @@ export function BackendBanner() {
       role="alert"
       className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
     >
-      The HireCall server can&apos;t be reached. Data on this page may be out of date; it will
+      The CallZest server can&apos;t be reached. Data on this page may be out of date; it will
       refresh when the connection is back.
     </div>
   );

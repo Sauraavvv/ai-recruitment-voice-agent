@@ -123,7 +123,7 @@ export function TranscriptView({
                   }`}
                 >
                   <div className="mb-0.5 flex gap-2 text-[11px] text-zinc-500">
-                    <span>{agent ? "HireCall AI" : "Candidate"}</span>
+                    <span>{agent ? "CallZest AI" : "Candidate"}</span>
                     {line.timestamp && <span className="tabular-nums">{time(line.timestamp)}</span>}
                     {line.seq != null && <span className="tabular-nums">line {line.seq}</span>}
                   </div>

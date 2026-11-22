@@ -1,6 +1,6 @@
 import { CallsList } from "../calls/calls-list";
 
-export const metadata = { title: "Telephonic round · HireCall" };
+export const metadata = { title: "Telephonic round · CallZest" };
 
 export default function TelephonicRoundPage() {
   return <CallsList purpose="telephonic" />;

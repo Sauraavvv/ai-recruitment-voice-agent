@@ -1,4 +1,4 @@
-# HireCall
+# CallZest
 
 AI recruitment voice calling agent.
 
@@ -180,7 +180,7 @@ We connected live speech recognition so the AI understands what candidates say o
 
 *Completed 19 November 2026*
 
-HireCall can now place real outbound phone calls with live two-way audio, follow each call's status, and refuse calls that must not be made.
+CallZest can now place real outbound phone calls with live two-way audio, follow each call's status, and refuse calls that must not be made.
 
 ### What was done
 
@@ -213,7 +213,7 @@ HireCall can now place real outbound phone calls with live two-way audio, follow
 
 *Completed 19 November 2026*
 
-The voice, the listening and the conversation now work together on a real phone call: HireCall calls the candidate, holds the screening conversation and saves the transcript and answers.
+The voice, the listening and the conversation now work together on a real phone call: CallZest calls the candidate, holds the screening conversation and saves the transcript and answers.
 
 ### What was done
 

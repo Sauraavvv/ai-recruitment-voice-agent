@@ -4,7 +4,7 @@ import { Muted } from "@/components/ui";
 
 import { ClientDetail } from "./client-detail";
 
-export const metadata = { title: "Client · HireCall" };
+export const metadata = { title: "Client · CallZest" };
 
 export default function ClientPage() {
   // The id is only known at request time, so the client component reads it inside Suspense.

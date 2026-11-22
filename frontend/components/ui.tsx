@@ -1,4 +1,4 @@
-// Shared building blocks in HireCall's look: black page, dark-grey cards, blue primary action.
+// Shared building blocks in CallZest's look: black page, dark-grey cards, blue primary action.
 import type { ComponentProps, ReactNode } from "react";
 import Link from "next/link";
 

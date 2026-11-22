@@ -1,6 +1,6 @@
 """Organizations and sign-up.
 
-- organizations: a company (HR firm) using HireCall; sign-up creates one with its super admin.
+- organizations: a company (HR firm) using CallZest; sign-up creates one with its super admin.
 - users.organization_id (NOT NULL). Accounts that exist before this migration are put in one
   organization named after the Settings page's organization name (or "My organization").
 - users.role: admin becomes super_admin; roles are now super_admin | recruiter.

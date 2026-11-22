@@ -295,7 +295,7 @@ async def test_end_call_without_goodbye_says_the_closing_line() -> None:
     last_say = client.of("response.create")[-1]["response"]["instructions"]
     assert "not contacted again" in last_say
     client.push(
-        {"type": "response.created", "response": {"id": "r2", "metadata": {"source": "hirecall"}}},
+        {"type": "response.created", "response": {"id": "r2", "metadata": {"source": "callzest"}}},
         assistant_item("i2"),
         audio_delta("i2", "r2", 100),
         done("r2"),
@@ -334,7 +334,7 @@ async def test_recruiter_end_and_api_closing() -> None:
     assert "pass what we've covered" in client.of("response.create")[-1]["response"]["instructions"]
     assert session.end_by_recruiter() is False
     client.push(
-        {"type": "response.created", "response": {"id": "r9", "metadata": {"source": "hirecall"}}},
+        {"type": "response.created", "response": {"id": "r9", "metadata": {"source": "callzest"}}},
         assistant_item("i9"),
         audio_delta("i9", "r9", 100),
         done("r9"),
@@ -470,7 +470,7 @@ async def test_opt_out_words_end_the_call_whatever_the_model_does() -> None:
     client.push(
         {
             "type": "response.created",
-            "response": {"id": "ours", "metadata": {"source": "hirecall"}},
+            "response": {"id": "ours", "metadata": {"source": "callzest"}},
         },
         assistant_item("io"),
         audio_delta("io", "ours", 100),
@@ -496,7 +496,7 @@ async def test_callback_plays_the_confirmation_and_ends() -> None:
     await settle()
     assert "we'll call you back on" in client.of("response.create")[-1]["response"]["instructions"]
     client.push(
-        {"type": "response.created", "response": {"id": "r2", "metadata": {"source": "hirecall"}}},
+        {"type": "response.created", "response": {"id": "r2", "metadata": {"source": "callzest"}}},
         assistant_item("i2"),
         audio_delta("i2", "r2", 100),
         done("r2"),

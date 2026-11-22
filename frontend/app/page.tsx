@@ -6,9 +6,9 @@ import { Logo } from "@/components/logo";
 import { WavePanel } from "./login/wave-panel";
 
 export const metadata = {
-  title: "HireCall · AI phone screening for recruiters",
+  title: "CallZest · AI phone screening for recruiters",
   description:
-    "HireCall's AI recruiter calls your candidates, asks your screening questions and hands you structured answers, a transcript and a summary.",
+    "CallZest's AI recruiter calls your candidates, asks your screening questions and hands you structured answers, a transcript and a summary.",
 };
 
 const primaryButton =
@@ -36,7 +36,7 @@ export default function Home() {
 function Header() {
   return (
     <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-      <Link href="/" aria-label="HireCall home">
+      <Link href="/" aria-label="CallZest home">
         <Logo className="text-white" markClassName="h-7 w-7" textClassName="text-xl" />
       </Link>
       <nav className="flex items-center gap-1 text-sm sm:gap-2">
@@ -77,7 +77,7 @@ function Hero() {
             Screen every candidate with one phone call.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-400">
-            HireCall&apos;s AI recruiter calls your candidates, asks your screening questions and
+            CallZest&apos;s AI recruiter calls your candidates, asks your screening questions and
             hands you structured answers, a transcript and a summary. Your team only talks to
             the people worth talking to.
           </p>
@@ -120,7 +120,7 @@ function CallPreview() {
       </div>
       <ol className="mt-5 space-y-3 text-sm">
         <Line who="ai">
-          Hi Priya, this is HireCall, an AI assistant calling about the Backend Developer role.
+          Hi Priya, this is CallZest, an AI assistant calling about the Backend Developer role.
           Is now a good time?
         </Line>
         <Line who="candidate">Yes, go ahead.</Line>
@@ -143,7 +143,7 @@ function Line({ who, children }: { who: "ai" | "candidate"; children: ReactNode 
   const ai = who === "ai";
   return (
     <li className={`flex flex-col ${ai ? "items-start" : "items-end"}`}>
-      <span className="mb-1 text-[11px] text-zinc-500">{ai ? "HireCall AI" : "Candidate"}</span>
+      <span className="mb-1 text-[11px] text-zinc-500">{ai ? "CallZest AI" : "Candidate"}</span>
       <span
         className={`max-w-[85%] rounded-2xl px-3.5 py-2 leading-relaxed ${
           ai ? "rounded-tl-md bg-[#24262b] text-zinc-200" : "rounded-tr-md bg-[#1d4ed8]/25 text-blue-100"
@@ -164,7 +164,7 @@ const STATS = [
 
 function Stats() {
   return (
-    <section aria-label="HireCall in numbers" className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-3xl bg-[#2a2c31] lg:grid-cols-4">
+    <section aria-label="CallZest in numbers" className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-3xl bg-[#2a2c31] lg:grid-cols-4">
       {STATS.map((s) => (
         <div key={s.label} className="bg-[#18191c] px-6 py-7">
           <p className="font-display text-3xl font-semibold tracking-tight">{s.value}</p>
@@ -192,7 +192,7 @@ const STEPS = [
   },
   {
     title: "The AI makes the calls",
-    text: "Inside your calling hours, HireCall phones each candidate, says it is an AI, and asks your questions one at a time, like a recruiter would.",
+    text: "Inside your calling hours, CallZest phones each candidate, says it is an AI, and asks your questions one at a time, like a recruiter would.",
   },
   {
     title: "Answers arrive structured",
@@ -321,7 +321,7 @@ function Responsible() {
         id="responsible"
         kicker="Calling responsibly"
         title="Polite, honest and on the candidate's terms"
-        intro="A screening call is often a candidate's first contact with your company. HireCall is built to make it a good one."
+        intro="A screening call is often a candidate's first contact with your company. CallZest is built to make it a good one."
       />
       <ul className="space-y-3 self-center">
         {PROMISES.map((p) => (
@@ -377,7 +377,7 @@ function Footer() {
   return (
     <footer className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 border-t border-[#1f2024] px-4 py-8 text-sm text-zinc-500 sm:flex-row sm:px-6">
       <Logo className="text-zinc-400" markClassName="h-5 w-5" textClassName="text-base" />
-      <p>© 2026 HireCall. AI phone screening for recruiters.</p>
+      <p>© 2026 CallZest. AI phone screening for recruiters.</p>
     </footer>
   );
 }

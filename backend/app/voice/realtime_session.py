@@ -61,7 +61,7 @@ PRICES = {
 }
 
 END_CHOICES = [r.value for r in EndReason if r not in (EndReason.HANGUP, EndReason.ERROR)]
-OUR_TAG = "hirecall"  # response.create metadata: a response we asked for (vs a VAD turn)
+OUR_TAG = "callzest"  # response.create metadata: a response we asked for (vs a VAD turn)
 # After these our code plays a fixed line; the model's own audio in that response is cut
 CODE_DRIVEN_TOOLS = frozenset(
     {"confirm_identity", "confirm_permission", "request_callback", "end_call"}

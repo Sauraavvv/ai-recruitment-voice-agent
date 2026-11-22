@@ -157,7 +157,7 @@ function TranscriptLines({
                 }`}
               >
                 <div className="mb-0.5 text-[11px] text-zinc-500">
-                  {agent ? "HireCall AI" : "Candidate"}
+                  {agent ? "CallZest AI" : "Candidate"}
                 </div>
                 {line.text}
               </div>

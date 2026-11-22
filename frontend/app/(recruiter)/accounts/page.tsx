@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { AccountsView } from "./accounts-view";
 
-export const metadata = { title: "Accounts · HireCall" };
+export const metadata = { title: "Accounts · CallZest" };
 
 export default function AccountsPage() {
   return (

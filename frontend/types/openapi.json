@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "HireCall API",
+    "title": "CallZest API",
     "version": "0.0.0"
   },
   "paths": {

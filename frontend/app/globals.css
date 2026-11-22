@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Dark styles follow the `dark` class (always on: HireCall is a dark app), not the OS setting. */
+/* Dark styles follow the `dark` class (always on: CallZest is a dark app), not the OS setting. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {

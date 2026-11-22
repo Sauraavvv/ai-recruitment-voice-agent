@@ -4,7 +4,7 @@ import { Muted } from "@/components/ui";
 
 import { NewRequirement } from "./new-requirement";
 
-export const metadata = { title: "Add requirement · HireCall" };
+export const metadata = { title: "Add requirement · CallZest" };
 
 export default function NewRequirementPage() {
   return (

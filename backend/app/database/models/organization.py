@@ -1,4 +1,4 @@
-"""A company (HR firm) using HireCall. Created by sign-up together with its super admin.
+"""A company (HR firm) using CallZest. Created by sign-up together with its super admin.
 
 Only users belong to an organization so far; candidates, jobs, calls and settings are still
 shared until the data-isolation work lands (see `Settings.signup_enabled`).
