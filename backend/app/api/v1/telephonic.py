@@ -1,18 +1,28 @@
-"""Telephonic round questions for a requirement: generate from the JD, edit, approve."""
+"""Telephonic round for a requirement: questions (generate from the JD, edit, approve) and the
+calls that ask them."""
 
 import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, status
 
-from app.api.deps import CurrentUser, SessionDep, SettingsDep
+from app.api.deps import CurrentUser, EffectiveSettingsDep, SessionDep, SettingsDep
 from app.api.responses import ok
+from app.api.v1.calls import voice_ready
 from app.providers.llm import create_question_llm
 from app.providers.llm.base import LLMProvider
+from app.schemas.call import StartCallResult
 from app.schemas.common import DataResponse
-from app.schemas.telephonic import DraftUpdate, GenerateRequest, QuestionSetOut, TelephonicOut
-from app.services import telephonic_service
+from app.schemas.telephonic import (
+    DraftUpdate,
+    GenerateRequest,
+    QuestionSetOut,
+    TelephonicCallsRequest,
+    TelephonicOut,
+)
+from app.services import telephonic_calls, telephonic_service
+from app.utils.queue import enqueue_initiate_call
 
 router = APIRouter(prefix="/requirements/{requirement_id}/telephonic", tags=["telephonic"])
 
@@ -80,3 +90,34 @@ async def approve_questions(
     """Freeze the draft as the set used on telephonic calls (a new version)."""
     approved = await telephonic_service.approve(session, user, requirement_id)
     return ok(QuestionSetOut.model_validate(approved))
+
+
+@router.post(
+    "/calls",
+    response_model=DataResponse[list[StartCallResult]],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_telephonic_calls(
+    requirement_id: uuid.UUID,
+    body: TelephonicCallsRequest,
+    user: CurrentUser,
+    session: SessionDep,
+    settings: EffectiveSettingsDep,
+    request: Request,
+) -> dict[str, Any]:
+    """Queue telephonic round calls: the listed candidates of this requirement, or (none listed)
+    up to 20 interested candidates not called yet. Each call asks the latest approved question
+    set, pinned now. One result per candidate (ok or a reason): not_interested,
+    screening_not_completed, no_approved_questions, telephonic_done (send `call_again`),
+    max_attempts_reached (send `override_limit`), and the screening call's reasons.
+    `dry_run`: only the results, nothing queued."""
+    results = await telephonic_calls.start(
+        session,
+        user,
+        requirement_id,
+        body,
+        settings,
+        enqueue_initiate_call,
+        voice_ready=voice_ready(request, settings),
+    )
+    return ok([r.as_dict() for r in results])  # the sheet shows screening calls only

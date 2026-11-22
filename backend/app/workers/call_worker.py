@@ -79,7 +79,7 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             redis,
             attempt_id,
             size=settings.max_concurrent_calls,
-            ttl_s=settings.max_call_duration_s,
+            ttl_s=settings.longest_call_s,
         ):
             await session.rollback()
             if ctx.get("job_try", 1) >= MAX_SLOT_WAITS:
@@ -98,6 +98,7 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             settings,
             own_attempt_id=attempt.id,
             ignore_window=ignore_window,
+            purpose=attempt.purpose,
         )
         automatic = attempt.attempt_type in (CallAttemptType.RETRY, CallAttemptType.CALLBACK)
         if automatic and problem is None:

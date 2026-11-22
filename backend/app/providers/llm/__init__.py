@@ -28,3 +28,19 @@ def create_question_llm(settings: Settings) -> LLMProvider:
         settings.groq_model,
         reasoning_effort=settings.groq_reasoning_effort or None,
     )
+
+
+def create_call_llm(settings: Settings) -> LLMProvider:
+    """The model for live telephonic round turns (Groq, phase-11 step 6b): low reasoning effort
+    and no waiting rounds when every key is busy (the call moves on instead)."""
+    keys = settings.groq_keys
+    if not keys:
+        raise LLMConfigError("GROQ_API_KEYS (or GROQ_API_KEY) must be set")
+    from app.providers.llm.groq_provider import GroqProvider
+
+    return GroqProvider(
+        keys,
+        settings.groq_model,
+        reasoning_effort=settings.groq_call_reasoning_effort or None,
+        max_retries=0,
+    )

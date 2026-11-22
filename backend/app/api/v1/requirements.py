@@ -14,8 +14,9 @@ from app.schemas.requirement import (
     RequirementListItem,
     RequirementOut,
     RequirementUpdate,
+    ScreeningCallQuestion,
 )
-from app.services import requirement_service
+from app.services import requirement_service, screening_job
 
 router = APIRouter(tags=["requirements"])
 
@@ -90,3 +91,33 @@ async def update_requirement(
 ) -> dict[str, Any]:
     requirement = await requirement_service.update_requirement(session, user, requirement_id, body)
     return ok(RequirementOut.model_validate(requirement))
+
+
+@router.get(
+    "/requirements/{requirement_id}/screening-questions",
+    response_model=DataResponse[list[ScreeningCallQuestion]],
+)
+async def screening_questions(
+    requirement_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> dict[str, Any]:
+    """What this requirement's screening call asks, in order: the default questions, then one
+    yes / no question per must-have."""
+    requirement, _client = await requirement_service.get_requirement(session, user, requirement_id)
+    musts = list(requirement.must_haves or [])
+    items = []
+    for number, (source, q) in enumerate(
+        await screening_job.call_questions(session, requirement), start=1
+    ):
+        key = str(q["key"])
+        index = int(key.removeprefix("must_have_")) - 1 if source == "must_have" else -1
+        items.append(
+            ScreeningCallQuestion(
+                number=number,
+                key=key,
+                prompt=str(q["prompt"]),
+                type=str(q.get("type") or "string"),
+                source=source,
+                must_have=musts[index] if 0 <= index < len(musts) else None,
+            )
+        )
+    return ok(items)

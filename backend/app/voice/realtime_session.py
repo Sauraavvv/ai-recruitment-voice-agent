@@ -386,7 +386,7 @@ class RealtimeCallSession:
         marks: MarkTracker,
         client: RealtimeClient,
         writer: Any | None = None,
-        on_end: Callable[[SessionOutcome], Awaitable[None]] | None = None,
+        on_end: Callable[[SessionOutcome[ScreeningResult]], Awaitable[None]] | None = None,
     ) -> None:
         self.ctx = ctx
         self.settings = settings
@@ -471,7 +471,7 @@ class RealtimeCallSession:
         )
         return True
 
-    async def run(self) -> SessionOutcome:
+    async def run(self) -> SessionOutcome[ScreeningResult]:
         structlog.contextvars.bind_contextvars(session_id=self.id)
         self.log.info("session_started", model=self.settings.openai_realtime_model)
         try:
@@ -1104,7 +1104,7 @@ class RealtimeCallSession:
             output_tokens=self.usage["audio_out"] + self.usage["text_out"],
         )
 
-    async def _finalize(self) -> SessionOutcome:
+    async def _finalize(self) -> SessionOutcome[ScreeningResult]:
         result = self._result()
         call_reason = END_REASONS.get(result.end_reason, CallEndReason.TECHNICAL_FAILURE)
         latencies = sorted(t.first_audio_ms for t in self._turns if t.first_audio_ms is not None)

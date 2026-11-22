@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import (
     CallAttempt,
+    CallPurpose,
     Candidate,
     Conversation,
     SyncLog,
@@ -175,11 +176,13 @@ async def build_rows(
         .scalars()
         .all()
     )
+    # The sheet is about screening: telephonic round calls don't change it (phase-11 step 6b)
+    screening_only = CallAttempt.purpose == CallPurpose.SCREENING.value
     attempts = (
         (
             await session.execute(
                 select(CallAttempt)
-                .where(CallAttempt.candidate_id.in_(candidate_ids))
+                .where(CallAttempt.candidate_id.in_(candidate_ids), screening_only)
                 .order_by(CallAttempt.attempt_number)
             )
         )
@@ -195,7 +198,11 @@ async def build_rows(
     conversations = await session.execute(
         select(Conversation, CallAttempt.candidate_id)
         .join(CallAttempt, CallAttempt.id == Conversation.call_attempt_id)
-        .where(CallAttempt.candidate_id.in_(candidate_ids), Conversation.finalized_at.is_not(None))
+        .where(
+            CallAttempt.candidate_id.in_(candidate_ids),
+            Conversation.finalized_at.is_not(None),
+            screening_only,
+        )
         .order_by(Conversation.finalized_at)
     )
     by_candidate: dict[uuid.UUID, list[Conversation]] = {}

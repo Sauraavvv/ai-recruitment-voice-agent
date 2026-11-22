@@ -51,6 +51,14 @@ class CallAttemptType(StrEnum):
     CALLBACK = "callback"
 
 
+class CallPurpose(StrEnum):
+    """What a call attempt is for: the first screening call, or the telephonic round (JD
+    questions) for a candidate who said they're interested."""
+
+    SCREENING = "screening"
+    TELEPHONIC = "telephonic"
+
+
 class CallEndReason(StrEnum):
     """Normalized reason a call attempt ended (phase-05 §5, phase-06 §5.6)."""
 

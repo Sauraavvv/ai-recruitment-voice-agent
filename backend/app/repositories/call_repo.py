@@ -13,6 +13,8 @@ from app.database.models import (
     LIVE_CALL_STATUSES,
     CallAttempt,
     CallAttemptType,
+    CallEndReason,
+    CallPurpose,
     CallStatus,
     Candidate,
     WebhookEvent,
@@ -67,11 +69,19 @@ async def live_for_candidate(
     return (await session.execute(stmt)).scalars().first()
 
 
+def _of_purpose(purpose: CallPurpose | str | None) -> Any:
+    return true() if purpose is None else CallAttempt.purpose == str(purpose)
+
+
 async def attempt_counts(
-    session: AsyncSession, candidate_ids: Sequence[uuid.UUID]
+    session: AsyncSession,
+    candidate_ids: Sequence[uuid.UUID],
+    *,
+    purpose: CallPurpose | str | None,
 ) -> dict[uuid.UUID, tuple[int, int]]:
     """Per candidate: (dialed attempts that count toward max_attempts, callbacks scheduled or
-    made). Cancelled attempts never count."""
+    made), for one purpose (screening calls don't use up telephonic tries, or the reverse;
+    None: all). Cancelled attempts never count."""
     if not candidate_ids:
         return {}
     counted = and_(
@@ -87,7 +97,7 @@ async def attempt_counts(
             func.count().filter(counted),
             func.count().filter(callbacks),
         )
-        .where(CallAttempt.candidate_id.in_(list(candidate_ids)))
+        .where(CallAttempt.candidate_id.in_(list(candidate_ids)), _of_purpose(purpose))
         .group_by(CallAttempt.candidate_id)
     )
     out = {cid: (0, 0) for cid in candidate_ids}
@@ -95,8 +105,27 @@ async def attempt_counts(
     return out
 
 
-async def scheduled_for_candidates(
+async def completed_rounds(
     session: AsyncSession, candidate_ids: Sequence[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Candidates with a telephonic round call the agent finished (answered, and ended by the
+    agent after the questions, not a callback, decline or hang-up)."""
+    if not candidate_ids:
+        return set()
+    stmt = select(CallAttempt.candidate_id).where(
+        CallAttempt.candidate_id.in_(list(candidate_ids)),
+        CallAttempt.purpose == CallPurpose.TELEPHONIC.value,
+        CallAttempt.call_status == CallStatus.COMPLETED.value,
+        CallAttempt.end_reason == CallEndReason.AGENT_COMPLETED.value,
+    )
+    return set((await session.execute(stmt)).scalars())
+
+
+async def scheduled_for_candidates(
+    session: AsyncSession,
+    candidate_ids: Sequence[uuid.UUID],
+    *,
+    purpose: CallPurpose | str | None = None,
 ) -> dict[uuid.UUID, CallAttempt]:
     """Each candidate's scheduled retry or callback (at most one: the one-live index)."""
     if not candidate_ids:
@@ -104,6 +133,7 @@ async def scheduled_for_candidates(
     stmt = select(CallAttempt).where(
         CallAttempt.candidate_id.in_(list(candidate_ids)),
         CallAttempt.call_status.in_(SCHEDULED_STATUSES),
+        _of_purpose(purpose),
     )
     return {a.candidate_id: a for a in (await session.execute(stmt)).scalars()}
 
@@ -164,15 +194,19 @@ async def search(
 
 
 async def latest_for_candidates(
-    session: AsyncSession, candidate_ids: Sequence[uuid.UUID], *, include_scheduled: bool = True
+    session: AsyncSession,
+    candidate_ids: Sequence[uuid.UUID],
+    *,
+    include_scheduled: bool = True,
+    purpose: CallPurpose | str | None = None,
 ) -> dict[uuid.UUID, CallAttempt]:
-    """Each candidate's newest attempt (highest attempt number). `include_scheduled=False`:
-    the newest one that isn't only a scheduled retry or callback."""
+    """Each candidate's newest attempt (highest attempt number), of one purpose or (None) any.
+    `include_scheduled=False`: the newest one that isn't only a scheduled retry or callback."""
     if not candidate_ids:
         return {}
     stmt = (
         select(CallAttempt)
-        .where(CallAttempt.candidate_id.in_(list(candidate_ids)))
+        .where(CallAttempt.candidate_id.in_(list(candidate_ids)), _of_purpose(purpose))
         .where(true() if include_scheduled else CallAttempt.call_status.not_in(SCHEDULED_STATUSES))
         .ext(distinct_on(CallAttempt.candidate_id))
         .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())

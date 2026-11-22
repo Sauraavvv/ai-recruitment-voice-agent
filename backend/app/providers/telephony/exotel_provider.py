@@ -61,7 +61,9 @@ class ExotelProvider(TelephonyProvider):
         self._caller_id = settings.exotel_caller_id
         self._flow_url = flow_url(settings.exotel_account_sid, settings.exotel_app_id)
         self._tz = settings.app_timezone
-        self._time_limit = settings.max_call_duration_s
+        # A hard backstop: the agent ends each call itself at its own limit (screening or
+        # telephonic round), so the network limit is the longer of the two
+        self._time_limit = settings.longest_call_s
         self._ring_timeout = settings.ring_timeout_s
         host = settings.exotel_subdomain.removeprefix("https://").strip("/")
         self._client = httpx.AsyncClient(

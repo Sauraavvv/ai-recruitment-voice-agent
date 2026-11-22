@@ -15,6 +15,7 @@ Job candidates (the original single-job flow) use their job row. Requirement can
 
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,13 +57,27 @@ def must_have_questions(must_haves: list[str]) -> list[dict[str, object]]:
     ]
 
 
+QuestionSource = Literal["default", "must_have"]
+
+
+async def call_questions(
+    session: AsyncSession, requirement: Requirement
+) -> list[tuple[QuestionSource, dict[str, object]]]:
+    """Every question the screening call asks, in order, with where it comes from: the
+    organization's defaults ("default"), then one per must-have ("must_have")."""
+    defaults: list[tuple[QuestionSource, dict[str, object]]] = [
+        ("default", q.model_dump(exclude_none=True))
+        for q in await default_questions_service.get(session)
+    ]
+    musts = must_have_questions(list(requirement.must_haves or []))
+    return defaults + [("must_have", q) for q in musts]
+
+
 async def for_requirement(session: AsyncSession, requirement: Requirement) -> Job:
     client = await session.get(Client, requirement.client_id)
     organization = await session.get(Organization, requirement.organization_id)
     firm = organization.name if organization else ""
-    defaults = [
-        q.model_dump(exclude_none=True) for q in await default_questions_service.get(session)
-    ]
+    questions = [q for _source, q in await call_questions(session, requirement)]
     location = requirement.location
     if requirement.work_mode:
         mode = WORK_MODE_WORDS.get(requirement.work_mode, requirement.work_mode)
@@ -75,7 +90,7 @@ async def for_requirement(session: AsyncSession, requirement: Requirement) -> Jo
         location=location,
         required_experience=experience_text(requirement),
         skills=list(requirement.skills or []),
-        screening_questions=defaults + must_have_questions(list(requirement.must_haves or [])),
+        screening_questions=questions,
         agent_instructions=SCREENING_INSTRUCTIONS.format(firm=firm or "our firm"),
         is_active=requirement.status == RequirementStatus.OPEN.value
         and client is not None

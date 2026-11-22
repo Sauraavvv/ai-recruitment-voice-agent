@@ -3,6 +3,10 @@
 Days and "today" are in APP_TIMEZONE. A call counts as *connected* when our stream started
 (`stream_id` set) or it reached in_progress/completed with talk time; that's the candidate
 actually answering, not just the network picking up.
+
+The numbers, live calls, activity and latest conversation are about screening calls only:
+telephonic round calls (phase-11 step 6b) never change them. The attention list includes both,
+since a telephonic callback or failure needs a recruiter too.
 """
 
 from datetime import UTC, date, datetime, timedelta
@@ -16,6 +20,7 @@ from sqlalchemy.orm import aliased
 
 from app.database.models import (
     CallAttempt,
+    CallPurpose,
     CallStatus,
     Candidate,
     Conversation,
@@ -27,6 +32,10 @@ from app.database.models import (
 LIVE = (CallStatus.QUEUED, CallStatus.INITIATING, CallStatus.RINGING, CallStatus.IN_PROGRESS)
 DAYS = 14
 TRANSCRIPT_TAIL = 8
+
+
+def _screening() -> Any:
+    return CallAttempt.purpose == CallPurpose.SCREENING.value
 
 
 def _connected() -> Any:
@@ -70,7 +79,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
                 func.count().filter(local_day == today),
                 func.count(func.distinct(CallAttempt.candidate_id)),
                 func.count(func.distinct(CallAttempt.candidate_id)).filter(_connected()),
-            )
+            ).where(_screening())
         )
     ).one()
     calls_total, connected, avg_duration, calls_today, called_people, connected_people = calls
@@ -82,7 +91,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
                 func.count(),
                 func.count().filter(_connected()),
             )
-            .where(local_day >= first_day)
+            .where(local_day >= first_day, _screening())
             .group_by("day")
         )
     ).all()
@@ -95,7 +104,9 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
 
     outcome_rows = (
         await session.execute(
-            select(CallAttempt.call_status, func.count()).group_by(CallAttempt.call_status)
+            select(CallAttempt.call_status, func.count())
+            .where(_screening())
+            .group_by(CallAttempt.call_status)
         )
     ).all()
     outcomes = {str(status): int(n) for status, n in outcome_rows}
@@ -105,7 +116,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
         await session.execute(
             select(CallAttempt, Candidate.name, Candidate.applied_role)
             .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-            .where(CallAttempt.call_status.in_([s.value for s in LIVE]))
+            .where(CallAttempt.call_status.in_([s.value for s in LIVE]), _screening())
             .order_by(CallAttempt.created_at)
             .limit(10)
         )
@@ -128,7 +139,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
             select(Conversation, CallAttempt, Candidate.name)
             .join(CallAttempt, CallAttempt.id == Conversation.call_attempt_id)
             .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-            .where(func.jsonb_array_length(Conversation.transcript) > 0)
+            .where(func.jsonb_array_length(Conversation.transcript) > 0, _screening())
             .order_by(Conversation.created_at.desc())
             .limit(1)
         )
@@ -261,7 +272,11 @@ def _latest_attempts() -> Any:
             CallAttempt.created_at,
         )
         .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-        .where(Candidate.deleted_at.is_(None), CallAttempt.call_status.not_in(_vals(SCHEDULED)))
+        .where(
+            Candidate.deleted_at.is_(None),
+            CallAttempt.call_status.not_in(_vals(SCHEDULED)),
+            _screening(),
+        )
         .ext(distinct_on(CallAttempt.candidate_id))
         .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())
         .subquery()
@@ -296,7 +311,7 @@ async def stats(
                 func.count().filter(CallAttempt.call_status.in_(_vals(PENDING))),
                 func.count().filter(CallAttempt.call_status.in_(_vals(IN_PROGRESS))),
                 func.count().filter(CallAttempt.call_status.in_(_vals(SCHEDULED))),
-            )
+            ).where(_screening())
         )
     ).one()
 
@@ -354,6 +369,7 @@ async def activity(session: AsyncSession, *, limit: int = 20) -> list[dict[str, 
         await session.execute(
             select(CallAttempt, Candidate.name)
             .join(Candidate, Candidate.id == CallAttempt.candidate_id)
+            .where(_screening())
             .order_by(CallAttempt.updated_at.desc())
             .limit(limit)
         )

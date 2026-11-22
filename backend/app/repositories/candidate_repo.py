@@ -8,7 +8,7 @@ from sqlalchemy import ColumnElement, Select, false, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import CallAttempt, Candidate, Client, Requirement, User
+from app.database.models import CallAttempt, CallPurpose, Candidate, Client, Requirement, User
 from app.database.models.enums import UserRole
 
 SORT_COLUMNS = {
@@ -61,11 +61,16 @@ async def ids_by_phone(
 NOT_CALLED = "not_called"  # call_status filter: no attempt yet
 
 
+def _screening_call() -> Any:
+    return CallAttempt.purpose == CallPurpose.SCREENING.value
+
+
 def latest_call_status() -> Any:
-    """The candidate's newest attempt's status (correlated scalar subquery)."""
+    """The candidate's newest screening call's status (correlated scalar subquery). The
+    candidate list is about screening calls; telephonic round calls don't count here."""
     return (
         select(CallAttempt.call_status)
-        .where(CallAttempt.candidate_id == Candidate.id)
+        .where(CallAttempt.candidate_id == Candidate.id, _screening_call())
         .order_by(CallAttempt.attempt_number.desc())
         .limit(1)
         .scalar_subquery()
@@ -116,7 +121,9 @@ def _filtered(
         stmt = stmt.where(Candidate.interested.is_(interested))
     if call_status == NOT_CALLED:
         stmt = stmt.where(
-            ~select(CallAttempt.id).where(CallAttempt.candidate_id == Candidate.id).exists()
+            ~select(CallAttempt.id)
+            .where(CallAttempt.candidate_id == Candidate.id, _screening_call())
+            .exists()
         )
     elif call_status:
         stmt = stmt.where(latest_call_status() == call_status)

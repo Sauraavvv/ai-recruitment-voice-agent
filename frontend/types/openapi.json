@@ -1255,6 +1255,50 @@
         }
       }
     },
+    "/api/v1/requirements/{requirement_id}/screening-questions": {
+      "get": {
+        "tags": [
+          "requirements"
+        ],
+        "summary": "Screening Questions",
+        "description": "What this requirement's screening call asks, in order: the default questions, then one\nyes / no question per must-have.",
+        "operationId": "screening_questions_api_v1_requirements__requirement_id__screening_questions_get",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_list_ScreeningCallQuestion__"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/requirements/{requirement_id}/telephonic": {
       "get": {
         "tags": [
@@ -1475,6 +1519,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DataResponse_QuestionSetOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{requirement_id}/telephonic/calls": {
+      "post": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Start Telephonic Calls",
+        "description": "Queue telephonic round calls: the listed candidates of this requirement, or (none listed)\nup to 20 interested candidates not called yet. Each call asks the latest approved question\nset, pinned now. One result per candidate (ok or a reason): not_interested,\nscreening_not_completed, no_approved_questions, telephonic_done (send `call_again`),\nmax_attempts_reached (send `override_limit`), and the screening call's reasons.\n`dry_run`: only the results, nothing queued.",
+        "operationId": "start_telephonic_calls_api_v1_requirements__requirement_id__telephonic_calls_post",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelephonicCallsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_list_StartCallResult__"
                 }
               }
             }
@@ -2976,6 +3074,22 @@
           "attempt_type": {
             "$ref": "#/components/schemas/CallAttemptType"
           },
+          "purpose": {
+            "$ref": "#/components/schemas/CallPurpose",
+            "default": "screening"
+          },
+          "question_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Set Id"
+          },
           "provider": {
             "type": "string",
             "title": "Provider"
@@ -3188,6 +3302,22 @@
           "attempt_type": {
             "$ref": "#/components/schemas/CallAttemptType"
           },
+          "purpose": {
+            "$ref": "#/components/schemas/CallPurpose",
+            "default": "screening"
+          },
+          "question_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Set Id"
+          },
           "provider": {
             "type": "string",
             "title": "Provider"
@@ -3363,6 +3493,15 @@
           "has_transcript"
         ],
         "title": "CallListItem"
+      },
+      "CallPurpose": {
+        "type": "string",
+        "enum": [
+          "screening",
+          "telephonic"
+        ],
+        "title": "CallPurpose",
+        "description": "What a call attempt is for: the first screening call, or the telephonic round (JD\nquestions) for a candidate who said they're interested."
       },
       "CallStatus": {
         "type": "string",
@@ -5982,6 +6121,22 @@
         ],
         "title": "DataResponse[list[RequirementListItem]]"
       },
+      "DataResponse_list_ScreeningCallQuestion__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScreeningCallQuestion"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[list[ScreeningCallQuestion]]"
+      },
       "DataResponse_list_ScreeningQuestion__": {
         "properties": {
           "data": {
@@ -8510,6 +8665,11 @@
             "type": "boolean",
             "title": "Override Limit",
             "default": false
+          },
+          "call_again": {
+            "type": "boolean",
+            "title": "Call Again",
+            "default": false
           }
         },
         "type": "object",
@@ -8727,6 +8887,55 @@
           "duplicate_existing"
         ],
         "title": "RowStatus"
+      },
+      "ScreeningCallQuestion": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "default",
+              "must_have"
+            ],
+            "title": "Source"
+          },
+          "must_have": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Must Have"
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "key",
+          "prompt",
+          "type",
+          "source"
+        ],
+        "title": "ScreeningCallQuestion",
+        "description": "One question a requirement's screening call asks, in order (phase-11 step 5)."
       },
       "ScreeningQuestion": {
         "properties": {
@@ -9485,6 +9694,38 @@
         "type": "object",
         "title": "TeamMemberUpdate",
         "description": "Only the fields that are sent change."
+      },
+      "TelephonicCallsRequest": {
+        "properties": {
+          "candidate_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Candidate Ids"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "override_limit": {
+            "type": "boolean",
+            "title": "Override Limit",
+            "default": false
+          },
+          "call_again": {
+            "type": "boolean",
+            "title": "Call Again",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TelephonicCallsRequest",
+        "description": "Start telephonic round calls for a requirement's candidates: the ones listed, or (none\nlisted) up to 20 interested candidates who haven't had the round yet."
       },
       "TelephonicOut": {
         "properties": {

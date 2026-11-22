@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-120b"
     groq_reasoning_effort: str = "medium"  # low | medium | high
     groq_timeout_s: float = Field(default=60.0, gt=0, le=180)
+    # Live telephonic round turns (phase-11 step 6b): low effort and a short budget. A turn that
+    # takes longer gets a filler and the call moves on to the next question.
+    groq_call_reasoning_effort: str = "low"
+    groq_call_timeout_s: float = Field(default=5.0, gt=0, le=30)
 
     # Deepgram (TTS from Phase 3, STT from Phase 4). STT defaults: docs/benchmarks/stt.md
     deepgram_api_key: SecretStr | None = None
@@ -123,6 +127,12 @@ class Settings(BaseSettings):
     telephony_capture_dir: str | None = "artifacts/calls"
     ring_timeout_s: int = Field(default=30, ge=10, le=120)
     max_call_duration_s: int = Field(default=900, ge=60, le=3600)
+    # The telephonic round asks more open questions: a longer limit and wrap-up time
+    telephonic_max_call_duration_s: int = Field(default=1200, ge=60, le=3600)
+    telephonic_wrap_up_s: int = Field(default=1000, ge=60, le=3600)
+    # Open questions need thinking time: wait longer before "are you still there?" (real
+    # call 2026-11-22: 7 s re-asked a question while the candidate was still thinking)
+    telephonic_silence_timeout_s: float = Field(default=12.0, ge=2, le=60)
     # Calling window in APP_TIMEZONE (phase-05 §6 decision: Mon-Sat 10:00-19:00)
     calling_days: str = "mon,tue,wed,thu,fri,sat"
     calling_hour_start: int = Field(default=10, ge=0, le=23)
@@ -264,6 +274,22 @@ class Settings(BaseSettings):
         if self.retry_interval_unit != "days":
             raise ValueError("RETRY_INTERVAL_UNIT=minutes is for staging only, not production")
         return self
+
+    @property
+    def longest_call_s(self) -> int:
+        """The longest any call may last (concurrency slot TTL, stuck-call threshold)."""
+        return max(self.max_call_duration_s, self.telephonic_max_call_duration_s)
+
+    def for_telephonic_call(self) -> "Settings":
+        """These settings with the telephonic round's call limits and silence timeout (the
+        voice pipeline reads max_call_duration_s, call_wrap_up_s and silence_timeout_s)."""
+        return self.model_copy(
+            update={
+                "max_call_duration_s": self.telephonic_max_call_duration_s,
+                "call_wrap_up_s": self.telephonic_wrap_up_s,
+                "silence_timeout_s": self.telephonic_silence_timeout_s,
+            }
+        )
 
     @property
     def exotel_configured(self) -> bool:

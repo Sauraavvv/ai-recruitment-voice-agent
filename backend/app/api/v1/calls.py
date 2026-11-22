@@ -177,6 +177,7 @@ async def retry_call(
         enqueue_initiate_call,
         voice_ready=voice_ready(request, settings),
         override_limit=bool(body and body.override_limit),
+        call_again=bool(body and body.call_again),
     )
     if result.attempt_id:
         await sync_service.request_sync(settings)

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import (
     CallAttempt,
+    CallPurpose,
     CallStatus,
     Candidate,
     Conversation,
@@ -82,9 +83,13 @@ async def list_rows(
         session, candidates, settings, now=now, voice_ready=voice_ready
     )
     ids = [c.id for c in candidates]
-    latest = await call_repo.latest_for_candidates(session, ids, include_scheduled=False)
-    scheduled = await call_repo.scheduled_for_candidates(session, ids)
-    counts = await call_repo.attempt_counts(session, ids)
+    # The candidate list is about screening calls: telephonic round calls don't show here
+    screening = CallPurpose.SCREENING
+    latest = await call_repo.latest_for_candidates(
+        session, ids, include_scheduled=False, purpose=screening
+    )
+    scheduled = await call_repo.scheduled_for_candidates(session, ids, purpose=screening)
+    counts = await call_repo.attempt_counts(session, ids, purpose=screening)
     with_transcript = set()
     if latest:
         with_transcript = set(
@@ -141,11 +146,16 @@ async def retry_status_for(
     session: AsyncSession, candidate_id: uuid.UUID, settings: Settings
 ) -> dict[str, Any] | None:
     ids = [candidate_id]
-    last = (await call_repo.latest_for_candidates(session, ids, include_scheduled=False)).get(
+    screening = CallPurpose.SCREENING
+    last = (
+        await call_repo.latest_for_candidates(
+            session, ids, include_scheduled=False, purpose=screening
+        )
+    ).get(candidate_id)
+    scheduled = (await call_repo.scheduled_for_candidates(session, ids, purpose=screening)).get(
         candidate_id
     )
-    scheduled = (await call_repo.scheduled_for_candidates(session, ids)).get(candidate_id)
-    counts = (await call_repo.attempt_counts(session, ids))[candidate_id]
+    counts = (await call_repo.attempt_counts(session, ids, purpose=screening))[candidate_id]
     return retry_status(last, scheduled, counts, settings)
 
 
@@ -154,7 +164,11 @@ async def summary(session: AsyncSession, candidate_id: uuid.UUID) -> dict[str, A
         await session.execute(
             select(Conversation, CallAttempt.attempt_number)
             .join(CallAttempt, CallAttempt.id == Conversation.call_attempt_id)
-            .where(CallAttempt.candidate_id == candidate_id, Conversation.finalized_at.is_not(None))
+            .where(
+                CallAttempt.candidate_id == candidate_id,
+                Conversation.finalized_at.is_not(None),
+                CallAttempt.purpose == CallPurpose.SCREENING.value,  # the screening summary
+            )
             .order_by(Conversation.finalized_at)
         )
     ).all()

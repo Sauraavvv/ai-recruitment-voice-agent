@@ -26,12 +26,13 @@ from typing import Any, Protocol
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from app.agent.conversation_manager import ConversationManager
+from app.agent.conversation_manager import ConversationManager, ScreeningResult
 from app.agent.prompts import CandidateContext, JobConfig
+from app.agent.telephonic_manager import TelephonicManager, TelephonicResult
 from app.config import Settings
 from app.database.connection import get_sessionmaker
-from app.database.models import CallAttempt, CallEndReason, Candidate, Job
-from app.providers.llm import create_llm_provider
+from app.database.models import CallAttempt, CallEndReason, CallPurpose, Candidate, Job
+from app.providers.llm import create_call_llm, create_llm_provider
 from app.providers.llm.base import LLMError
 from app.providers.realtime import OpenAIRealtimeClient
 from app.providers.stt import create_stt_provider
@@ -43,6 +44,7 @@ from app.services import (
     screening_job,
     screening_store,
     settings_service,
+    telephonic_call,
     transcript_service,
 )
 from app.utils.log import get_logger
@@ -183,12 +185,18 @@ def job_config(job: Job, settings: Settings | None = None) -> JobConfig:
     )
 
 
+class ContextUnavailable(Exception):
+    """What the call needs is gone (e.g. a telephonic attempt's question set)."""
+
+
 async def load_context(
     attempt_id: uuid.UUID, provider_call_id: str | None, settings: Settings
 ) -> CallContext:
     async with get_sessionmaker()() as db:
         attempt = await db.get(CallAttempt, attempt_id)
         assert attempt is not None
+        if attempt.purpose == CallPurpose.TELEPHONIC:
+            return await _telephonic_context(db, attempt, provider_call_id)
         candidate = await db.get(Candidate, attempt.candidate_id)
         assert candidate is not None
         job = await screening_job.for_candidate(db, candidate)
@@ -211,6 +219,39 @@ async def load_context(
     )
 
 
+async def _telephonic_context(
+    db: Any, attempt: CallAttempt, provider_call_id: str | None
+) -> CallContext:
+    """A telephonic round call: the round's context (role, JD, pinned questions, earlier
+    answers). The agent never sees the screening questions."""
+    candidate = await db.get(Candidate, attempt.candidate_id)
+    assert candidate is not None
+    try:
+        round_ctx = await telephonic_call.for_attempt(db, attempt)
+    except ValueError as exc:
+        raise ContextUnavailable(str(exc)) from exc
+    return CallContext(
+        attempt_id=str(attempt.id),
+        job=JobConfig(
+            job_title=round_ctx.job_title,
+            company_name=round_ctx.firm,
+            questions=[],
+            job_id=round_ctx.requirement_id,
+            location=round_ctx.location,
+        ),
+        candidate=CandidateContext(
+            name=candidate.name,
+            candidate_id=str(candidate.id),
+            call_id=str(attempt.id),
+            call_kind=telephonic_call.call_kind(attempt.attempt_type, round_ctx.prior_answers),
+        ),
+        candidate_id=candidate.id,
+        provider_call_id=provider_call_id,
+        keyterms=round_ctx.keyterms,
+        telephonic=round_ctx,
+    )
+
+
 def make_vad(settings: Settings) -> SpeechDetector:
     classifier, name = default_classifier(
         settings.telephony_sample_rate, settings.vad_aggressiveness
@@ -225,19 +266,30 @@ def make_vad(settings: Settings) -> SpeechDetector:
     )
 
 
-async def store_outcome(ctx: CallContext, outcome: SessionOutcome) -> None:
+async def store_outcome(
+    ctx: CallContext, outcome: SessionOutcome[ScreeningResult] | SessionOutcome[TelephonicResult]
+) -> None:
     """At the end of the conversation: final transcript and result, then queue the summary."""
     assert ctx.candidate_id is not None
-    await screening_store.store_outcome(
-        attempt_id=uuid.UUID(ctx.attempt_id),
-        candidate_id=ctx.candidate_id,
-        result=outcome.result,
-        extra={
-            "turn_metrics": outcome.metrics,
-            "session": {k: v for k, v in outcome.stats.items() if k != "turn_history"},
-            "end_reason": outcome.end_reason.value,
-        },
-    )
+    extra = {
+        "turn_metrics": outcome.metrics,
+        "session": {k: v for k, v in outcome.stats.items() if k != "turn_history"},
+        "end_reason": outcome.end_reason.value,
+    }
+    if isinstance(outcome.result, TelephonicResult):
+        await screening_store.store_telephonic_outcome(
+            attempt_id=uuid.UUID(ctx.attempt_id),
+            candidate_id=ctx.candidate_id,
+            result=outcome.result,
+            extra=extra,
+        )
+    else:
+        await screening_store.store_outcome(
+            attempt_id=uuid.UUID(ctx.attempt_id),
+            candidate_id=ctx.candidate_id,
+            result=outcome.result,
+            extra=extra,
+        )
     try:
         await enqueue_finalize_call(ctx.attempt_id)
     except Exception:
@@ -250,7 +302,7 @@ class _Closable(Protocol):
 
 @dataclass
 class Conversation:
-    session: CallSession | RealtimeCallSession
+    session: CallSession[ScreeningResult] | CallSession[TelephonicResult] | RealtimeCallSession
     llm: _Closable  # closed when the stream ends
 
 
@@ -272,12 +324,21 @@ async def build_conversation(
     inbound: InboundQueue,
     marks: MarkTracker,
 ) -> Conversation | str:
-    """The session for a real call, or why there can't be one. The engine comes from the
+    """The session for a real call, or why there can't be one. A telephonic round call always
+    runs the pipeline with the telephonic agent; a screening call's engine comes from the
     effective settings (Settings page, else VOICE_ENGINE)."""
     effective = await settings_service.effective_new_session(settings)
+    try:
+        ctx = await load_context(uuid.UUID(attempt_id), provider_call_id, effective)
+    except ContextUnavailable:
+        return "call_context_missing"
+    if ctx.telephonic is not None:
+        return await build_telephonic_conversation(
+            settings, ctx, tts=tts, sender=sender, inbound=inbound, marks=marks
+        )
     if effective.voice_engine == "realtime":
         return await build_realtime_conversation(
-            effective, attempt_id, provider_call_id, sender=sender, inbound=inbound, marks=marks
+            effective, ctx, sender=sender, inbound=inbound, marks=marks
         )
     if tts is None or not tts.status().ready:
         return "voice_unavailable"
@@ -285,7 +346,6 @@ async def build_conversation(
         llm = create_llm_provider(settings)
     except LLMError:
         return "llm_not_configured"
-    ctx = await load_context(uuid.UUID(attempt_id), provider_call_id, settings)
     manager = ConversationManager(
         ctx.job,
         ctx.candidate,
@@ -310,10 +370,56 @@ async def build_conversation(
     return Conversation(session, llm)
 
 
+async def build_telephonic_conversation(
+    settings: Settings,
+    ctx: CallContext,
+    *,
+    tts: TTSProvider | None,
+    sender: AudioSender,
+    inbound: InboundQueue,
+    marks: MarkTracker,
+) -> Conversation | str:
+    """Telephonic round (phase-11 step 6b): the same voice pipeline with the telephonic agent,
+    Groq for the live turns and the round's longer call limits."""
+    assert ctx.telephonic is not None
+    if tts is None or not tts.status().ready:
+        return "voice_unavailable"
+    try:
+        llm = create_call_llm(settings)
+    except LLMError:
+        return "llm_not_configured"
+    manager = TelephonicManager(
+        ctx.telephonic, ctx.candidate, llm, timeout_s=settings.groq_call_timeout_s
+    )
+    attempt_id = uuid.UUID(ctx.attempt_id)
+    await transcript_service.open_conversation(attempt_id)
+    session = CallSession(
+        ctx,
+        settings=settings.for_telephonic_call(),
+        sender=sender,
+        inbound=inbound,
+        marks=marks,
+        stt=create_stt_provider(settings, keyterms=ctx.keyterms),
+        tts=tts,
+        manager=manager,
+        vad=make_vad(settings),
+        writer=transcript_service.TranscriptWriter(attempt_id),
+        on_end=lambda outcome: store_outcome(ctx, outcome),
+    )
+    logger.info(
+        "conversation_engine",
+        call_attempt_id=ctx.attempt_id,
+        engine="pipeline",
+        purpose="telephonic",
+        question_set_id=ctx.telephonic.question_set_id,
+        version=ctx.telephonic.version,
+    )
+    return Conversation(session, llm)
+
+
 async def build_realtime_conversation(
     settings: Settings,
-    attempt_id: str,
-    provider_call_id: str | None,
+    ctx: CallContext,
     *,
     sender: AudioSender,
     inbound: InboundQueue,
@@ -322,7 +428,7 @@ async def build_realtime_conversation(
     """Trial engine: OpenAI Realtime speech-to-speech (voice/realtime_session.py)."""
     if settings.openai_api_key is None:
         return "llm_not_configured"
-    ctx = await load_context(uuid.UUID(attempt_id), provider_call_id, settings)
+    attempt_id = ctx.attempt_id
     await transcript_service.open_conversation(uuid.UUID(attempt_id))
     client = OpenAIRealtimeClient(
         settings.openai_api_key.get_secret_value(), settings.openai_realtime_model
@@ -483,7 +589,7 @@ async def handle_exotel_stream(ws: WebSocket, settings: Settings) -> None:
                 log.error("session_crashed", error=repr(main.exception()))
                 end_reason, failure = CallEndReason.TECHNICAL_FAILURE.value, "session_crashed"
             else:
-                outcome: SessionOutcome = main.result()
+                outcome: SessionOutcome[Any] = main.result()
                 ended_by = outcome.ended_by if ended_by == "agent" else ended_by
                 end_reason, failure = outcome.end_reason.value, outcome.failure_reason
     finally:

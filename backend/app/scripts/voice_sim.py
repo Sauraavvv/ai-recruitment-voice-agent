@@ -28,7 +28,7 @@ from typing import Any
 import numpy as np
 import yaml
 
-from app.agent.conversation_manager import ConversationManager
+from app.agent.conversation_manager import ConversationManager, ScreeningResult
 from app.agent.prompts import CandidateContext, JobConfig
 from app.config import get_settings
 from app.providers.llm import create_llm_provider
@@ -178,7 +178,7 @@ async def run(
                     session.caller_hung_up("stop")
                 break
             await asyncio.sleep(0.2)
-        outcome: SessionOutcome = await asyncio.wait_for(runner, 60)
+        outcome: SessionOutcome[ScreeningResult] = await asyncio.wait_for(runner, 60)
     finally:
         feeder.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -268,7 +268,7 @@ async def run_realtime(
                     session.caller_hung_up("stop")
                     break
             await asyncio.sleep(0.2)
-        outcome: SessionOutcome = await asyncio.wait_for(runner, 60)
+        outcome: SessionOutcome[ScreeningResult] = await asyncio.wait_for(runner, 60)
     finally:
         feeder.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -300,12 +300,12 @@ async def run_realtime(
     return 0
 
 
-def clips_left(session: CallSession, total: int) -> bool:
+def clips_left(session: CallSession[ScreeningResult], total: int) -> bool:
     said = sum(1 for e in session.manager.transcript if e.speaker == "candidate")
     return said + session.merges < total
 
 
-def report(outcome: SessionOutcome) -> None:
+def report(outcome: SessionOutcome[ScreeningResult]) -> None:
     print("\n--- transcript ---")
     for e in outcome.result.transcript:
         flag = " [interrupted]" if e.get("interrupted") else ""

@@ -15,6 +15,10 @@ Duplicate dials are prevented by four layers: the one-live-attempt index, the un
 (candidate, attempt_number), FOR UPDATE SKIP LOCKED in the dispatcher and the job id
 `call:<attempt id>`.
 
+Counts are per purpose (phase-11 step 6b): screening calls don't use up telephonic round tries,
+or the reverse. A retry or callback keeps its attempt's purpose; a telephonic callback keeps the
+question set (it resumes where the call stopped), a telephonic retry asks the latest approved one.
+
 All time comes from a `Clock`; times are stored in UTC and the window is evaluated in
 APP_TIMEZONE.
 """
@@ -34,6 +38,7 @@ from app.database.models import (
     CallAttempt,
     CallAttemptType,
     CallEndReason,
+    CallPurpose,
     CallStatus,
     Candidate,
     Conversation,
@@ -42,7 +47,14 @@ from app.database.models import (
 )
 from app.providers.telephony import exotel_models as em
 from app.repositories import call_repo
-from app.services import call_service, call_state, screening_job, settings_service, sync_service
+from app.services import (
+    call_service,
+    call_state,
+    screening_job,
+    settings_service,
+    sync_service,
+    telephonic_service,
+)
 from app.utils.calling_window import CallingWindow, Half
 from app.utils.clock import SYSTEM_CLOCK, Clock
 from app.utils.log import get_logger
@@ -158,6 +170,8 @@ def classify(
     if not result:
         # Our stream never connected or the conversation wasn't stored: nobody heard the agent
         return Outcome("temporary_failure")
+    if result.get("purpose") == "telephonic":
+        return classify_round(attempt, result)
     end = str(result.get("end_reason") or "")
     if result.get("opted_out") or end == "opted_out":
         return Outcome("opted_out")
@@ -168,10 +182,7 @@ def classify(
     callback = result.get("callback") or {}
     screening = str((final or {}).get("screening_status") or result.get("screening_status") or "")
     if callback.get("requested") and screening != ScreeningStatus.COMPLETED:
-        when = None if callback.get("needs_recruiter") else _parse_time(callback.get("time_iso"))
-        if when is None:
-            return Outcome("vague_callback", callback_text=callback.get("time_text"))
-        return Outcome("callback", callback_at=when, callback_text=callback.get("time_text"))
+        return _callback_outcome(callback)
     if screening == ScreeningStatus.COMPLETED:
         return Outcome("completed")
     values = (final or {}).get("fields") or {}
@@ -190,6 +201,44 @@ def classify(
     if end == "hangup" and duration is not None and duration < EARLY_DROP_S:
         return Outcome("temporary_failure")  # dropped in the first seconds
     return Outcome("not_started")  # answered, said nothing useful, hung up: no retry
+
+
+def _callback_outcome(callback: dict[str, Any]) -> Outcome:
+    when = None if callback.get("needs_recruiter") else _parse_time(callback.get("time_iso"))
+    if when is None:
+        return Outcome("vague_callback", callback_text=callback.get("time_text"))
+    return Outcome("callback", callback_at=when, callback_text=callback.get("time_text"))
+
+
+def classify_round(attempt: CallAttempt, result: dict[str, Any]) -> Outcome:
+    """An answered telephonic round call (phase-11 step 6b), in the same outcome terms: a
+    finished round is completed; a round cut short after some answers is partial (a manual
+    retry, as for screening); the side exits and failures are as for screening."""
+    end = str(result.get("end_reason") or "")
+    if result.get("opted_out") or end == "opted_out":
+        return Outcome("opted_out")
+    if end == "declined" or result.get("declined_round"):
+        return Outcome("declined")
+    if end == "wrong_person":
+        return Outcome("wrong_person")
+    callback = result.get("callback") or {}
+    if end == "callback" or (callback.get("requested") and end != "completed"):
+        return _callback_outcome(callback)
+    if end == "completed":
+        return Outcome("completed")
+    answers = [a for a in result.get("answers") or [] if isinstance(a, dict)]
+    if any(a.get("status") != "not_asked" and not a.get("from_earlier_call") for a in answers):
+        return Outcome("partial")
+    if end == "escalated":
+        return Outcome("escalated")
+    if end == "error":
+        return Outcome("temporary_failure")
+    if end == "no_response":
+        return Outcome("no_response")
+    duration = _duration(attempt)
+    if end == "hangup" and duration is not None and duration < EARLY_DROP_S:
+        return Outcome("temporary_failure")
+    return Outcome("not_started")
 
 
 def retry_time(ended_at: datetime, rules: RetryRules, previous: Half | None) -> datetime:
@@ -301,6 +350,23 @@ async def _conversation(session: AsyncSession, attempt_id: uuid.UUID) -> Convers
     ).scalar_one_or_none()
 
 
+async def _next_question_set(
+    session: AsyncSession,
+    attempt: CallAttempt,
+    candidate: Candidate | None,
+    kind: CallAttemptType,
+) -> uuid.UUID | None:
+    """The question set a telephonic retry or callback asks: a callback resumes the same set;
+    a retry (nothing was asked) takes the latest approved one."""
+    if attempt.purpose != CallPurpose.TELEPHONIC:
+        return None
+    if kind == CallAttemptType.RETRY and candidate is not None:
+        latest = await telephonic_service.latest_approved_id(session, candidate.requirement_id)
+        if latest is not None:
+            return latest
+    return attempt.question_set_id
+
+
 def _previous_half(attempt: CallAttempt, window: CallingWindow) -> Half | None:
     when = attempt.start_time or attempt.end_time or attempt.updated_at or attempt.created_at
     return window.half(when) if when else None
@@ -352,6 +418,7 @@ async def evaluate(
         select(
             exists().where(
                 CallAttempt.candidate_id == attempt.candidate_id,
+                CallAttempt.purpose == attempt.purpose,
                 CallAttempt.attempt_number > attempt.attempt_number,
             )
         )
@@ -364,9 +431,9 @@ async def evaluate(
     elif stop and (outcome.kind in RETRYABLE or outcome.kind == "callback"):
         decision = Decision("none", stop)
     else:
-        dialed, callbacks = (await call_repo.attempt_counts(session, [attempt.candidate_id]))[
-            attempt.candidate_id
-        ]
+        dialed, callbacks = (
+            await call_repo.attempt_counts(session, [attempt.candidate_id], purpose=attempt.purpose)
+        )[attempt.candidate_id]
         ended_at = attempt.end_time or attempt.updated_at or now
         decision = decide(
             outcome,
@@ -384,6 +451,8 @@ async def evaluate(
             candidate_id=attempt.candidate_id,
             attempt_number=await call_repo.next_attempt_number(session, attempt.candidate_id),
             attempt_type=kind.value,
+            purpose=attempt.purpose,
+            question_set_id=await _next_question_set(session, attempt, candidate, kind),
             provider=em.PROVIDER,
             call_status=SCHEDULED_STATUS[kind].value,
             next_retry_at=decision.at,
@@ -524,12 +593,19 @@ async def dispatch_due(
         problem = stop_reason(candidate, job)
         if problem is None:
             problem = await call_service.check_eligibility(
-                session, candidate, settings, now=now, own_attempt_id=attempt.id
+                session,
+                candidate,
+                settings,
+                now=now,
+                own_attempt_id=attempt.id,
+                purpose=attempt.purpose,
             )
             if problem is None:
-                dialed, _ = (await call_repo.attempt_counts(session, [attempt.candidate_id]))[
-                    attempt.candidate_id
-                ]
+                dialed, _ = (
+                    await call_repo.attempt_counts(
+                        session, [attempt.candidate_id], purpose=attempt.purpose
+                    )
+                )[attempt.candidate_id]
                 retry = attempt.attempt_type == CallAttemptType.RETRY
                 if retry and dialed >= settings.max_call_attempts:
                     problem = call_service.Ineligible.MAX_ATTEMPTS  # max lowered meanwhile

@@ -7,6 +7,7 @@ import asyncio
 import copy
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -145,6 +146,10 @@ class ScreeningResult:
     input_tokens: int
     output_tokens: int
     prompt_version: str = PROMPT_VERSION
+
+    @property
+    def status(self) -> str:
+        return self.screening_status.value
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -392,6 +397,19 @@ class ConversationManager:
             input_tokens=sum(c.input_tokens for c in calls),
             output_tokens=sum(c.output_tokens for c in calls),
         )
+
+    def warm_texts(self, fillers: Sequence[str] = ()) -> list[str]:
+        """Lines the agent says word for word, worth synthesizing during the greeting: the
+        introduction (the next line after "yes, speaking"), the first question, short fillers,
+        then the job's questions."""
+        questions = self.state.questions
+        first = [prompts.ask(questions[0], prefix=prompts.role_line(self.job))] if questions else []
+        return [
+            prompts.introduction(self.candidate, self.job),
+            *first,
+            *fillers,
+            *(q.prompt for q in questions),
+        ]
 
     def snapshot(self) -> dict[str, Any]:
         """JSON-serializable state for persistence (P6/P7)."""

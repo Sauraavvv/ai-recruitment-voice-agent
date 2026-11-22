@@ -81,7 +81,11 @@ export function RequirementView({
         {/* Both stretch to the taller one, so their bottoms line up */}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0">
-            <ScreeningCard requirementId={req.id} />
+            <ScreeningCard
+              requirementId={req.id}
+              version={req.updated_at}
+              editHref={`${requirementPath(section, req.client_id, rid)}/edit`}
+            />
           </div>
           <div className="[&>div]:h-full">
             <RequirementCard requirement={req} clientName={client?.name} />

@@ -378,6 +378,27 @@ export interface paths {
         patch: operations["update_requirement_api_v1_requirements__requirement_id__patch"];
         trace?: never;
     };
+    "/api/v1/requirements/{requirement_id}/screening-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Screening Questions
+         * @description What this requirement's screening call asks, in order: the default questions, then one
+         *     yes / no question per must-have.
+         */
+        get: operations["screening_questions_api_v1_requirements__requirement_id__screening_questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/requirements/{requirement_id}/telephonic": {
         parameters: {
             query?: never;
@@ -455,6 +476,31 @@ export interface paths {
          * @description Freeze the draft as the set used on telephonic calls (a new version).
          */
         post: operations["approve_questions_api_v1_requirements__requirement_id__telephonic_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/requirements/{requirement_id}/telephonic/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Telephonic Calls
+         * @description Queue telephonic round calls: the listed candidates of this requirement, or (none listed)
+         *     up to 20 interested candidates not called yet. Each call asks the latest approved question
+         *     set, pinned now. One result per candidate (ok or a reason): not_interested,
+         *     screening_not_completed, no_approved_questions, telephonic_done (send `call_again`),
+         *     max_attempts_reached (send `override_limit`), and the screening call's reasons.
+         *     `dry_run`: only the results, nothing queued.
+         */
+        post: operations["start_telephonic_calls_api_v1_requirements__requirement_id__telephonic_calls_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1050,6 +1096,10 @@ export interface components {
             /** Attempt Number */
             attempt_number: number;
             attempt_type: components["schemas"]["CallAttemptType"];
+            /** @default screening */
+            purpose: components["schemas"]["CallPurpose"];
+            /** Question Set Id */
+            question_set_id?: string | null;
             /** Provider */
             provider: string;
             /** Provider Call Id */
@@ -1119,6 +1169,10 @@ export interface components {
             /** Attempt Number */
             attempt_number: number;
             attempt_type: components["schemas"]["CallAttemptType"];
+            /** @default screening */
+            purpose: components["schemas"]["CallPurpose"];
+            /** Question Set Id */
+            question_set_id?: string | null;
             /** Provider */
             provider: string;
             /** Provider Call Id */
@@ -1168,6 +1222,13 @@ export interface components {
             /** Has Transcript */
             has_transcript: boolean;
         };
+        /**
+         * CallPurpose
+         * @description What a call attempt is for: the first screening call, or the telephonic round (JD
+         *     questions) for a candidate who said they're interested.
+         * @enum {string}
+         */
+        CallPurpose: "screening" | "telephonic";
         /**
          * CallStatus
          * @description plan.md Module F.
@@ -1913,6 +1974,11 @@ export interface components {
         DataResponse_list_RequirementListItem__: {
             /** Data */
             data: components["schemas"]["RequirementListItem"][];
+        };
+        /** DataResponse[list[ScreeningCallQuestion]] */
+        DataResponse_list_ScreeningCallQuestion__: {
+            /** Data */
+            data: components["schemas"]["ScreeningCallQuestion"][];
         };
         /** DataResponse[list[ScreeningQuestion]] */
         DataResponse_list_ScreeningQuestion__: {
@@ -2826,6 +2892,11 @@ export interface components {
              * @default false
              */
             override_limit: boolean;
+            /**
+             * Call Again
+             * @default false
+             */
+            call_again: boolean;
         };
         /**
          * RetryConfig
@@ -2911,6 +2982,27 @@ export interface components {
          * @enum {string}
          */
         RowStatus: "valid" | "invalid" | "duplicate_in_file" | "duplicate_existing";
+        /**
+         * ScreeningCallQuestion
+         * @description One question a requirement's screening call asks, in order (phase-11 step 5).
+         */
+        ScreeningCallQuestion: {
+            /** Number */
+            number: number;
+            /** Key */
+            key: string;
+            /** Prompt */
+            prompt: string;
+            /** Type */
+            type: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "default" | "must_have";
+            /** Must Have */
+            must_have?: string | null;
+        };
         /** ScreeningQuestion */
         ScreeningQuestion: {
             /** Key */
@@ -3148,6 +3240,30 @@ export interface components {
             is_active?: boolean | null;
             /** Password */
             password?: string | null;
+        };
+        /**
+         * TelephonicCallsRequest
+         * @description Start telephonic round calls for a requirement's candidates: the ones listed, or (none
+         *     listed) up to 20 interested candidates who haven't had the round yet.
+         */
+        TelephonicCallsRequest: {
+            /** Candidate Ids */
+            candidate_ids?: string[];
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Override Limit
+             * @default false
+             */
+            override_limit: boolean;
+            /**
+             * Call Again
+             * @default false
+             */
+            call_again: boolean;
         };
         /**
          * TelephonicOut
@@ -4057,6 +4173,37 @@ export interface operations {
             };
         };
     };
+    screening_questions_api_v1_requirements__requirement_id__screening_questions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_ScreeningCallQuestion__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_telephonic_api_v1_requirements__requirement_id__telephonic_get: {
         parameters: {
             query?: never;
@@ -4207,6 +4354,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_QuestionSetOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_telephonic_calls_api_v1_requirements__requirement_id__telephonic_calls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelephonicCallsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_list_StartCallResult__"];
                 };
             };
             /** @description Validation Error */

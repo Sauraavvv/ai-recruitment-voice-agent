@@ -151,3 +151,14 @@ class RequirementUpdate(_RequirementFields):
     deadline: date | None = None
     notes: str | None = Field(default=None, max_length=5000)
     status: RequirementStatus | None = None
+
+
+class ScreeningCallQuestion(BaseModel):
+    """One question a requirement's screening call asks, in order (phase-11 step 5)."""
+
+    number: int
+    key: str
+    prompt: str  # what the agent is told to ask
+    type: str
+    source: Literal["default", "must_have"]
+    must_have: str | None = None  # the must-have as the recruiter wrote it

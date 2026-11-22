@@ -190,6 +190,20 @@ async def test_what_the_screening_call_uses(authed: AsyncClient, db_session: Asy
     assert "client" in job.agent_instructions.lower()
     assert job not in db_session  # built on the fly, never saved
 
+    # The page shows exactly what the call asks, in order, and where each question comes from
+    shown = (await authed.get(f"/api/v1/requirements/{req['id']}/screening-questions")).json()
+    rows = shown["data"]
+    assert [r["key"] for r in rows] == keys
+    assert [r["number"] for r in rows] == list(range(1, len(keys) + 1))
+    assert {r["source"] for r in rows[:-2]} == {"default"}
+    assert [(r["source"], r["must_have"]) for r in rows[-2:]] == [
+        ("must_have", "Own two-wheeler"),
+        ("must_have", "Speaks Marathi"),
+    ]
+    assert rows[-1]["prompt"] == must["prompt"]
+    missing = await authed.get(f"/api/v1/requirements/{uuid.uuid4()}/screening-questions")
+    assert missing.status_code == 404
+
     await _confirm(authed, (await _import(authed, req["id"]))["id"])
     candidate = await db_session.scalar(
         Candidate.__table__.select().where(Candidate.requirement_id == requirement.id).limit(1)

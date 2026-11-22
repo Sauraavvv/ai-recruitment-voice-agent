@@ -1,10 +1,23 @@
 """Call attempts (plan.md Module F). Telephony status lives here; screening status stays on the
-candidate. Transitions go through app.services.call_state only."""
+candidate. Transitions go through app.services.call_state only.
+
+`purpose`: a screening call or the telephonic round (phase-11 step 6b). A telephonic attempt
+pins the approved question set it asks (`question_set_id`, frozen, so the FK gives the version).
+Retry and callback counts are per purpose; the one-live-attempt rule is per candidate."""
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +32,7 @@ from app.database.models.enums import (
     LIVE_CALL_STATUSES,
     CallAttemptType,
     CallEndReason,
+    CallPurpose,
     CallStatus,
 )
 
@@ -55,6 +69,11 @@ class CallAttempt(Base):
         enum_check("call_status", CallStatus, "call_status"),
         enum_check("attempt_type", CallAttemptType, "attempt_type"),
         enum_check("end_reason", CallEndReason, "end_reason"),
+        enum_check("purpose", CallPurpose, "purpose"),
+        CheckConstraint(
+            "purpose <> 'telephonic' OR question_set_id IS NOT NULL",
+            name="telephonic_question_set",
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -64,6 +83,11 @@ class CallAttempt(Base):
     attempt_number: Mapped[int] = mapped_column(Integer)
     attempt_type: Mapped[str] = mapped_column(
         String(16), server_default=CallAttemptType.INITIAL.value
+    )
+    purpose: Mapped[str] = mapped_column(String(16), server_default=CallPurpose.SCREENING.value)
+    # Telephonic round: the approved question set this call asks (pinned when it's queued)
+    question_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("question_sets.id", ondelete="RESTRICT"), index=True
     )
     provider: Mapped[str] = mapped_column(String(50))
     provider_call_id: Mapped[str | None] = mapped_column(String(200))

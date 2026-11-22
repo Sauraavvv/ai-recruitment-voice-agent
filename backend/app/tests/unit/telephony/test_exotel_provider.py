@@ -52,7 +52,8 @@ async def test_initiate_call_request_and_response() -> None:
     assert not any(k.startswith("StatusCallbackEvents") for k in form)
     assert form["Url"] == "http://my.exotel.com/acct1/exoml/start_voice/12345"
     assert form["CustomField"] == "0e3c1c9a1d2b4c5e8f00123456789abc"
-    assert (form["CallType"], form["TimeLimit"], form["TimeOut"]) == ("trans", "900", "30")
+    # The network limit is a backstop: the longer of the screening and telephonic round limits
+    assert (form["CallType"], form["TimeLimit"], form["TimeOut"]) == ("trans", "1200", "30")
     assert form["StatusCallback"] == "https://cb"
     assert "StatusCallbackContentType" not in form
     assert not any(k.startswith("StatusCallbackEvents") for k in form)

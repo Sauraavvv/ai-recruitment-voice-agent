@@ -111,3 +111,37 @@ def test_0008_on_an_empty_database_creates_no_organization() -> None:
 
     run_alembic(URL, ("upgrade", "head"))
     assert asyncio.run(_sql("SELECT count(*) FROM organizations")) == [(0,)]
+
+
+def test_0015_existing_calls_are_screening_calls() -> None:
+    try:
+        asyncio.run(asyncio.wait_for(ensure_database(URL, recreate=True), timeout=10))
+    except Exception:
+        pytest.skip("Postgres not reachable")
+
+    run_alembic(URL, ("upgrade", "0014"))
+    asyncio.run(
+        _sql(
+            "INSERT INTO jobs (id, job_title, company_name) "
+            "VALUES ('00000000-0000-0000-0000-000000000001', 'Dev', 'Acme')",
+            "INSERT INTO candidates (id, job_id, name, phone, applied_role) VALUES "
+            "('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', "
+            "'A', '+919876543210', 'Dev')",
+            "INSERT INTO call_attempts (candidate_id, attempt_number, provider) "
+            "VALUES ('00000000-0000-0000-0000-000000000002', 1, 'exotel')",
+        )
+    )
+    run_alembic(URL, ("upgrade", "0015"))
+    rows = asyncio.run(_sql("SELECT purpose, question_set_id FROM call_attempts"))
+    assert rows == [("screening", None)]
+
+    # A telephonic call must name its question set
+    with pytest.raises(Exception, match="ck_call_attempts_telephonic_question_set"):
+        asyncio.run(
+            _sql(
+                "INSERT INTO call_attempts (candidate_id, attempt_number, provider, purpose) "
+                "VALUES ('00000000-0000-0000-0000-000000000002', 2, 'exotel', 'telephonic')"
+            )
+        )
+    run_alembic(URL, ("downgrade", "0014"))
+    assert asyncio.run(_sql("SELECT count(*) FROM call_attempts")) == [(1,)]

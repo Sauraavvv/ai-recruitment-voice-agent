@@ -4,6 +4,9 @@ import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "re
 
 import { Alert, Button } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
+import { type DefaultQuestion, questionCount, repeatsDefault } from "@/lib/must-haves";
+import { useLoad } from "@/lib/use-load";
+import { defaultQuestions } from "@/services/jobs";
 import type { Requirement, RequirementCreate, RequirementStatus } from "@/types";
 
 import { Pills, Row, Section, line } from "../../form-layout";
@@ -123,6 +126,8 @@ export function RequirementForm({
 }) {
   const [draft, setDraft] = useState<Draft>(() => toDraft(requirement));
   const [busy, setBusy] = useState(false);
+  // The screening call asks these first, then one yes / no question per must-have
+  const { data: defaults } = useLoad("default-questions", defaultQuestions);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -259,6 +264,7 @@ export function RequirementForm({
               max={MAX_MUST_HAVES}
               itemMax={200}
               placeholder="Own two-wheeler"
+              defaults={defaults}
             />
           </Row>
         </Section>
@@ -468,12 +474,14 @@ function ListInput({
   max,
   itemMax,
   placeholder,
+  defaults,
 }: {
   values: string[];
   onChange: (values: string[]) => void;
   max: number;
   itemMax: number;
   placeholder: string;
+  defaults?: DefaultQuestion[];
 }) {
   const [text, setText] = useState("");
   const commit = () => {
@@ -482,23 +490,34 @@ function ListInput({
   };
   return (
     <div className="space-y-1.5 pt-1.5">
-      {values.map((v, i) => (
-        <div
-          key={v}
-          className="group flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2 text-sm text-zinc-200"
-        >
-          <span className="font-display text-[11px] text-zinc-500">{i + 1}</span>
-          <span className="min-w-0 flex-1">{v}</span>
-          <button
-            type="button"
-            aria-label={`Remove ${v}`}
-            onClick={() => onChange(values.filter((x) => x !== v))}
-            className="text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-red-300 focus-visible:opacity-100"
+      {values.map((v, i) => {
+        const repeat = defaults ? repeatsDefault(v, defaults) : null;
+        return (
+          <div
+            key={v}
+            className="group flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2 text-sm text-zinc-200"
           >
-            ×
-          </button>
-        </div>
-      ))}
+            <span className="font-display text-[11px] text-zinc-500">{i + 1}</span>
+            <span className="min-w-0 flex-1">
+              {v}
+              {repeat && (
+                <span className="block text-xs text-amber-300">
+                  The call already asks question {repeat.number} ({repeat.prompt.replace(/\?$/, "")}
+                  ). Make it more specific or remove it.
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              aria-label={`Remove ${v}`}
+              onClick={() => onChange(values.filter((x) => x !== v))}
+              className="text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-red-300 focus-visible:opacity-100"
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
       {values.length < max && (
         <div className="flex items-center gap-2">
           <input
@@ -520,8 +539,11 @@ function ListInput({
           </Button>
         </div>
       )}
-      <div className="text-[11px] text-zinc-600">
-        {values.length} / {max}
+      <div className="flex flex-wrap justify-between gap-2 text-[11px] text-zinc-600">
+        <span>
+          {values.length} / {max}
+        </span>
+        {defaults && <span>Screening call: {questionCount(defaults.length, values.length)}</span>}
       </div>
     </div>
   );

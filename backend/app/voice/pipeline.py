@@ -18,23 +18,20 @@ import contextlib
 import random
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
-from app.agent import prompts
 from app.agent.conversation_manager import (
     LOW_CONFIDENCE,
     AgentReply,
-    Checkpoint,
-    ConversationManager,
-    ScreeningResult,
     TranscriptEntry,
 )
 from app.agent.prompts import CandidateContext, JobConfig
 from app.agent.state import AskKind, EndReason, Phase
+from app.agent.telephonic_prompts import TelephonicContext
 from app.config import Settings
 from app.database.models import CallEndReason
 from app.providers.stt.base import STTError, STTProvider
@@ -104,6 +101,49 @@ class CallContext:
     keyterms: list[str] = field(default_factory=list)
     # Answers from earlier calls (phase-09 resume): the agent doesn't ask them again
     prior_fields: dict[str, Any] = field(default_factory=dict)
+    # Telephonic round calls (phase-11 step 6b): the round's context, else None (screening)
+    telephonic: TelephonicContext | None = None
+
+
+class AgentState(Protocol):
+    """What the session reads from a manager's state."""
+
+    @property
+    def phase(self) -> Phase: ...
+    @property
+    def ended(self) -> bool: ...
+    @property
+    def end_reason(self) -> EndReason | None: ...
+    def model_dump(self, *, mode: str = ...) -> dict[str, Any]: ...
+
+
+class AgentResult(Protocol):
+    @property
+    def end_reason(self) -> EndReason: ...
+    @property
+    def status(self) -> str: ...
+
+
+class AgentManager[R: AgentResult](Protocol):
+    """The conversation the session runs: the screening agent (`ConversationManager`) or the
+    telephonic round (`TelephonicManager`). Text in, text out; no audio."""
+
+    @property
+    def state(self) -> AgentState: ...
+    @property
+    def transcript(self) -> list[TranscriptEntry]: ...
+    async def start(self) -> AgentReply: ...
+    async def handle_utterance(
+        self, text: str, *, stt_confidence: float | None = None
+    ) -> AgentReply: ...
+    async def handle_silence(self, count: int) -> AgentReply: ...
+    async def handle_interruption(self, heard_portion: str) -> None: ...
+    def request_wrap_up(self) -> None: ...
+    def time_up(self) -> AgentReply: ...
+    async def end(self, reason: EndReason) -> R: ...
+    def checkpoint(self) -> Any: ...
+    def restore(self, cp: Any) -> None: ...
+    def warm_texts(self, fillers: Sequence[str] = ()) -> list[str]: ...
 
 
 @dataclass
@@ -151,8 +191,8 @@ class TurnMetrics:
 
 
 @dataclass
-class SessionOutcome:
-    result: ScreeningResult
+class SessionOutcome[R: AgentResult]:
+    result: R  # ScreeningResult or TelephonicResult
     end_reason: CallEndReason
     ended_by: str  # agent | caller | error
     failure_reason: str | None
@@ -160,7 +200,7 @@ class SessionOutcome:
     stats: dict[str, Any]
 
 
-class CallSession:
+class CallSession[R: AgentResult]:
     def __init__(
         self,
         ctx: CallContext,
@@ -171,10 +211,10 @@ class CallSession:
         marks: MarkTracker,
         stt: STTProvider,
         tts: TTSProvider,
-        manager: ConversationManager,
+        manager: AgentManager[R],
         vad: SpeechDetector,
         writer: TranscriptWriter | None = None,
-        on_end: Callable[[SessionOutcome], Awaitable[None]] | None = None,
+        on_end: Callable[[SessionOutcome[R]], Awaitable[None]] | None = None,
         rng: random.Random | None = None,
     ) -> None:
         self.ctx = ctx
@@ -216,7 +256,7 @@ class CallSession:
         self._ack_task: asyncio.Task[None] | None = None
         self._hold_task: asyncio.Task[None] | None = None
         self._silence_task: asyncio.Task[None] | None = None
-        self._checkpoint: Checkpoint | None = None
+        self._checkpoint: Any = None
         self._pending_text = ""
         self._pending_conf: float | None = None
         self._reply_label: str | None = None  # the playback whose events count
@@ -262,7 +302,7 @@ class CallSession:
         self._post(TurnEvent.TIME_UP, "recruiter")
         return True
 
-    async def run(self) -> SessionOutcome:
+    async def run(self) -> SessionOutcome[R]:
         structlog.contextvars.bind_contextvars(session_id=self.id)
         self.log.info("session_started", vad=self.vad.name)
         try:
@@ -519,14 +559,7 @@ class CallSession:
     async def _warm_voice(self) -> None:
         """The agent usually asks the job's questions word for word: synthesize them now, so
         the reply's audio comes from the cache instead of a ~1 s request (measured P6)."""
-        job, candidate = self.ctx.job, self.ctx.candidate
-        questions = self.manager.state.questions
-        texts = [
-            prompts.introduction(candidate, job),  # the next line after "yes, speaking"
-            *([prompts.ask(questions[0], prefix=prompts.role_line(job))] if questions else []),
-            *WARM_PHRASES,
-            *(q.prompt for q in questions),
-        ]
+        texts = self.manager.warm_texts(WARM_PHRASES)
         # The player asks for a reply's first sentence and the rest separately
         phrases = [part for text in texts for part in split_for_prefetch(text)]
         started = time.monotonic()
@@ -898,7 +931,7 @@ class CallSession:
             return state.end_reason
         return EndReason.ERROR if self.failure_reason else EndReason.HANGUP
 
-    async def _finish(self) -> SessionOutcome:
+    async def _finish(self) -> SessionOutcome[R]:
         result = await self.manager.end(self._end_reason())
         call_reason = END_REASONS.get(result.end_reason, CallEndReason.TECHNICAL_FAILURE)
         await self._save_transcript()
@@ -928,7 +961,7 @@ class CallSession:
         self.log.info(
             "session_ended",
             end_reason=call_reason.value,
-            screening_status=result.screening_status.value,
+            status=result.status,
             ended_by=self.ended_by,
             failure_reason=self.failure_reason,
             **{

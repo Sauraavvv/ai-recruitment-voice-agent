@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
-from app.database.models.enums import CallAttemptType, CallEndReason, CallStatus
+from app.database.models.enums import CallAttemptType, CallEndReason, CallPurpose, CallStatus
 
 
 class StartCallsRequest(BaseModel):
@@ -16,6 +16,8 @@ class StartCallsRequest(BaseModel):
 
 class RetryCallRequest(BaseModel):
     override_limit: bool = False
+    # Telephonic round: the recruiter confirmed a second round for a candidate who has done it
+    call_again: bool = False
 
 
 class StartCallError(BaseModel):
@@ -37,6 +39,8 @@ class CallAttemptOut(BaseModel):
     candidate_id: uuid.UUID
     attempt_number: int
     attempt_type: CallAttemptType
+    purpose: CallPurpose = CallPurpose.SCREENING  # screening | telephonic (round 2)
+    question_set_id: uuid.UUID | None = None  # telephonic: the approved set it asks
     provider: str
     provider_call_id: str | None
     provider_status: str | None

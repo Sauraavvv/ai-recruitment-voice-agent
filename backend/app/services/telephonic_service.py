@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,6 +118,33 @@ async def _sets(
         default=None,
     )
     return draft, approved
+
+
+async def latest_approved_ids(
+    session: AsyncSession, requirement_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """Requirement → its latest approved question set (the one a telephonic call asks).
+    Requirements without one are left out."""
+    if not requirement_ids:
+        return {}
+    stmt = (
+        select(QuestionSet.requirement_id, QuestionSet.id)
+        .where(
+            QuestionSet.requirement_id.in_(requirement_ids),
+            QuestionSet.status == QuestionSetStatus.APPROVED.value,
+        )
+        .ext(distinct_on(QuestionSet.requirement_id))
+        .order_by(QuestionSet.requirement_id, QuestionSet.version.desc())
+    )
+    return {rid: sid for rid, sid in (await session.execute(stmt)).all()}
+
+
+async def latest_approved_id(
+    session: AsyncSession, requirement_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    if requirement_id is None:
+        return None
+    return (await latest_approved_ids(session, {requirement_id})).get(requirement_id)
 
 
 async def _next_version(session: AsyncSession, requirement_id: uuid.UUID) -> int:

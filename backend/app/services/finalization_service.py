@@ -36,13 +36,20 @@ from app.database.connection import get_sessionmaker
 from app.database.models import (
     CallAttempt,
     CallEndReason,
+    CallPurpose,
     Candidate,
     Conversation,
     Job,
     ScreeningStatus,
 )
 from app.providers.llm.base import LLMProvider
-from app.services import call_service, retry_service, screening_job, sync_service
+from app.services import (
+    call_service,
+    retry_service,
+    screening_job,
+    sync_service,
+    telephonic_finalization,
+)
 from app.services.summary_service import generate_summary
 
 __all__ = ["finalize_attempt", "generate_summary", "merge_candidate", "save_final"]
@@ -234,7 +241,8 @@ async def finalize_attempt(
     pool: sync_service.JobPool | None = None,
 ) -> str:
     """Run the pipeline for one attempt. Returns no_result | already_done | finalized |
-    summarized (finalized earlier, only the summary was missing)."""
+    summarized (finalized earlier, only the summary was missing). A telephonic round call
+    goes its own way (`telephonic_finalization`)."""
     async with get_sessionmaker()() as session:
         conv = (
             await session.execute(
@@ -248,13 +256,25 @@ async def finalize_attempt(
             return "already_done"
         attempt = await session.get(CallAttempt, attempt_id)
         assert attempt is not None
+        round_call = attempt.purpose == CallPurpose.TELEPHONIC
+        already = conv.finalized_at is not None
+    if round_call:
+        return await _finalize_round(attempt_id, already=already, settings=settings)
+
+    async with get_sessionmaker()() as session:
+        attempt = await session.get(CallAttempt, attempt_id)
+        assert attempt is not None
+        conv = (
+            await session.execute(
+                select(Conversation).where(Conversation.call_attempt_id == attempt_id)
+            )
+        ).scalar_one()
         candidate = await session.get(Candidate, attempt.candidate_id)
         assert candidate is not None
         job = await screening_job.for_candidate(session, candidate)
         result = ScreeningResult.from_dict(conv.extracted_data["result"])
         result.transcript = list(conv.transcript or [])
         final = (conv.extracted_data or {}).get("final")
-        already = conv.finalized_at is not None
         candidate_name, job_title = candidate.name, job.job_title if job else ""
 
     outcome = "summarized"
@@ -287,6 +307,21 @@ async def finalize_attempt(
         logger.exception("summary_failed", call_attempt_id=str(attempt_id))
     else:
         await sync_service.request_sync(settings, pool)
+    return outcome
+
+
+async def _finalize_round(attempt_id: uuid.UUID, *, already: bool, settings: Settings) -> str:
+    """A telephonic round call: answers kept as stored, no screening fields, no Sheet."""
+    outcome = "summarized"
+    if not already:
+        if not await telephonic_finalization.save_final(attempt_id):
+            return "already_done"
+        outcome = "finalized"
+    note = await _evaluate_retry(attempt_id, settings)
+    try:
+        await telephonic_finalization.save_summary(attempt_id, note)
+    except Exception:
+        logger.exception("summary_failed", call_attempt_id=str(attempt_id))
     return outcome
 
 

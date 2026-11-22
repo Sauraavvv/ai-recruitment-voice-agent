@@ -19,19 +19,24 @@ from app.services import dashboard_service
 LATEST = """
     (SELECT DISTINCT ON (a.candidate_id) a.candidate_id, a.call_status, a.end_reason
        FROM call_attempts a JOIN candidates c ON c.id = a.candidate_id
-      WHERE c.deleted_at IS NULL
+      WHERE c.deleted_at IS NULL AND a.purpose = 'screening'
         AND a.call_status NOT IN ('retry_scheduled', 'callback_requested')
       ORDER BY a.candidate_id, a.attempt_number DESC) latest
 """
 SQL = {
     "total_candidates": "SELECT count(*) FROM candidates WHERE deleted_at IS NULL",
-    "calls_completed": "SELECT count(*) FROM call_attempts WHERE call_status = 'completed'",
+    # Screening calls only: telephonic round calls never change the dashboard (phase-11 6b)
+    "calls_completed": (
+        "SELECT count(*) FROM call_attempts WHERE purpose = 'screening' "
+        "AND call_status = 'completed'"
+    ),
     "calls_pending": (
-        "SELECT count(*) FROM call_attempts "
-        "WHERE call_status IN ('pending', 'queued', 'initiating')"
+        "SELECT count(*) FROM call_attempts WHERE purpose = 'screening' "
+        "AND call_status IN ('pending', 'queued', 'initiating')"
     ),
     "calls_in_progress": (
-        "SELECT count(*) FROM call_attempts WHERE call_status IN ('ringing', 'in_progress')"
+        "SELECT count(*) FROM call_attempts WHERE purpose = 'screening' "
+        "AND call_status IN ('ringing', 'in_progress')"
     ),
     # constant SQL only (no input reaches these strings)
     "unanswered_calls": (
@@ -51,8 +56,8 @@ SQL = {
         "WHERE deleted_at IS NULL AND screening_status = 'completed'"
     ),
     "scheduled_retries": (
-        "SELECT count(*) FROM call_attempts "
-        "WHERE call_status IN ('retry_scheduled', 'callback_requested')"
+        "SELECT count(*) FROM call_attempts WHERE purpose = 'screening' "
+        "AND call_status IN ('retry_scheduled', 'callback_requested')"
     ),
 }
 

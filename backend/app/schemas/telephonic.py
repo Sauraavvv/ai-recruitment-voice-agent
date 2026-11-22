@@ -107,3 +107,23 @@ class GeneratedQuestion(BaseModel):
 
 class GeneratedQuestions(BaseModel):
     questions: list[GeneratedQuestion] = Field(min_length=1)
+
+
+# --- Telephonic round calls (step 6b) ---
+
+MAX_TELEPHONIC_BATCH = 20
+
+
+class TelephonicCallsRequest(BaseModel):
+    """Start telephonic round calls for a requirement's candidates: the ones listed, or (none
+    listed) up to 20 interested candidates who haven't had the round yet."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_TELEPHONIC_BATCH)
+    # True: only check who could be called (the confirmation dialog), queue nothing
+    dry_run: bool = False
+    # The recruiter confirmed calling beyond max_attempts (counted for telephonic calls only)
+    override_limit: bool = False
+    # The recruiter confirmed a second round for candidates who have done it
+    call_again: bool = False

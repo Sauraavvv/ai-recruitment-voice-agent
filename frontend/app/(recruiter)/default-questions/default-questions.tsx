@@ -108,7 +108,7 @@ export function DefaultQuestions() {
       {data && (
         <Card
           title={`${data.length} question${data.length === 1 ? "" : "s"}`}
-          description="Asked in this order."
+          description="Asked in this order. Each requirement then adds its must-haves, as yes / no questions."
           action={
             <Link
               href="/settings/job"

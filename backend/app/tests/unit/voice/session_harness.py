@@ -17,7 +17,7 @@ from typing import Any
 
 import numpy as np
 
-from app.agent.conversation_manager import ConversationManager
+from app.agent.conversation_manager import ConversationManager, ScreeningResult
 from app.config import Settings
 from app.providers.stt.base import STTProvider, STTStats, TranscriptEvent
 from app.providers.tts.base import AudioClip, ProviderStatus, TTSProvider, TTSSynthesisError
@@ -198,7 +198,7 @@ class Harness:
         settings: Settings | None = None,
         tts: FakeTTS | None = None,
         candidate: Any = CANDIDATE,
-        on_end: Callable[[SessionOutcome], Any] | None = None,
+        on_end: Callable[[SessionOutcome[ScreeningResult]], Any] | None = None,
     ) -> None:
         self.settings = settings or fast_settings()
         self.llm = llm or ScriptedLLM()
@@ -240,7 +240,7 @@ class Harness:
         )
         self._loud_until = 0.0
         self._feeder: asyncio.Task[None] | None = None
-        self.task: asyncio.Task[SessionOutcome] | None = None
+        self.task: asyncio.Task[SessionOutcome[ScreeningResult]] | None = None
 
     # --- driving ---------------------------------------------------------------------------
 
@@ -288,11 +288,13 @@ class Harness:
     def agent_lines(self) -> int:
         return sum(1 for e in self.manager.transcript if e.speaker == "assistant")
 
-    async def hang_up(self, reason: str = "stop", timeout: float = 10.0) -> SessionOutcome:
+    async def hang_up(
+        self, reason: str = "stop", timeout: float = 10.0
+    ) -> SessionOutcome[ScreeningResult]:
         self.session.caller_hung_up(reason)
         return await self.finished(timeout)
 
-    async def finished(self, timeout: float = 10.0) -> SessionOutcome:
+    async def finished(self, timeout: float = 10.0) -> SessionOutcome[ScreeningResult]:
         assert self.task is not None
         try:
             return await asyncio.wait_for(asyncio.shield(self.task), timeout)

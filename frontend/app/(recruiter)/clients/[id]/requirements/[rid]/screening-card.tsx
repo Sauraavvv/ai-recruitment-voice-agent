@@ -18,6 +18,7 @@ import { listCandidates } from "@/services/candidates";
 import type { CandidateListItem } from "@/types";
 
 import { disabledReason } from "../../../../candidates/candidate-list";
+import { CallQuestions } from "./call-questions";
 
 const PAGE_SIZE = 100;
 
@@ -38,7 +39,15 @@ function groupOf(r: CandidateListItem): Exclude<Filter, "all"> {
 }
 
 /** A requirement's candidates and their screening calls: upload, call, see who's interested. */
-export function ScreeningCard({ requirementId }: { requirementId: string }) {
+export function ScreeningCard({
+  requirementId,
+  version,
+  editHref,
+}: {
+  requirementId: string;
+  version: string;
+  editHref: string;
+}) {
   const [targets, setTargets] = useState<CallTarget[] | null>(null);
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [filter, setFilter] = useState<Filter>("all");
@@ -131,6 +140,8 @@ export function ScreeningCard({ requirementId }: { requirementId: string }) {
           </div>
         )}
       </div>
+
+      <CallQuestions requirementId={requirementId} version={version} editHref={editHref} />
 
       <div className="mt-6 flex flex-1 flex-col">
         {error && !data ? (

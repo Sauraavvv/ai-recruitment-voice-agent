@@ -160,10 +160,13 @@ tunnel:  ## Public HTTPS/WSS URL for Exotel: ngrok's fixed NGROK_DOMAIN from .en
 exotel-urls:  ## URLs to paste into the Exotel flow (they contain secrets: don't share them)
 	docker compose exec -T backend python -m app.scripts.exotel_urls
 
-test-call:  ## Real screening call to a verified tester: make test-call phone=+9198XXXXXXXX [mode=screen|full|listen]
-	@test -n "$(phone)$(candidate)" || (echo 'usage: make test-call phone=+91XXXXXXXXXX [mode=screen|full|listen]'; exit 1)
+test-call:  ## Real call to a verified tester: make test-call phone=+9198XXXXXXXX [mode=screen|full|listen] · telephonic round: make test-call candidate=<id> mode=telephonic [again=1]
+	@test -n "$(phone)$(candidate)" || (echo 'usage: make test-call phone=+91XXXXXXXXXX [mode=screen|full|listen] | candidate=<id> mode=telephonic'; exit 1)
 	docker compose exec -T backend python -m app.scripts.test_call \
-	  $(if $(phone),--phone "$(phone)",--candidate-id "$(candidate)") --mode $(or $(mode),screen)
+	  $(if $(phone),--phone "$(phone)",--candidate-id "$(candidate)") --mode $(or $(mode),screen) $(if $(again),--call-again)
+
+round-bench:  ## Telephonic round: live-turn model latency and accuracy, no phone call (a few Groq calls): make round-bench [runs=3]
+	docker compose exec -T backend python -m app.scripts.round_bench --runs $(or $(runs),3)
 
 # --- Phase 7: Google Sheets (docs/google-sheets.md) ---
 

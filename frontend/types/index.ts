@@ -17,6 +17,7 @@ export type JobListItem = Schemas["JobListItem"];
 export type RequirementCreate = Schemas["RequirementCreate"];
 export type RequirementUpdate = Schemas["RequirementUpdate"];
 export type RequirementStatus = Schemas["RequirementStatus"];
+export type ScreeningCallQuestion = Schemas["ScreeningCallQuestion"];
 export type TeamMemberCreate = Schemas["TeamMemberCreate"];
 export type TeamMemberUpdate = Schemas["TeamMemberUpdate"];
 export type Candidate = Schemas["CandidateOut"];

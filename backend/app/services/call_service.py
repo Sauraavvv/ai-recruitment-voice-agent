@@ -1,6 +1,9 @@
 """Call orchestration (plan.md Module F, phase-05 P5-T4/T5/T6).
 
 - `start_calls`: eligibility per candidate → create a queued attempt → enqueue `initiate_call`.
+  A call is a screening call or a telephonic round call (`CallPurpose`, phase-11 step 6b); the
+  telephonic round has extra rules (interested on a completed screening, an approved question
+  set, not already done) and pins the latest approved set on the attempt.
 - `apply_provider_status`: the one place provider statuses (webhook or reconciler) change an
   attempt.
 - `handle_status_callback`: idempotent webhook processing via `webhook_events`.
@@ -24,14 +27,16 @@ from app.database.models import (
     CallAttempt,
     CallAttemptType,
     CallEndReason,
+    CallPurpose,
     CallStatus,
     Candidate,
     Job,
+    ScreeningStatus,
 )
 from app.providers.telephony import exotel_models as em
 from app.providers.telephony.base import ProviderCallStatus
 from app.repositories import call_repo, candidate_repo
-from app.services import call_slots, call_state, screening_job, sync_service
+from app.services import call_slots, call_state, screening_job, sync_service, telephonic_service
 from app.services.errors import conflict, not_found
 from app.utils.calling_window import CallingWindow
 from app.utils.log import get_logger
@@ -57,6 +62,11 @@ class Ineligible:
     VOICE_UNAVAILABLE = "voice_unavailable"
     PAUSED = "calling_paused"
     MAX_ATTEMPTS = "max_attempts_reached"  # a recruiter may override it after a confirmation
+    # Telephonic round only
+    NOT_INTERESTED = "not_interested"
+    SCREENING_INCOMPLETE = "screening_not_completed"
+    NO_QUESTIONS = "no_approved_questions"
+    TELEPHONIC_DONE = "telephonic_done"  # a recruiter may call again after a confirmation
 
 
 INELIGIBLE_MESSAGES = {
@@ -72,7 +82,27 @@ INELIGIBLE_MESSAGES = {
     Ineligible.VOICE_UNAVAILABLE: "The AI voice isn't ready yet; try again in a minute",
     Ineligible.PAUSED: "Calling is paused on the Settings page",
     Ineligible.MAX_ATTEMPTS: "All call attempts for this candidate have been used",
+    Ineligible.NOT_INTERESTED: (
+        "Only candidates who said they're interested get the telephonic round"
+    ),
+    Ineligible.SCREENING_INCOMPLETE: (
+        "The screening call didn't finish: only completed screenings go to the telephonic round"
+    ),
+    Ineligible.NO_QUESTIONS: "Approve the telephonic round questions first",
+    Ineligible.TELEPHONIC_DONE: "This candidate has already done the telephonic round",
 }
+
+
+def telephonic_problem(candidate: Candidate) -> str | None:
+    """The telephonic round's own rules about the candidate (decision 3: only candidates whose
+    screening finished with interested = yes; a screening that broke off doesn't qualify)."""
+    if candidate.requirement_id is None:
+        return Ineligible.NO_QUESTIONS  # job candidates have no question sets
+    if candidate.interested is not True:
+        return Ineligible.NOT_INTERESTED
+    if candidate.screening_status != ScreeningStatus.COMPLETED:
+        return Ineligible.SCREENING_INCOMPLETE
+    return None
 
 
 def in_calling_window(settings: Settings, now: datetime | None = None) -> bool:
@@ -87,8 +117,10 @@ async def check_eligibility(
     now: datetime | None = None,
     ignore_window: bool = False,
     own_attempt_id: uuid.UUID | None = None,
+    purpose: CallPurpose | str = CallPurpose.SCREENING,
 ) -> str | None:
-    """None if the candidate may be called now, else an `Ineligible` code."""
+    """None if the candidate may be called now (for this purpose), else an `Ineligible` code.
+    `telephonic_done` and `max_attempts_reached` are checked when starting (overridable)."""
     if candidate is None:
         return Ineligible.NOT_FOUND
     if candidate.deleted_at is not None:
@@ -102,6 +134,12 @@ async def check_eligibility(
     job = await screening_job.for_candidate(session, candidate)
     if job is None or not job.is_active:
         return Ineligible.JOB_INACTIVE
+    if purpose == CallPurpose.TELEPHONIC:
+        problem = telephonic_problem(candidate)
+        if problem is not None:
+            return problem
+        if await telephonic_service.latest_approved_id(session, candidate.requirement_id) is None:
+            return Ineligible.NO_QUESTIONS
     # A scheduled retry or callback doesn't block: a call started now replaces it
     live = await call_repo.live_for_candidate(session, candidate.id, include_scheduled=False)
     if live is not None and live.id != own_attempt_id:
@@ -129,8 +167,9 @@ async def eligibility_for(
     *,
     now: datetime | None = None,
     voice_ready: bool = True,
+    purpose: CallPurpose | str = CallPurpose.SCREENING,
 ) -> dict[uuid.UUID, str | None]:
-    """`check_eligibility` for a page of candidates in two queries (the candidate list's
+    """`check_eligibility` for a page of candidates in a few queries (the candidate list's
     buttons). Same rules and order."""
     if not candidates:
         return {}
@@ -162,6 +201,13 @@ async def eligibility_for(
     active_jobs |= await screening_job.callable_requirements(
         session, {c.requirement_id for c in candidates if c.requirement_id is not None}
     )
+    with_questions: set[uuid.UUID] = set()
+    if purpose == CallPurpose.TELEPHONIC:
+        with_questions = set(
+            await telephonic_service.latest_approved_ids(
+                session, {c.requirement_id for c in candidates if c.requirement_id is not None}
+            )
+        )
     common = global_problem(settings, now=now)
     if common is None and not voice_ready:
         common = Ineligible.VOICE_UNAVAILABLE
@@ -177,6 +223,10 @@ async def eligibility_for(
             out[c.id] = Ineligible.BAD_PHONE
         elif (c.requirement_id or c.job_id) not in active_jobs:
             out[c.id] = Ineligible.JOB_INACTIVE
+        elif purpose == CallPurpose.TELEPHONIC and (problem := telephonic_problem(c)):
+            out[c.id] = problem
+        elif purpose == CallPurpose.TELEPHONIC and c.requirement_id not in with_questions:
+            out[c.id] = Ineligible.NO_QUESTIONS
         elif c.id in live:
             out[c.id] = Ineligible.LIVE_ATTEMPT
         else:
@@ -227,9 +277,14 @@ async def start_calls(
     voice_ready: bool = True,
     dry_run: bool = False,
     override_limit: bool = False,
+    purpose: CallPurpose = CallPurpose.SCREENING,
+    call_again: bool = False,
 ) -> list[StartResult]:
     """`dry_run`: eligibility only (the confirmation dialog), nothing is queued.
-    `override_limit`: the recruiter confirmed a call beyond max_attempts (phase-09 P9-T4).
+    `override_limit`: the recruiter confirmed a call beyond max_attempts (phase-09 P9-T4);
+    attempts are counted per purpose. `call_again`: the recruiter confirmed a second telephonic
+    round for a candidate who has done it. A telephonic call pins the requirement's latest
+    approved question set now, so a later approval doesn't change a queued call.
     A scheduled retry or callback for the candidate is cancelled and replaced by this call."""
     results: list[StartResult] = []
     for candidate_id in dict.fromkeys(candidate_ids):  # de-duplicate, keep order
@@ -237,20 +292,33 @@ async def start_calls(
         results.append(result)
         candidate = await candidate_repo.get(session, candidate_id, include_deleted=True)
         result.error = await check_eligibility(
-            session, candidate, settings, ignore_window=ignore_window
+            session, candidate, settings, ignore_window=ignore_window, purpose=purpose
         )
         if result.error is None and not voice_ready:
             result.error = Ineligible.VOICE_UNAVAILABLE  # nothing could speak on the call
+        telephonic = purpose == CallPurpose.TELEPHONIC
+        if result.error is None and candidate is not None and telephonic and not call_again:
+            if candidate.id in await call_repo.completed_rounds(session, [candidate.id]):
+                result.error = Ineligible.TELEPHONIC_DONE
         if result.error is None and candidate is not None and not override_limit:
-            dialed, _ = (await call_repo.attempt_counts(session, [candidate.id]))[candidate.id]
+            dialed, _ = (await call_repo.attempt_counts(session, [candidate.id], purpose=purpose))[
+                candidate.id
+            ]
             if dialed >= settings.max_call_attempts:
                 result.error = Ineligible.MAX_ATTEMPTS
         if result.error or candidate is None or dry_run:
             continue
+        question_set_id = None
+        if telephonic:
+            question_set_id = await telephonic_service.latest_approved_id(
+                session, candidate.requirement_id
+            )
         attempt = CallAttempt(
             candidate_id=candidate.id,
             attempt_number=await call_repo.next_attempt_number(session, candidate.id),
             attempt_type=attempt_type.value,
+            purpose=purpose.value,
+            question_set_id=question_set_id,
             provider=em.PROVIDER,
             call_status=CallStatus.QUEUED.value,
         )
@@ -266,7 +334,8 @@ async def start_calls(
             # Another request created a live attempt for this candidate at the same moment.
             result.error = Ineligible.LIVE_ATTEMPT
             continue
-        sync_service.record_change(session, candidate.id)  # Call Status in the sheet
+        if not telephonic:  # the sheet shows screening calls only
+            sync_service.record_change(session, candidate.id)  # Call Status in the sheet
         await session.commit()
         result.attempt_id = attempt.id
         logger.info(
@@ -274,6 +343,8 @@ async def start_calls(
             call_attempt_id=str(attempt.id),
             candidate_id=str(candidate.id),
             attempt_number=attempt.attempt_number,
+            purpose=attempt.purpose,
+            question_set_id=str(question_set_id) if question_set_id else None,
         )
         try:
             await enqueue(str(attempt.id))
@@ -353,10 +424,12 @@ async def retry(
     *,
     voice_ready: bool = True,
     override_limit: bool = False,
+    call_again: bool = False,
 ) -> StartResult:
-    """A new manual attempt for this attempt's candidate, under the same eligibility rules as
-    starting a call (opt-out, consent, window, pause, no live attempt, max attempts unless
-    the recruiter overrides it)."""
+    """A new manual attempt for this attempt's candidate, for the same purpose (screening or
+    telephonic round), under the same eligibility rules as starting a call (opt-out, consent,
+    window, pause, no live attempt, max attempts unless the recruiter overrides it). A
+    telephonic retry asks the latest approved question set."""
     attempt = await get(session, attempt_id)  # still live → call_already_active below
     results = await start_calls(
         session,
@@ -366,6 +439,8 @@ async def retry(
         attempt_type=CallAttemptType.MANUAL,
         voice_ready=voice_ready,
         override_limit=override_limit,
+        purpose=CallPurpose(attempt.purpose),
+        call_again=call_again,
     )
     return results[0]
 
@@ -619,7 +694,7 @@ def stuck_thresholds(settings: Settings) -> dict[CallStatus, timedelta]:
     return {
         CallStatus.INITIATING: timedelta(minutes=2),
         CallStatus.RINGING: timedelta(seconds=settings.ring_timeout_s + 120),
-        CallStatus.IN_PROGRESS: timedelta(seconds=settings.max_call_duration_s + 300),
+        CallStatus.IN_PROGRESS: timedelta(seconds=settings.longest_call_s + 300),
     }
 
 
