@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
+import { RoundAnswers } from "@/components/round-answers";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/states";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, Card, PageHeader, inputClass } from "@/components/ui";
@@ -30,8 +31,26 @@ const dayAfter = (date: string) => {
   return d.toISOString();
 };
 
-/** Every call attempt, newest first, with filters (phase-08 P8-T11). */
-export function CallsList() {
+type Purpose = "screening" | "telephonic";
+
+const COPY: Record<Purpose, { title: string; subtitle: string; empty: string }> = {
+  screening: {
+    title: "Screening calls",
+    subtitle: "Every screening call, newest first.",
+    empty: "Start screening calls from a job's candidates.",
+  },
+  telephonic: {
+    title: "Telephonic round",
+    subtitle: "Every telephonic round call across your jobs, newest first, with the answers.",
+    empty: "Approve a job's telephonic questions, then call the interested candidates from there.",
+  },
+};
+
+/** One kind of call (screening or the telephonic round), newest first, with filters. */
+export function CallsList({ purpose }: { purpose: Purpose }) {
+  const copy = COPY[purpose];
+  const round = purpose === "telephonic";
+  const [open, setOpen] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
@@ -52,6 +71,7 @@ export function CallsList() {
     call_status: status ? [status] : undefined,
     created_from: dayStart(from),
     created_to: dayAfter(to),
+    purpose,
     page,
     page_size: PAGE_SIZE,
   };
@@ -63,7 +83,7 @@ export function CallsList() {
 
   return (
     <>
-      <PageHeader title="Screening calls" subtitle="Every call attempt, newest first." />
+      <PageHeader title={copy.title} subtitle={copy.subtitle} />
       <Card>
         <div className="mb-5 flex flex-wrap items-end gap-3">
           <input
@@ -124,11 +144,8 @@ export function CallsList() {
           (filtered ? (
             <EmptyState title="No calls match these filters." />
           ) : (
-            <EmptyState
-              title="No calls yet"
-              action={{ href: "/candidates", label: "Go to candidates" }}
-            >
-              Start screening calls from the candidate list or the dashboard.
+            <EmptyState title="No calls yet" action={{ href: "/jobs", label: "Go to jobs" }}>
+              {copy.empty}
             </EmptyState>
           ))}
 
@@ -143,7 +160,7 @@ export function CallsList() {
                   <th className="py-3 pr-4 font-medium">Ended</th>
                   <th className="py-3 pr-4 font-medium">Started</th>
                   <th className="py-3 pr-4 font-medium">Length</th>
-                  <th className="py-3 pr-4 font-medium">Provider</th>
+                  {!round && <th className="py-3 pr-4 font-medium">Provider</th>}
                   <th className="py-3 font-medium">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -151,45 +168,84 @@ export function CallsList() {
               </thead>
               <tbody className="divide-y divide-white/5 text-zinc-300">
                 {data.items.map((c) => (
-                  <tr key={c.id} className="transition hover:bg-white/[0.03]">
-                    <td className="py-3 pr-4">
-                      <Link
-                        href={`/candidates/${c.candidate_id}`}
-                        className="font-medium text-white hover:underline"
-                      >
-                        {c.candidate_name}
-                      </Link>
-                      <div className="text-xs text-zinc-500">{c.applied_role}</div>
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap">
-                      #{c.attempt_number}{" "}
-                      <span className="text-xs text-zinc-500">
-                        {ATTEMPT_TYPE_LABELS[c.attempt_type] ?? c.attempt_type}
-                        {c.purpose === "telephonic" && ` · ${CALL_PURPOSE_LABELS.telephonic}`}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <StatusBadge kind="call" status={c.call_status} />
-                    </td>
-                    <td className="py-3 pr-4 text-xs">
-                      {c.end_reason ? (END_REASON_LABELS[c.end_reason] ?? c.end_reason) : "—"}
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap text-zinc-500">
-                      {formatDate(c.start_time ?? c.created_at)}
-                    </td>
-                    <td className="py-3 pr-4 tabular-nums">{duration(c.duration_seconds)}</td>
-                    <td className="py-3 pr-4 text-xs text-zinc-500">{c.provider_status ?? "—"}</td>
-                    <td className="py-3 text-right">
-                      {c.has_transcript && (
+                  <Fragment key={c.id}>
+                    <tr
+                      className={`transition hover:bg-white/[0.03] ${open === c.id ? "bg-white/[0.03]" : ""}`}
+                    >
+                      <td className="py-3 pr-4">
                         <Link
-                          href={`/candidates/${c.candidate_id}?call=${c.id}`}
-                          className="rounded-lg px-2 py-1 text-xs text-[#93b4ff] hover:bg-white/5"
+                          href={`/candidates/${c.candidate_id}`}
+                          className="font-medium text-white hover:underline"
                         >
-                          Transcript
+                          {c.candidate_name}
                         </Link>
+                        {c.round ? (
+                          <div className="text-xs text-zinc-500">
+                            <Link
+                              href={`/clients/${c.round.client_id}/requirements/${c.round.requirement_id}`}
+                              className="hover:text-zinc-300 hover:underline"
+                            >
+                              {c.round.title}
+                            </Link>{" "}
+                            · questions v{c.round.version}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-zinc-500">{c.applied_role}</div>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 whitespace-nowrap">
+                        #{c.attempt_number}{" "}
+                        <span className="text-xs text-zinc-500">
+                          {ATTEMPT_TYPE_LABELS[c.attempt_type] ?? c.attempt_type}
+                          {!round &&
+                            c.purpose === "telephonic" &&
+                            ` · ${CALL_PURPOSE_LABELS.telephonic}`}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <StatusBadge kind="call" status={c.call_status} />
+                      </td>
+                      <td className="py-3 pr-4 text-xs">
+                        {c.end_reason ? (END_REASON_LABELS[c.end_reason] ?? c.end_reason) : "—"}
+                      </td>
+                      <td className="py-3 pr-4 whitespace-nowrap text-zinc-500">
+                        {formatDate(c.start_time ?? c.created_at)}
+                      </td>
+                      <td className="py-3 pr-4 tabular-nums">{duration(c.duration_seconds)}</td>
+                      {!round && (
+                        <td className="py-3 pr-4 text-xs text-zinc-500">
+                          {c.provider_status ?? "—"}
+                        </td>
                       )}
-                    </td>
-                  </tr>
+                      <td className="py-3 text-right whitespace-nowrap">
+                        {round && c.has_transcript && (
+                          <button
+                            type="button"
+                            onClick={() => setOpen(open === c.id ? null : c.id)}
+                            aria-expanded={open === c.id}
+                            className="rounded-lg px-2 py-1 text-xs text-zinc-300 hover:bg-white/5 hover:text-white"
+                          >
+                            {open === c.id ? "Hide answers" : "Answers"}
+                          </button>
+                        )}
+                        {c.has_transcript && (
+                          <Link
+                            href={`/candidates/${c.candidate_id}?call=${c.id}`}
+                            className="rounded-lg px-2 py-1 text-xs text-[#93b4ff] hover:bg-white/5"
+                          >
+                            Transcript
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                    {open === c.id && (
+                      <tr>
+                        <td colSpan={7} className="pt-1 pb-4">
+                          <RoundAnswers attemptId={c.id} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

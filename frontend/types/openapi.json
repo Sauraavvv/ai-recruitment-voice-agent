@@ -2073,6 +2073,24 @@
             "description": "Candidate name or phone"
           },
           {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CallPurpose"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "screening | telephonic",
+              "title": "Purpose"
+            },
+            "description": "screening | telephonic"
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -3675,6 +3693,16 @@
           "has_transcript": {
             "type": "boolean",
             "title": "Has Transcript"
+          },
+          "round": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoundRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -9250,6 +9278,37 @@
         ],
         "title": "RoundCall",
         "description": "A candidate's latest telephonic round call."
+      },
+      "RoundRef": {
+        "properties": {
+          "requirement_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Requirement Id"
+          },
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Client Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requirement_id",
+          "client_id",
+          "title",
+          "version"
+        ],
+        "title": "RoundRef",
+        "description": "The requirement a telephonic round call asked questions for."
       },
       "RoundRoster": {
         "properties": {

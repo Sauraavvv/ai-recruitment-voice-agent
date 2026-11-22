@@ -70,10 +70,20 @@ class CallAttemptOut(BaseModel):
         return bool(value)
 
 
+class RoundRef(BaseModel):
+    """The requirement a telephonic round call asked questions for."""
+
+    requirement_id: uuid.UUID
+    client_id: uuid.UUID
+    title: str
+    version: int
+
+
 class CallListItem(CallAttemptOut):
     candidate_name: str
     applied_role: str
     has_transcript: bool
+    round: RoundRef | None = None  # telephonic calls only
 
 
 class TranscriptEntry(BaseModel):

@@ -164,10 +164,13 @@ async def search(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     q: str | None = None,
+    purpose: CallPurpose | str | None = None,
 ) -> tuple[list[tuple[CallAttempt, str, str]], int]:
     """Attempts newest first, with the candidate's name and applied role."""
-    stmt = select(CallAttempt, Candidate.name, Candidate.applied_role).join(
-        Candidate, Candidate.id == CallAttempt.candidate_id
+    stmt = (
+        select(CallAttempt, Candidate.name, Candidate.applied_role)
+        .join(Candidate, Candidate.id == CallAttempt.candidate_id)
+        .where(_of_purpose(purpose))
     )
     if candidate_id:
         stmt = stmt.where(CallAttempt.candidate_id == candidate_id)

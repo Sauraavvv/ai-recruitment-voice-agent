@@ -18,7 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.state import EndReason
 from app.agent.telephonic_manager import TelephonicManager, TelephonicResult
 from app.config import Settings
-from app.database.models import CallAttempt, CallAttemptType, Candidate, Client, Conversation
+from app.database.models import (
+    CallAttempt,
+    CallAttemptType,
+    Candidate,
+    Client,
+    Conversation,
+    Requirement,
+)
 from app.repositories import call_repo
 from app.services import (
     finalization_service,
@@ -204,6 +211,28 @@ async def test_a_call_pins_the_approved_set(
 
     detail = (await admin.get(f"/api/v1/calls/{attempt.id}")).json()["data"]
     assert (detail["purpose"], detail["question_set_id"]) == ("telephonic", v1)
+
+    # The calls list splits by purpose; a round call names the job and the version it asks
+    db_session.add(_ended(people["amit"], 1, "completed"))
+    await db_session.commit()
+    (listed_round,) = (await admin.get("/api/v1/calls", params={"purpose": "telephonic"})).json()[
+        "data"
+    ]
+    requirement = await db_session.get(Requirement, uuid.UUID(rid))
+    assert requirement is not None
+    assert listed_round["id"] == str(attempt.id)
+    assert listed_round["round"] == {
+        "requirement_id": rid,
+        "client_id": str(requirement.client_id),
+        "title": "Sales Executive",
+        "version": 1,
+    }
+    (listed_screening,) = (
+        await admin.get("/api/v1/calls", params={"purpose": "screening"})
+    ).json()["data"]
+    assert (listed_screening["purpose"], listed_screening["round"]) == ("screening", None)
+    everything = (await admin.get("/api/v1/calls")).json()["meta"]["total"]
+    assert everything == 2
 
     # One live call per candidate; "everyone not called" no longer includes Ravi
     codes = _codes(await _call(admin, rid, candidate_ids=[str(ravi.id)]))

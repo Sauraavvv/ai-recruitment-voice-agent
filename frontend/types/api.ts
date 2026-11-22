@@ -1297,6 +1297,7 @@ export interface components {
             applied_role: string;
             /** Has Transcript */
             has_transcript: boolean;
+            round?: components["schemas"]["RoundRef"] | null;
         };
         /**
          * CallPurpose
@@ -3120,6 +3121,26 @@ export interface components {
             questions: number;
         };
         /**
+         * RoundRef
+         * @description The requirement a telephonic round call asked questions for.
+         */
+        RoundRef: {
+            /**
+             * Requirement Id
+             * Format: uuid
+             */
+            requirement_id: string;
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * RoundRoster
          * @description The requirement's interested candidates, for the telephonic round.
          */
@@ -4900,6 +4921,8 @@ export interface operations {
                 created_to?: string | null;
                 /** @description Candidate name or phone */
                 q?: string | null;
+                /** @description screening | telephonic */
+                purpose?: components["schemas"]["CallPurpose"] | null;
                 page?: number;
                 page_size?: number;
             };

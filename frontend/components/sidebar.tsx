@@ -152,14 +152,19 @@ const LINKS: NavLink[] = [
     icon: ICONS.job,
     isActive: (p: string) => p === "/jobs" || p.startsWith("/jobs/"),
   },
-  { href: "/candidates", label: "Candidates", icon: ICONS.candidates, disabled: "off" },
-  { href: "/calls", label: "Screening calls", icon: ICONS.calls, disabled: "off" },
   {
-    href: "/telephonic-round",
-    label: "Telephonic round",
-    icon: ICONS.telephonic,
-    disabled: "soon",
+    href: "/candidates",
+    label: "Candidates",
+    icon: ICONS.candidates,
+    // a candidate's page too, but not the old upload or add-by-hand pages
+    isActive: (p: string) =>
+      p === "/candidates" ||
+      (p.startsWith("/candidates/") &&
+        !p.startsWith("/candidates/upload") &&
+        !p.startsWith("/candidates/new")),
   },
+  { href: "/calls", label: "Screening calls", icon: ICONS.calls },
+  { href: "/telephonic-round", label: "Telephonic round", icon: ICONS.telephonic },
   { href: "/candidates/upload", label: "Upload", icon: ICONS.upload, disabled: "off" },
   {
     href: "/default-questions",

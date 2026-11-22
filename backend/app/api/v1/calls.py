@@ -15,7 +15,14 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUser, EffectiveSettingsDep, RedisDep, SessionDep
 from app.api.responses import ok
 from app.config import Settings
-from app.database.models import CallAttemptType, CallStatus, Conversation
+from app.database.models import (
+    CallAttemptType,
+    CallPurpose,
+    CallStatus,
+    Conversation,
+    QuestionSet,
+    Requirement,
+)
 from app.repositories import call_repo
 from app.schemas.call import (
     CallAttemptOut,
@@ -76,6 +83,7 @@ async def list_calls(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     q: Annotated[str | None, Query(max_length=200, description="Candidate name or phone")] = None,
+    purpose: Annotated[CallPurpose | None, Query(description="screening | telephonic")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
@@ -86,6 +94,7 @@ async def list_calls(
         created_from=created_from,
         created_to=created_to,
         q=q,
+        purpose=purpose,
         page=page,
         page_size=page_size,
     )
@@ -100,9 +109,36 @@ async def list_calls(
             )
         ).scalars()
     )
+    set_ids = {a.question_set_id for a, _, _ in rows if a.question_set_id}
+    rounds = {
+        set_id: {
+            "requirement_id": requirement_id,
+            "client_id": client_id,
+            "title": title,
+            "version": version,
+        }
+        for set_id, version, requirement_id, client_id, title in (
+            await session.execute(
+                select(
+                    QuestionSet.id,
+                    QuestionSet.version,
+                    Requirement.id,
+                    Requirement.client_id,
+                    Requirement.title,
+                )
+                .join(Requirement, Requirement.id == QuestionSet.requirement_id)
+                .where(QuestionSet.id.in_(set_ids))
+            )
+        ).all()
+    }
     items = [
         CallAttemptOut.model_validate(a).model_dump()
-        | {"candidate_name": name, "applied_role": role, "has_transcript": a.id in with_transcript}
+        | {
+            "candidate_name": name,
+            "applied_role": role,
+            "has_transcript": a.id in with_transcript,
+            "round": rounds.get(a.question_set_id) if a.question_set_id else None,
+        }
         for a, name, role in rows
     ]
     return ok(items, {"page": page, "page_size": page_size, "total": total})

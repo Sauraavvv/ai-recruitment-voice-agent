@@ -107,13 +107,10 @@ export function CandidateList() {
     <>
       <PageHeader
         title="Candidates"
-        subtitle="Everyone added by upload or by hand, with their calls and screening results."
+        subtitle="Everyone across your jobs, with their screening calls and results. Add people from a job's page."
       >
-        <Link href="/candidates/new" className={buttonClass("secondary")}>
-          Add candidate
-        </Link>
-        <Link href="/candidates/upload" className={buttonClass("primary")}>
-          Upload file
+        <Link href="/jobs" className={buttonClass("primary")}>
+          Add from a job
         </Link>
       </PageHeader>
 
@@ -186,11 +183,8 @@ export function CandidateList() {
           (filtered ? (
             <EmptyState title="No candidates match these filters." />
           ) : (
-            <EmptyState
-              title="No candidates yet"
-              action={{ href: "/candidates/upload", label: "Upload candidates" }}
-            >
-              Upload a CSV or Excel file, or add someone by hand, then start the screening calls.
+            <EmptyState title="No candidates yet" action={{ href: "/jobs", label: "Go to jobs" }}>
+              Open a job, upload its candidates (CSV or Excel), then start the screening calls.
             </EmptyState>
           ))}
 
