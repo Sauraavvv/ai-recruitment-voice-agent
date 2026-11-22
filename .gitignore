@@ -20,6 +20,9 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 
+# Production database backups (make prod-backup)
+/backups/
+
 # Runtime output (recordings, generated audio, model files)
 artifacts/
 *.onnx

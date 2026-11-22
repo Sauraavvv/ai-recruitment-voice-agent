@@ -56,9 +56,9 @@ class Settings(BaseSettings):
     database_url: SecretStr
     redis_url: SecretStr
 
-    # Sign-up (POST /auth/signup) creates an organization and its super admin. Candidates, jobs,
-    # calls and settings aren't separated per organization yet, so a new organization would see
-    # the existing data: unset = allowed outside production only.
+    # Sign-up (POST /auth/signup) creates an organization and its super admin. Companies don't
+    # see each other's candidates, jobs or calls, but the calling settings are still shared:
+    # unset = allowed outside production only (SIGNUP_ENABLED=true opens it there).
     signup_enabled: bool | None = None
 
     # Core (optional)

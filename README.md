@@ -6,6 +6,8 @@ Recruiters add or import candidates, and an AI recruiter calls them on a real ph
 
 **Status:** Phases 0 to 9 are complete. Phase 10 (real-world testing and going live) is next.
 
+**Deploying:** one server with Docker and automatic HTTPS: see [deploy/README.md](deploy/README.md) (`make prod-up`).
+
 ## Phases
 
 - [Phase 0: Project foundation](#phase-0-project-foundation)

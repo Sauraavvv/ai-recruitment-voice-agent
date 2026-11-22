@@ -1,0 +1,16 @@
+# HTTPS in front of CallZest (docker-compose.prod.yml). Caddy gets and renews the certificates
+# itself once the domains point at this server. SITE_DOMAIN and API_DOMAIN come from .env.
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
+
+# Call status callbacks and the live call audio (a WebSocket) reach the backend here
+{$API_DOMAIN} {
+	reverse_proxy backend:8000
+}

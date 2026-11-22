@@ -9,7 +9,8 @@ VENV := $(BACKEND)/.venv/bin
 	stt-clips stt-file stt-mic stt-record voice-loop test-stt bench-stt \
 	tunnel exotel-urls test-call voice-sim \
 	final-pass-check \
-	dashboard-check test-frontend test-e2e
+	dashboard-check test-frontend test-e2e \
+	prod-up prod-down prod-ps prod-logs prod-user prod-backup
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -179,3 +180,28 @@ test-frontend:  ## Vitest component tests
 
 test-e2e:  ## Playwright: isolated stack (own DB, no provider keys) on ports 8011/3011
 	cd frontend && npx playwright test
+
+# --- Production (one server; see deploy/README.md) ---
+# Only docker-compose.prod.yml: the dev override never applies. Project name "callzest".
+PROD := docker compose -p callzest -f docker-compose.prod.yml
+
+prod-up:  ## Build and start (or update) production: migrations run on backend start
+	$(PROD) up -d --build
+
+prod-down:  ## Stop production (data, certificates and backups stay)
+	$(PROD) down
+
+prod-ps:  ## Production services and their state
+	$(PROD) ps
+
+prod-logs:  ## Follow production logs: make prod-logs [s=backend]
+	$(PROD) logs -f --tail=200 $(s)
+
+prod-user:  ## Create a production login: make prod-user email=you@x.com name="Your Name" [role=super_admin] [org="Company"]
+	@test -n "$(email)" -a -n "$(name)" || (echo 'usage: make prod-user email=... name="..." [role=super_admin] [org="..."]'; exit 1)
+	$(PROD) exec backend python -m app.scripts.create_user --email "$(email)" --name "$(name)" $(if $(role),--role "$(role)") $(if $(org),--organization "$(org)")
+
+prod-backup:  ## Database backup to backups/callzest-<time>.sql.gz
+	@mkdir -p backups
+	$(PROD) exec -T postgres pg_dump -U callzest callzest | gzip > "backups/callzest-$$(date +%Y%m%d-%H%M%S).sql.gz"
+	@ls -lh backups | tail -1

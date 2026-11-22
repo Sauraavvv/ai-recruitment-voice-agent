@@ -1,0 +1,113 @@
+# Production: one server runs everything; only Caddy is reachable from the internet.
+#
+#   https://SITE_DOMAIN  -> frontend (Next.js; forwards /api to the backend)
+#   https://API_DOMAIN   -> backend (call status callbacks and the live call audio)
+#
+# Postgres, Redis, the backend and the frontend publish no ports: they talk on the internal
+# network only. Use this file on its own (`make prod-up`), never together with the dev
+# docker-compose.override.yml. Settings come from .env (deploy/production.env.example).
+
+x-restart: &restart
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+x-backend-env: &backend-env
+  env_file: .env
+  environment:
+    APP_ENV: production
+    DATABASE_URL: postgresql+asyncpg://callzest:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/callzest
+    REDIS_URL: redis://redis:6379/0
+    FRONTEND_ORIGIN: https://${SITE_DOMAIN:?set SITE_DOMAIN in .env}
+    FRONTEND_URL: https://${SITE_DOMAIN}
+    PUBLIC_BACKEND_URL: https://${API_DOMAIN:?set API_DOMAIN in .env}
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: callzest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: callzest
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callzest -d callzest"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: [*restart, *backend-env]
+    build: ./backend
+    # Apply database migrations, then start the API (one process: live calls share its state)
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips '*'",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: [*restart, *backend-env]
+    build: ./backend
+    command: ["arq", "app.workers.settings.WorkerSettings"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    <<: *restart
+    build:
+      context: ./frontend
+      args:
+        BACKEND_INTERNAL_URL: http://backend:8000
+    depends_on:
+      - backend
+
+  caddy:
+    <<: *restart
+    image: caddy:2-alpine
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data: # HTTPS certificates: keep this volume
+  caddy_config:
