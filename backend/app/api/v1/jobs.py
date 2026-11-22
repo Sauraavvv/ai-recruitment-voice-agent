@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, status
 
-from app.api.deps import SessionDep
+from app.api.deps import CurrentUser, SessionDep
 from app.api.responses import ok
 from app.repositories import job_repo
 from app.schemas.common import DataResponse
@@ -29,8 +29,9 @@ async def list_jobs(session: SessionDep) -> dict[str, Any]:
     "/default-screening-questions",
     response_model=DataResponse[list[ScreeningQuestionSchema]],
 )
-async def default_questions(session: SessionDep) -> dict[str, Any]:
-    return ok(await default_questions_service.get(session))
+async def default_questions(user: CurrentUser, session: SessionDep) -> dict[str, Any]:
+    """Your company's default questions."""
+    return ok(await default_questions_service.get(session, user.organization_id))
 
 
 @router.put(
@@ -38,12 +39,14 @@ async def default_questions(session: SessionDep) -> dict[str, Any]:
     response_model=DataResponse[DefaultQuestionsOut],
 )
 async def update_default_questions(
-    body: DefaultQuestionsUpdate, session: SessionDep
+    body: DefaultQuestionsUpdate, user: CurrentUser, session: SessionDep
 ) -> dict[str, Any]:
-    """Replace the default questions (reword, reorder, remove, add).
+    """Replace your company's default questions (reword, reorder, remove, add).
 
     Jobs still asking exactly the old defaults, in any order, switch to the new list."""
-    questions, updated = await default_questions_service.update(session, body.questions)
+    questions, updated = await default_questions_service.update(
+        session, user.organization_id, body.questions
+    )
     return ok(DefaultQuestionsOut(questions=questions, jobs_updated=updated))
 
 
@@ -51,15 +54,15 @@ async def update_default_questions(
     "/default-screening-questions",
     response_model=DataResponse[DefaultQuestionsOut],
 )
-async def reset_default_questions(session: SessionDep) -> dict[str, Any]:
-    """Restore the ten original questions."""
-    questions, updated = await default_questions_service.reset(session)
+async def reset_default_questions(user: CurrentUser, session: SessionDep) -> dict[str, Any]:
+    """Restore your company's ten original questions."""
+    questions, updated = await default_questions_service.reset(session, user.organization_id)
     return ok(DefaultQuestionsOut(questions=questions, jobs_updated=updated))
 
 
 @router.post("", response_model=DataResponse[JobOut], status_code=status.HTTP_201_CREATED)
-async def create_job(body: JobCreate, session: SessionDep) -> dict[str, Any]:
-    return ok(await job_service.create(session, body))
+async def create_job(body: JobCreate, user: CurrentUser, session: SessionDep) -> dict[str, Any]:
+    return ok(await job_service.create(session, body, user.organization_id))
 
 
 @router.get("/active", response_model=DataResponse[JobOut | None])

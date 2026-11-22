@@ -155,12 +155,7 @@ const LINKS: NavLink[] = [
   },
   { href: "/calls", label: "Screening calls", icon: ICONS.calls },
   { href: "/telephonic-round", label: "Telephonic round", icon: ICONS.telephonic },
-  {
-    href: "/default-questions",
-    label: "Default questions",
-    icon: ICONS.questions,
-    disabled: "off",
-  },
+  { href: "/default-questions", label: "Default questions", icon: ICONS.questions },
   // Super admins only: add and manage their company's logins
   { href: "/accounts", label: "Accounts", icon: ICONS.accounts, superAdminOnly: true },
   { href: "/settings", label: "Settings", icon: ICONS.settings, disabled: "off" },

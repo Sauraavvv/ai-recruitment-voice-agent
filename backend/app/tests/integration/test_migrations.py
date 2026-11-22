@@ -217,3 +217,33 @@ def test_0018_google_sheets_is_gone() -> None:
     assert asyncio.run(_sql("SELECT key FROM app_settings")) == [("general",)]
     run_alembic(URL, ("downgrade", "0017"))
     assert asyncio.run(_sql("SELECT count(*) FROM sync_logs")) == [(0,)]
+
+
+def test_0019_the_shared_default_questions_go_to_the_oldest_company() -> None:
+    try:
+        asyncio.run(asyncio.wait_for(ensure_database(URL, recreate=True), timeout=10))
+    except Exception:
+        pytest.skip("Postgres not reachable")
+
+    run_alembic(URL, ("upgrade", "0018"))
+    asyncio.run(
+        _sql(
+            "INSERT INTO organizations (id, name, created_at) VALUES "
+            "('00000000-0000-0000-0000-0000000000a1', 'Original', '2026-01-01'), "
+            "('00000000-0000-0000-0000-0000000000b2', 'Signed up later', '2026-06-01')",
+            "INSERT INTO app_settings (key, value) VALUES "
+            "('default_questions', '[{\"key\": \"q_x\", \"prompt\": \"X?\"}]'), ('general', '{}')",
+        )
+    )
+    run_alembic(URL, ("upgrade", "0019"))
+    rows = asyncio.run(_sql("SELECT key FROM app_settings ORDER BY key"))
+    assert rows == [("default_questions:00000000-0000-0000-0000-0000000000a1",), ("general",)]
+    asyncio.run(
+        _sql(
+            "INSERT INTO app_settings (key, value) VALUES "
+            "('default_questions:00000000-0000-0000-0000-0000000000b2', '[]')"
+        )
+    )
+    run_alembic(URL, ("downgrade", "0018"))
+    rows = asyncio.run(_sql("SELECT key FROM app_settings ORDER BY key"))
+    assert rows == [("default_questions",), ("general",)]

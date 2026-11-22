@@ -34,8 +34,12 @@ async def list_jobs(session: AsyncSession) -> list[Job]:
     return await job_repo.list_all(session)
 
 
-async def create(session: AsyncSession, data: JobCreate) -> Job:
-    questions = data.screening_questions or await default_questions_service.get(session)
+async def create(session: AsyncSession, data: JobCreate, organization_id: uuid.UUID) -> Job:
+    """A job of the original flow; without questions of its own it asks the creating
+    company's defaults."""
+    questions = data.screening_questions or await default_questions_service.get(
+        session, organization_id
+    )
     job = Job(
         **data.model_dump(exclude={"screening_questions"}),
         screening_questions=[q.model_dump(exclude_none=True) for q in questions],

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { Alert, Button, Card, Muted, PageHeader, inputClass } from "@/components/ui";
@@ -36,7 +35,7 @@ const control = inputClass.replace("w-full ", "");
 
 function savedText(result: DefaultQuestionsResult, what: string) {
   const n = result.jobs_updated;
-  if (!n) return `${what}. New jobs and "Use default questions" will use it.`;
+  if (!n) return `${what}. The next screening calls will ask it.`;
   return `${what}. Also updated in ${n} job${n === 1 ? " that uses" : "s that use"} the default questions.`;
 }
 
@@ -92,7 +91,7 @@ export function DefaultQuestions() {
     <>
       <PageHeader
         title="Default questions"
-        subtitle="The standard screening questions the AI agent asks when a job uses defaults."
+        subtitle="Your company's standard screening questions. Changes apply to every requirement's next screening calls; other companies keep their own."
       >
         <Button variant="secondary" onClick={onReset} disabled={busy || !data}>
           Restore original questions
@@ -108,15 +107,7 @@ export function DefaultQuestions() {
       {data && (
         <Card
           title={`${data.length} question${data.length === 1 ? "" : "s"}`}
-          description="Asked in this order. Each requirement then adds its must-haves, as yes / no questions."
-          action={
-            <Link
-              href="/settings/job"
-              className="text-sm font-medium text-[#60a5fa] hover:underline"
-            >
-              Choose per job in Job settings
-            </Link>
-          }
+          description="Asked in this order on every screening call. Each requirement then adds its must-haves, as yes / no questions."
         >
           <ol className="divide-y divide-white/5 rounded-2xl bg-[#202226] px-4">
             {data.map((q, i) =>

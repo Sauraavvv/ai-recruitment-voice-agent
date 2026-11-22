@@ -657,7 +657,7 @@ async def test_concurrent_evaluate_creates_one_attempt(migrated_database: str) -
         )
         s.add(attempt)
         await s.commit()
-        ids = (job.id, cand.id, attempt.id)
+        ids = (job.id, cand.id, attempt.id, org.id)
     try:
 
         async def run() -> retry_service.Evaluation:
@@ -679,6 +679,7 @@ async def test_concurrent_evaluate_creates_one_attempt(migrated_database: str) -
             await s.execute(delete(CallAttempt).where(CallAttempt.candidate_id == ids[1]))
             await s.execute(delete(Candidate).where(Candidate.id == ids[1]))
             await s.execute(delete(Job).where(Job.id == ids[0]))
+            await s.execute(delete(Organization).where(Organization.id == ids[3]))
             await s.commit()
         await engine.dispose()
 

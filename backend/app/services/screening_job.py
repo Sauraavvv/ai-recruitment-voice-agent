@@ -67,7 +67,7 @@ async def call_questions(
     organization's defaults ("default"), then one per must-have ("must_have")."""
     defaults: list[tuple[QuestionSource, dict[str, object]]] = [
         ("default", q.model_dump(exclude_none=True))
-        for q in await default_questions_service.get(session)
+        for q in await default_questions_service.get(session, requirement.organization_id)
     ]
     musts = must_have_questions(list(requirement.must_haves or []))
     return defaults + [("must_have", q) for q in musts]

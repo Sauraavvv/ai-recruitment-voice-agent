@@ -1,8 +1,20 @@
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.tests.conftest import TEST_PASSWORD
 
 URL = "/api/v1/jobs/default-screening-questions"
+
+
+async def _owns_original_jobs(user: Any, db: AsyncSession) -> None:
+    """Make the test user's company the oldest one, the owner of the original flow's jobs.
+    (Companies made in one test share the transaction's clock, so it is set explicitly.)"""
+    user.organization.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    await db.flush()
 
 
 async def _defaults(authed: AsyncClient) -> list[dict[str, Any]]:
@@ -38,8 +50,9 @@ async def test_rejects_bad_lists(authed: AsyncClient) -> None:
 
 
 async def test_jobs_using_defaults_follow_edits(
-    authed: AsyncClient, active_job: dict[str, Any]
+    authed: AsyncClient, active_job: dict[str, Any], user: Any, db_session: AsyncSession
 ) -> None:
+    await _owns_original_jobs(user, db_session)
     custom = (
         await authed.post(
             "/api/v1/jobs",
@@ -87,3 +100,34 @@ async def test_jobs_using_defaults_follow_edits(
 
 async def test_requires_login(api: AsyncClient) -> None:
     assert (await api.put(URL, json={"questions": []})).status_code == 401
+
+
+async def test_each_company_has_its_own(
+    authed: AsyncClient, active_job: dict[str, Any], user: Any, db_session: AsyncSession
+) -> None:
+    """Company B's edits change neither A's list nor A's (original-flow) jobs, and B starts
+    from the originals, not from A's edits."""
+    await _owns_original_jobs(user, db_session)
+    questions = await _defaults(authed)
+    a_list = [q for q in questions if q["key"] != "reason_for_change"]
+    assert (await authed.put(URL, json={"questions": a_list})).status_code == 200
+
+    await authed.post("/api/v1/auth/logout")
+    signup = await authed.post(
+        "/api/v1/auth/signup",
+        json={
+            "organization_name": "Company B",
+            "name": "B Owner",
+            "email": f"owner-{uuid.uuid4().hex[:8]}@b.example",
+            "password": TEST_PASSWORD,
+        },
+    )
+    assert signup.status_code == 201, signup.text
+    b_list = await _defaults(authed)
+    assert len(b_list) == 10
+    b_list[0]["prompt"] = "Company B's own wording?"
+    result = (await authed.put(URL, json={"questions": b_list})).json()["data"]
+    assert result["jobs_updated"] == 0
+    assert (await _defaults(authed))[0]["prompt"] == "Company B's own wording?"
+    job = (await authed.get(f"/api/v1/jobs/{active_job['id']}")).json()["data"]
+    assert job["screening_questions"] == a_list
