@@ -14,3 +14,17 @@ def create_llm_provider(settings: Settings) -> LLMProvider:
         settings.openai_model,
         reasoning_effort=settings.openai_reasoning_effort,
     )
+
+
+def create_question_llm(settings: Settings) -> LLMProvider:
+    """The model that writes telephonic round questions (Groq)."""
+    keys = settings.groq_keys
+    if not keys:
+        raise LLMConfigError("GROQ_API_KEYS (or GROQ_API_KEY) must be set")
+    from app.providers.llm.groq_provider import GroqProvider
+
+    return GroqProvider(
+        keys,
+        settings.groq_model,
+        reasoning_effort=settings.groq_reasoning_effort or None,
+    )

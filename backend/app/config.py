@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     @property
+    def groq_keys(self) -> list[str]:
+        """Every configured Groq key (GROQ_API_KEYS, then GROQ_API_KEY), without duplicates."""
+        raw = []
+        if self.groq_api_keys:
+            raw += self.groq_api_keys.get_secret_value().replace("\n", ",").split(",")
+        if self.groq_api_key:
+            raw.append(self.groq_api_key.get_secret_value())
+        keys: list[str] = []
+        for key in (k.strip() for k in raw):
+            if key and key not in keys:
+                keys.append(key)
+        return keys
+
+    @property
     def signup_allowed(self) -> bool:
         if self.signup_enabled is not None:
             return self.signup_enabled
@@ -61,6 +75,16 @@ class Settings(BaseSettings):
     # Only sent for reasoning models (e.g. "none", "minimal", "low"); lower effort = lower latency.
     openai_reasoning_effort: str | None = None
     openai_timeout_s: float = Field(default=8.0, gt=0, le=60)
+
+    # Groq (telephonic round): writes interview questions from a requirement's JD. An
+    # OpenAI-compatible API; the model is the open-weight gpt-oss-120b.
+    groq_api_key: SecretStr | None = None
+    # Several keys, comma-separated: requests rotate through them and move on to the next key
+    # when one is rate limited or rejected. GROQ_API_KEY (one key) also works.
+    groq_api_keys: SecretStr | None = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_reasoning_effort: str = "medium"  # low | medium | high
+    groq_timeout_s: float = Field(default=60.0, gt=0, le=180)
 
     # Deepgram (TTS from Phase 3, STT from Phase 4). STT defaults: docs/benchmarks/stt.md
     deepgram_api_key: SecretStr | None = None

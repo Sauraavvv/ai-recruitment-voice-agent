@@ -21,6 +21,7 @@ from app.api.v1 import (
     requirements,
     settings,
     team,
+    telephonic,
 )
 
 api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(verify_origin)])
@@ -33,6 +34,7 @@ protected.include_router(imports.router)  # before candidates: /candidates/impor
 protected.include_router(candidates.router)
 protected.include_router(clients.router)
 protected.include_router(requirements.router)
+protected.include_router(telephonic.router)
 protected.include_router(jobs.router)
 protected.include_router(calls.router)
 protected.include_router(dashboard.router)

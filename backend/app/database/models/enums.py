@@ -118,3 +118,10 @@ class WorkMode(StrEnum):
     ONSITE = "onsite"
     HYBRID = "hybrid"
     REMOTE = "remote"
+
+
+class QuestionSetStatus(StrEnum):
+    """A telephonic round question set: editable draft, or approved (frozen, used on calls)."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"

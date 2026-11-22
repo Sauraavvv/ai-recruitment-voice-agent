@@ -22,6 +22,7 @@ TABLES = {
     "import_batches",
     "jobs",
     "organizations",
+    "question_sets",
     "requirements",
     "sync_logs",
     "users",

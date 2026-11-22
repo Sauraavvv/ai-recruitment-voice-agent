@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ErrorState, Skeleton } from "@/components/states";
-import { BackLink, Card, Muted, PageHeader, buttonClass } from "@/components/ui";
+import { BackLink, PageHeader, buttonClass } from "@/components/ui";
 import { useLoad } from "@/lib/use-load";
 import { getClient } from "@/services/clients";
 import { getRequirement } from "@/services/requirements";
 
 import { REQUIREMENT_STATUS, RequirementCard, WORK_MODES } from "../requirement-form";
 import { ScreeningCard } from "./screening-card";
+import { TelephonicCard } from "./telephonic-card";
 
 /** Where a requirement's pages live: under its client, or under Jobs (so the sidebar keeps
  * the section the user came from). */
@@ -87,16 +88,10 @@ export function RequirementView({
           </div>
         </div>
 
-        <Card
-          title="Telephonic round"
-          description="Questions made from the JD, asked on a second call."
-        >
-          <Muted>
-            {req.job_description
-              ? "Coming next. The JD is saved, so questions can be made from it."
-              : "Coming next. Add the JD first (Edit job details): the questions are made from it."}
-          </Muted>
-        </Card>
+        <TelephonicCard
+          requirementId={req.id}
+          editHref={`${requirementPath(section, req.client_id, rid)}/edit`}
+        />
       </div>
     </>
   );

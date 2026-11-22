@@ -39,3 +39,6 @@ artifacts/
 # Project documentation stays local (not published)
 /docs/
 /plan.md
+
+# Local key files (never commit)
+/grok_api.txt

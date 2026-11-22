@@ -14,6 +14,7 @@ from app.database.models.enums import (
     ClientStatus,
     ConsentSource,
     ImportBatchStatus,
+    QuestionSetStatus,
     RequirementStatus,
     ScreeningStatus,
     SyncStatus,
@@ -23,6 +24,7 @@ from app.database.models.enums import (
 from app.database.models.import_batch import ImportBatch
 from app.database.models.job import Job
 from app.database.models.organization import Organization
+from app.database.models.question_set import QuestionSet
 from app.database.models.requirement import Requirement
 from app.database.models.sync_log import SyncLog
 from app.database.models.user import User
@@ -45,6 +47,8 @@ __all__ = [
     "ImportBatchStatus",
     "Job",
     "Organization",
+    "QuestionSet",
+    "QuestionSetStatus",
     "Requirement",
     "RequirementStatus",
     "ScreeningStatus",

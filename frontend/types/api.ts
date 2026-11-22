@@ -378,6 +378,89 @@ export interface paths {
         patch: operations["update_requirement_api_v1_requirements__requirement_id__patch"];
         trace?: never;
     };
+    "/api/v1/requirements/{requirement_id}/telephonic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Telephonic
+         * @description The draft (if any), the latest approved set, and whether questions can be generated.
+         */
+        get: operations["get_telephonic_api_v1_requirements__requirement_id__telephonic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/requirements/{requirement_id}/telephonic/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Questions
+         * @description Write questions from the JD with AI. They replace the current draft. Takes a while
+         *     (the model reasons first). 422 no_jd, 503 ai_not_configured / ai_unavailable, 504 ai_timeout,
+         *     502 ai_bad_output / ai_rejected.
+         */
+        post: operations["generate_questions_api_v1_requirements__requirement_id__telephonic_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/requirements/{requirement_id}/telephonic/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Draft
+         * @description Save the questions as edited (in order). Creates a draft when there's none.
+         */
+        put: operations["save_draft_api_v1_requirements__requirement_id__telephonic_draft_put"];
+        post?: never;
+        /** Discard Draft */
+        delete: operations["discard_draft_api_v1_requirements__requirement_id__telephonic_draft_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/requirements/{requirement_id}/telephonic/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Questions
+         * @description Freeze the draft as the set used on telephonic calls (a new version).
+         */
+        post: operations["approve_questions_api_v1_requirements__requirement_id__telephonic_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs": {
         parameters: {
             query?: never;
@@ -1753,6 +1836,10 @@ export interface components {
             /** Data */
             data: null;
         };
+        /** DataResponse[QuestionSetOut] */
+        DataResponse_QuestionSetOut_: {
+            data: components["schemas"]["QuestionSetOut"];
+        };
         /** DataResponse[QuickStart] */
         DataResponse_QuickStart_: {
             data: components["schemas"]["QuickStart"];
@@ -1784,6 +1871,10 @@ export interface components {
         /** DataResponse[TeamMemberOut] */
         DataResponse_TeamMemberOut_: {
             data: components["schemas"]["TeamMemberOut"];
+        };
+        /** DataResponse[TelephonicOut] */
+        DataResponse_TelephonicOut_: {
+            data: components["schemas"]["TelephonicOut"];
         };
         /** DataResponse[Union[JobOut, NoneType]] */
         DataResponse_Union_JobOut__NoneType__: {
@@ -1856,6 +1947,11 @@ export interface components {
             /** Questions */
             questions: components["schemas"]["ScreeningQuestion"][];
         };
+        /** DraftUpdate */
+        DraftUpdate: {
+            /** Questions */
+            questions: components["schemas"]["QuestionIn"][];
+        };
         /** Eligibility */
         Eligibility: {
             /** Can Call */
@@ -1900,6 +1996,19 @@ export interface components {
             calling_enabled?: boolean | null;
             /** Voice Engine */
             voice_engine?: ("pipeline" | "realtime") | null;
+        };
+        /** GenerateRequest */
+        GenerateRequest: {
+            /**
+             * Count
+             * @default 8
+             */
+            count: number;
+            /**
+             * Focus
+             * @default
+             */
+            focus: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2367,6 +2476,87 @@ export interface components {
              */
             last_checked: string;
         };
+        /**
+         * Question
+         * @description One question as stored and shown: what's asked, what a good answer covers, how much it
+         *     counts (1 nice to have … 3 critical).
+         */
+        Question: {
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "experience" | "skill" | "situational" | "logistics";
+            /** Rubric */
+            rubric: string;
+            /** Weight */
+            weight: number;
+        };
+        /**
+         * QuestionIn
+         * @description A question as the recruiter saves it. A new question has no id yet.
+         */
+        QuestionIn: {
+            /** Id */
+            id?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Type
+             * @default skill
+             * @enum {string}
+             */
+            type: "experience" | "skill" | "situational" | "logistics";
+            /**
+             * Rubric
+             * @default
+             */
+            rubric: string;
+            /**
+             * Weight
+             * @default 2
+             */
+            weight: number;
+        };
+        /** QuestionSetOut */
+        QuestionSetOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["QuestionSetStatus"];
+            /** Source */
+            source: string;
+            /** Questions */
+            questions: components["schemas"]["Question"][];
+            /** Model */
+            model: string;
+            /** Approved At */
+            approved_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * QuestionSetStatus
+         * @description A telephonic round question set: editable draft, or approved (frozen, used on calls).
+         * @enum {string}
+         */
+        QuestionSetStatus: "draft" | "approved";
         /**
          * QuickStart
          * @description Eligible candidates never called (for "Call new candidates").
@@ -2958,6 +3148,20 @@ export interface components {
             is_active?: boolean | null;
             /** Password */
             password?: string | null;
+        };
+        /**
+         * TelephonicOut
+         * @description Where a requirement's telephonic round questions stand.
+         */
+        TelephonicOut: {
+            draft: components["schemas"]["QuestionSetOut"] | null;
+            approved: components["schemas"]["QuestionSetOut"] | null;
+            /** Has Jd */
+            has_jd: boolean;
+            /** Ai Ready */
+            ai_ready: boolean;
+            /** Jd Changed */
+            jd_changed: boolean;
         };
         /** TranscriptEntry */
         TranscriptEntry: {
@@ -3840,6 +4044,169 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_RequirementOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_telephonic_api_v1_requirements__requirement_id__telephonic_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_TelephonicOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_questions_api_v1_requirements__requirement_id__telephonic_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_QuestionSetOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_draft_api_v1_requirements__requirement_id__telephonic_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_QuestionSetOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_draft_api_v1_requirements__requirement_id__telephonic_draft_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_NoneType_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_questions_api_v1_requirements__requirement_id__telephonic_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataResponse_QuestionSetOut_"];
                 };
             };
             /** @description Validation Error */

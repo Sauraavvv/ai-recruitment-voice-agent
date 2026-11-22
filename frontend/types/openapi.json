@@ -1255,6 +1255,243 @@
         }
       }
     },
+    "/api/v1/requirements/{requirement_id}/telephonic": {
+      "get": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Get Telephonic",
+        "description": "The draft (if any), the latest approved set, and whether questions can be generated.",
+        "operationId": "get_telephonic_api_v1_requirements__requirement_id__telephonic_get",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_TelephonicOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{requirement_id}/telephonic/generate": {
+      "post": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Generate Questions",
+        "description": "Write questions from the JD with AI. They replace the current draft. Takes a while\n(the model reasons first). 422 no_jd, 503 ai_not_configured / ai_unavailable, 504 ai_timeout,\n502 ai_bad_output / ai_rejected.",
+        "operationId": "generate_questions_api_v1_requirements__requirement_id__telephonic_generate_post",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_QuestionSetOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{requirement_id}/telephonic/draft": {
+      "put": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Save Draft",
+        "description": "Save the questions as edited (in order). Creates a draft when there's none.",
+        "operationId": "save_draft_api_v1_requirements__requirement_id__telephonic_draft_put",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_QuestionSetOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Discard Draft",
+        "operationId": "discard_draft_api_v1_requirements__requirement_id__telephonic_draft_delete",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_NoneType_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{requirement_id}/telephonic/approve": {
+      "post": {
+        "tags": [
+          "telephonic"
+        ],
+        "summary": "Approve Questions",
+        "description": "Freeze the draft as the set used on telephonic calls (a new version).",
+        "operationId": "approve_questions_api_v1_requirements__requirement_id__telephonic_approve_post",
+        "parameters": [
+          {
+            "name": "requirement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Requirement Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse_QuestionSetOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "tags": [
@@ -5498,6 +5735,18 @@
         ],
         "title": "DataResponse[NoneType]"
       },
+      "DataResponse_QuestionSetOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QuestionSetOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[QuestionSetOut]"
+      },
       "DataResponse_QuickStart_": {
         "properties": {
           "data": {
@@ -5593,6 +5842,18 @@
           "data"
         ],
         "title": "DataResponse[TeamMemberOut]"
+      },
+      "DataResponse_TelephonicOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TelephonicOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DataResponse[TelephonicOut]"
       },
       "DataResponse_Union_JobOut__NoneType__": {
         "properties": {
@@ -5811,6 +6072,25 @@
         "title": "DefaultQuestionsUpdate",
         "description": "The full list of default questions, in order. Standard keys keep their types."
       },
+      "DraftUpdate": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionIn"
+            },
+            "type": "array",
+            "maxItems": 15,
+            "minItems": 1,
+            "title": "Questions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "title": "DraftUpdate"
+      },
       "Eligibility": {
         "properties": {
           "can_call": {
@@ -6006,6 +6286,26 @@
         "type": "object",
         "title": "GeneralUpdate",
         "description": "PATCH body: sections left out are unchanged."
+      },
+      "GenerateRequest": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 4.0,
+            "title": "Count",
+            "default": 8
+          },
+          "focus": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Focus",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GenerateRequest"
       },
       "HTTPValidationError": {
         "properties": {
@@ -7222,6 +7522,176 @@
           "last_checked"
         ],
         "title": "ProviderStatus"
+      },
+      "Question": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "skill",
+              "situational",
+              "logistics"
+            ],
+            "title": "Type"
+          },
+          "rubric": {
+            "type": "string",
+            "title": "Rubric"
+          },
+          "weight": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Weight"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "type",
+          "rubric",
+          "weight"
+        ],
+        "title": "Question",
+        "description": "One question as stored and shown: what's asked, what a good answer covers, how much it\ncounts (1 nice to have \u2026 3 critical)."
+      },
+      "QuestionIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 5,
+            "title": "Text"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "skill",
+              "situational",
+              "logistics"
+            ],
+            "title": "Type",
+            "default": "skill"
+          },
+          "rubric": {
+            "type": "string",
+            "maxLength": 800,
+            "title": "Rubric",
+            "default": ""
+          },
+          "weight": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Weight",
+            "default": 2
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "QuestionIn",
+        "description": "A question as the recruiter saves it. A new question has no id yet."
+      },
+      "QuestionSetOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QuestionSetStatus"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "status",
+          "source",
+          "questions",
+          "model",
+          "approved_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QuestionSetOut"
+      },
+      "QuestionSetStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "approved"
+        ],
+        "title": "QuestionSetStatus",
+        "description": "A telephonic round question set: editable draft, or approved (frozen, used on calls)."
       },
       "QuickStart": {
         "properties": {
@@ -9015,6 +9485,52 @@
         "type": "object",
         "title": "TeamMemberUpdate",
         "description": "Only the fields that are sent change."
+      },
+      "TelephonicOut": {
+        "properties": {
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionSetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionSetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "has_jd": {
+            "type": "boolean",
+            "title": "Has Jd"
+          },
+          "ai_ready": {
+            "type": "boolean",
+            "title": "Ai Ready"
+          },
+          "jd_changed": {
+            "type": "boolean",
+            "title": "Jd Changed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft",
+          "approved",
+          "has_jd",
+          "ai_ready",
+          "jd_changed"
+        ],
+        "title": "TelephonicOut",
+        "description": "Where a requirement's telephonic round questions stand."
       },
       "TranscriptEntry": {
         "properties": {

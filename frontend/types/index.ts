@@ -56,3 +56,7 @@ export type StatusOut = Schemas["StatusOut"];
 export type SheetsStatus = Schemas["SheetsStatus"];
 export type SheetAccessCheck = Schemas["SheetAccessCheck"];
 export type CallStatus = Schemas["CallStatus"];
+export type TelephonicState = Schemas["TelephonicOut"];
+export type QuestionSet = Schemas["QuestionSetOut"];
+export type Question = Schemas["Question"];
+export type QuestionIn = Schemas["QuestionIn"];
