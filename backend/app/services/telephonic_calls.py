@@ -31,7 +31,7 @@ from app.database.models import (
     ScreeningStatus,
     User,
 )
-from app.repositories import call_repo
+from app.repositories import call_repo, candidate_repo
 from app.schemas.candidate import Eligibility
 from app.schemas.telephonic import (
     MAX_TELEPHONIC_BATCH,
@@ -57,10 +57,14 @@ Enqueue = Callable[[str], Awaitable[None]]
 
 
 async def not_called_interested(
-    session: AsyncSession, requirement_id: uuid.UUID, *, limit: int = MAX_TELEPHONIC_BATCH
+    session: AsyncSession,
+    user: User,
+    requirement_id: uuid.UUID,
+    *,
+    limit: int = MAX_TELEPHONIC_BATCH,
 ) -> list[uuid.UUID]:
-    """Candidates of the requirement who finished screening interested and have no telephonic
-    round call yet (cancelled ones don't count), oldest first."""
+    """Candidates of the requirement (that `user` sees) who finished screening interested and
+    have no telephonic round call yet (cancelled ones don't count), oldest first."""
     had_round = exists().where(
         CallAttempt.candidate_id == Candidate.id,
         CallAttempt.purpose == CallPurpose.TELEPHONIC.value,
@@ -70,6 +74,7 @@ async def not_called_interested(
         select(Candidate.id)
         .where(
             Candidate.requirement_id == requirement_id,
+            candidate_repo.visible_to(user),
             Candidate.deleted_at.is_(None),
             Candidate.opted_out.is_(False),
             Candidate.interested.is_(True),
@@ -94,7 +99,7 @@ async def start(
 ) -> list[StartResult]:
     requirement, _client = await requirement_service.get_requirement(session, user, requirement_id)
     ids = list(dict.fromkeys(body.candidate_ids)) or await not_called_interested(
-        session, requirement.id
+        session, user, requirement.id
     )
     if not ids:
         return []
@@ -102,7 +107,9 @@ async def start(
         (
             await session.execute(
                 select(Candidate.id).where(
-                    Candidate.id.in_(ids), Candidate.requirement_id == requirement.id
+                    Candidate.id.in_(ids),
+                    Candidate.requirement_id == requirement.id,
+                    candidate_repo.visible_to(user),
                 )
             )
         ).scalars()
@@ -122,7 +129,7 @@ async def start(
             call_again=body.call_again,
         )
     }
-    # Someone else's candidate, or another opening's: not found here
+    # Another recruiter's candidate, or another opening's: not found here
     return [started.get(i) or StartResult(i, error=Ineligible.NOT_FOUND) for i in ids]
 
 
@@ -182,6 +189,7 @@ async def roster(
                 select(Candidate)
                 .where(
                     Candidate.requirement_id == requirement.id,
+                    candidate_repo.visible_to(user),
                     Candidate.deleted_at.is_(None),
                     Candidate.interested.is_(True),
                 )
@@ -327,11 +335,16 @@ async def call_badges(
 
 
 async def call_answers(session: AsyncSession, user: User, attempt_id: uuid.UUID) -> CallAnswers:
-    """What a telephonic round call recorded. 404 for another organization's call, 409 for a
-    screening call."""
+    """What a telephonic round call recorded. 404 for a call whose candidate the user doesn't
+    see (another company's, or another recruiter's), 409 for a screening call."""
     attempt = await session.get(CallAttempt, attempt_id)
     candidate = await session.get(Candidate, attempt.candidate_id) if attempt else None
-    if attempt is None or candidate is None or candidate.requirement_id is None:
+    if (
+        attempt is None
+        or candidate is None
+        or candidate.requirement_id is None
+        or not candidate_repo.can_see(user, candidate)
+    ):
         raise AppError(404, "call_not_found", "Call attempt not found")
     await requirement_service.get_requirement(session, user, candidate.requirement_id)
     if attempt.purpose != CallPurpose.TELEPHONIC:

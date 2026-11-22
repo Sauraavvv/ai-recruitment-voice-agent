@@ -9,10 +9,18 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import AppError
-from app.database.models import ConsentSource, ImportBatch, ImportBatchStatus, Requirement, User
+from app.database.models import (
+    Candidate,
+    ConsentSource,
+    ImportBatch,
+    ImportBatchStatus,
+    Requirement,
+    User,
+)
 from app.repositories import candidate_repo, import_repo
 from app.services import job_service, requirement_service
 from app.services.errors import conflict, gone, not_found, unprocessable
@@ -75,7 +83,40 @@ async def _validate(session: AsyncSession, batch: ImportBatch) -> list[Validated
         organization_id=await _organization(session, batch),
         requirement_id=batch.requirement_id,
     )
-    return validate_rows(cells, numbers, mapping, existing, role)
+    rows = validate_rows(cells, numbers, mapping, existing, role)
+    await _hide_unseen_duplicates(session, batch, rows)
+    return rows
+
+
+async def _hide_unseen_duplicates(
+    session: AsyncSession, batch: ImportBatch, rows: list[ValidatedRow]
+) -> None:
+    """A number another recruiter already uploaded is still a duplicate (one per job), but the
+    uploader can't open that candidate: say so, without a link to it."""
+    found = {r.existing_candidate_id for r in rows if r.existing_candidate_id}
+    uploader = await session.get(User, batch.uploaded_by)
+    if not found or uploader is None:
+        return
+    seen = {
+        str(cid)
+        for cid in (
+            await session.execute(
+                select(Candidate.id).where(
+                    Candidate.id.in_([uuid.UUID(c) for c in found]),
+                    candidate_repo.visible_to(uploader),
+                )
+            )
+        ).scalars()
+    }
+    for row in rows:
+        if row.existing_candidate_id and row.existing_candidate_id not in seen:
+            row.existing_candidate_id = None
+            for error in row.errors:
+                if error.code == "duplicate_existing":
+                    error.message = (
+                        "Someone else on your team already uploaded this number for this job; "
+                        "it won't be added again"
+                    )
 
 
 def _is_expired(batch: ImportBatch) -> bool:
@@ -241,6 +282,7 @@ async def confirm(
         {
             **row.values,
             "organization_id": organization_id,
+            "uploaded_by_id": batch.uploaded_by,
             "job_id": batch.job_id,
             "requirement_id": batch.requirement_id,
             "consent_source": ConsentSource.RECRUITER_ATTESTED_IMPORT.value,

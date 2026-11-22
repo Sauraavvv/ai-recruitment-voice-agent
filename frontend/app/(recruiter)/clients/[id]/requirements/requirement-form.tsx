@@ -116,11 +116,14 @@ const small =
 export function RequirementForm({
   requirement,
   clientName,
+  clientField,
   submitLabel,
   onSave,
 }: {
   requirement?: Requirement;
   clientName?: string;
+  /** A row to choose the client, first in the form (adding a job from Jobs). */
+  clientField?: ReactNode;
   submitLabel: string;
   onSave: (body: RequirementCreate) => Promise<void>;
 }) {
@@ -157,10 +160,11 @@ export function RequirementForm({
         {error && <Alert>{error}</Alert>}
 
         <Section n="01" title="The role">
+          {clientField}
           <Row label="Role / title" required>
             <input
               required
-              autoFocus={!requirement}
+              autoFocus={!requirement && !clientField}
               maxLength={200}
               placeholder="Sales Executive"
               className={`${line} font-display text-lg`}

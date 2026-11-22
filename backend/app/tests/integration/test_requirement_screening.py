@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Candidate, Requirement
 from app.services import screening_job
-from app.tests.conftest import TEST_PASSWORD, client_body
+from app.tests.conftest import client_body
 
 # No job-role column: a requirement's upload takes the role from the requirement
 CSV = b"Name,Phone\nRavi Kumar,9876543210\nPriya Shah,9876543211\nRavi again,98765 43210\n"
@@ -101,35 +101,6 @@ async def test_same_person_in_two_openings_and_the_job_flow(
     assert added.status_code == 201, added.text
     assert added.json()["data"]["job_id"] == active_job["id"]
     assert added.json()["data"]["requirement_id"] is None
-
-
-async def test_requirement_candidates_are_private(api: AsyncClient) -> None:
-    owner = {
-        "organization_name": "Acme",
-        "name": "Owner",
-        "email": "owner@acme.example",
-        "password": TEST_PASSWORD,
-    }
-    assert (await api.post("/api/v1/auth/signup", json=owner)).status_code == 201
-    member = {"name": "Ravi", "email": "ravi@acme.example", "password": TEST_PASSWORD}
-    assert (await api.post("/api/v1/team", json=member)).status_code == 201
-    req = await _requirement(api)
-    preview = await _import(api, req["id"])
-    await _confirm(api, preview["id"])
-
-    await api.post("/api/v1/auth/logout")
-    login = {"email": "ravi@acme.example", "password": TEST_PASSWORD}
-    assert (await api.post("/api/v1/auth/login", json=login)).status_code == 200
-    listed = await api.get("/api/v1/candidates", params={"requirement_id": req["id"]})
-    assert listed.status_code == 404
-    everyone = (await api.get("/api/v1/candidates")).json()["data"]
-    assert not any(r["requirement_id"] == req["id"] for r in everyone)
-    files = {"file": ("list.csv", CSV, "text/csv")}
-    upload = await api.post(
-        "/api/v1/candidates/import", files=files, data={"requirement_id": req["id"]}
-    )
-    assert upload.status_code == 404
-    assert (await api.get(f"/api/v1/candidates/import/{preview['id']}")).status_code == 404
 
 
 async def test_upload_for_both_targets_refused(

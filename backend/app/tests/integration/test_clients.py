@@ -1,4 +1,4 @@
-"""Clients: the organization's super admins add, edit and see them; recruiters don't (yet)."""
+"""Clients: the organization's super admins add and edit them; its recruiters only see them."""
 
 from typing import Any
 
@@ -125,7 +125,7 @@ async def test_duplicate_name(admin: AsyncClient) -> None:
     assert rename.status_code == 409
 
 
-async def test_recruiters_cant_add_or_see_clients(authed: AsyncClient) -> None:
+async def test_recruiters_cant_add_clients(authed: AsyncClient) -> None:
     created = await authed.post("/api/v1/clients", json=EASY)
     assert created.status_code == 403
     assert created.json()["error"]["code"] == "admin_required"
@@ -145,10 +145,10 @@ async def test_super_admins_share_their_companys_clients(api: AsyncClient) -> No
     assert (await api.patch(url, json={"city": "Mumbai"})).status_code == 200
     assert (await api.post("/api/v1/clients", json=EASY)).status_code == 409
 
-    # a recruiter of the company sees nothing and can't edit
+    # a recruiter of the company sees it (to add jobs for it) but can't edit it
     await _login(api, "ravi@acme.example")
-    assert (await api.get("/api/v1/clients")).json()["data"] == []
-    assert (await api.get(url)).status_code == 404
+    assert [c["id"] for c in (await api.get("/api/v1/clients")).json()["data"]] == [client["id"]]
+    assert (await api.get(url)).status_code == 200
     assert (await api.patch(url, json={"city": "X"})).status_code == 403
 
     # another company doesn't see it, and may use the same name

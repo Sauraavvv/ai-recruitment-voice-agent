@@ -150,6 +150,14 @@ export function RequirementRow({
           <Step value={r.called} label="called" />
           <span className="text-zinc-700">›</span>
           <Step value={r.interested} label="interested" />
+          {r.created_by_name && (
+            <>
+              <span className="text-zinc-700">·</span>
+              <span>
+                Created by <span className="text-zinc-300">{r.created_by_name}</span>
+              </span>
+            </>
+          )}
         </div>
       </div>
 

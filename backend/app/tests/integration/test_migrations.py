@@ -247,3 +247,38 @@ def test_0019_the_shared_default_questions_go_to_the_oldest_company() -> None:
     run_alembic(URL, ("downgrade", "0018"))
     rows = asyncio.run(_sql("SELECT key FROM app_settings ORDER BY key"))
     assert rows == [("default_questions",), ("general",)]
+
+
+def test_0020_uploaded_candidates_get_their_uploader() -> None:
+    try:
+        asyncio.run(asyncio.wait_for(ensure_database(URL, recreate=True), timeout=10))
+    except Exception:
+        pytest.skip("Postgres not reachable")
+
+    run_alembic(URL, ("upgrade", "0019"))
+    asyncio.run(
+        _sql(
+            *_0017_ROWS[:4],
+            # a confirmed upload by user c3; its candidate's consent time is the confirm time
+            "INSERT INTO import_batches (uploaded_by, requirement_id, filename, status, headers, "
+            "column_mapping, report, confirmed_at) VALUES ('00000000-0000-0000-0000-0000000000c3', "
+            "'00000000-0000-0000-0000-0000000000e5', 'list.csv', 'confirmed', '[]', '{}', '{}', "
+            "'2026-11-01 10:00+00')",
+            "INSERT INTO candidates (organization_id, requirement_id, name, phone, applied_role, "
+            "consent_source, consent_at) VALUES "
+            "('00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-0000000000e5', "
+            "'Uploaded', '+919876543210', 'Dev', 'recruiter_attested_import', "
+            "'2026-11-01 10:00+00'), "
+            "('00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-0000000000e5', "
+            "'Unknown', '+919876543211', 'Dev', 'recruiter_attested_import', "
+            "'2026-11-02 10:00+00')",
+        )
+    )
+    run_alembic(URL, ("upgrade", "0020"))
+    rows = asyncio.run(_sql("SELECT name, uploaded_by_id::text FROM candidates ORDER BY name"))
+    assert rows == [
+        ("Unknown", None),  # no matching upload: only super admins see it
+        ("Uploaded", "00000000-0000-0000-0000-0000000000c3"),
+    ]
+    run_alembic(URL, ("downgrade", "0019"))
+    assert asyncio.run(_sql("SELECT count(*) FROM candidates")) == [(2,)]

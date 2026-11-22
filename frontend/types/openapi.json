@@ -1719,6 +1719,7 @@
           "jobs"
         ],
         "summary": "Default Questions",
+        "description": "Your company's default questions.",
         "operationId": "default_questions_api_v1_jobs_default_screening_questions_get",
         "responses": {
           "200": {
@@ -1738,7 +1739,7 @@
           "jobs"
         ],
         "summary": "Update Default Questions",
-        "description": "Replace the default questions (reword, reorder, remove, add).\n\nJobs still asking exactly the old defaults, in any order, switch to the new list.",
+        "description": "Replace your company's default questions (reword, reorder, remove, add).\n\nJobs still asking exactly the old defaults, in any order, switch to the new list.",
         "operationId": "update_default_questions_api_v1_jobs_default_screening_questions_put",
         "requestBody": {
           "content": {
@@ -1778,7 +1779,7 @@
           "jobs"
         ],
         "summary": "Reset Default Questions",
-        "description": "Restore the ten original questions.",
+        "description": "Restore your company's ten original questions.",
         "operationId": "reset_default_questions_api_v1_jobs_default_screening_questions_delete",
         "responses": {
           "200": {
@@ -7336,6 +7337,10 @@
           "status": {
             "$ref": "#/components/schemas/RequirementStatus"
           },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -7391,6 +7396,7 @@
           "deadline",
           "notes",
           "status",
+          "created_by_name",
           "created_at",
           "updated_at"
         ],
@@ -8573,6 +8579,10 @@
           "status": {
             "$ref": "#/components/schemas/RequirementStatus"
           },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -8618,6 +8628,7 @@
           "deadline",
           "notes",
           "status",
+          "created_by_name",
           "created_at",
           "updated_at"
         ],
@@ -8750,6 +8761,10 @@
           "status": {
             "$ref": "#/components/schemas/RequirementStatus"
           },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -8780,6 +8795,7 @@
           "deadline",
           "notes",
           "status",
+          "created_by_name",
           "created_at",
           "updated_at"
         ],

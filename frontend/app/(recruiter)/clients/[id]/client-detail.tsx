@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ErrorState, Skeleton } from "@/components/states";
 import { BackLink, PageHeader, buttonClass } from "@/components/ui";
 import { useLoad } from "@/lib/use-load";
+import { me } from "@/services/auth";
 import { getClient } from "@/services/clients";
 
 import { ClientProfileCard } from "../client-card";
@@ -16,6 +17,7 @@ import { ClientOverview } from "./client-overview";
 export function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: client, error, reload } = useLoad(`client:${id}`, () => getClient(id));
+  const { data: user } = useLoad("me", me);
 
   if (error && !client) return <ErrorState error={error} onRetry={reload} />;
   if (!client) return <Skeleton className="h-96 rounded-3xl" />;
@@ -25,9 +27,11 @@ export function ClientDetail() {
     <>
       <BackLink href="/clients">All clients</BackLink>
       <PageHeader title={client.name}>
-        <Link href={`/clients/${client.id}/edit`} className={buttonClass("secondary")}>
-          Edit
-        </Link>
+        {user?.role === "super_admin" && (
+          <Link href={`/clients/${client.id}/edit`} className={buttonClass("secondary")}>
+            Edit
+          </Link>
+        )}
       </PageHeader>
 
       {/* Both columns stretch to the taller one, so their bottoms line up */}

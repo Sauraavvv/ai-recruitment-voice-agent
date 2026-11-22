@@ -138,6 +138,8 @@ const LINKS: NavLink[] = [
     label: "Your clients",
     icon: ICONS.clients,
     isActive: (p: string) => p === "/clients" || p.startsWith("/clients/"),
+    // Only super admins add and manage clients; recruiters pick one when adding a job
+    superAdminOnly: true,
   },
   {
     href: "/jobs",

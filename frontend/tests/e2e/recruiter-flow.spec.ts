@@ -195,4 +195,38 @@ test("recruiter flow", async ({ page }) => {
   await expect(page.getByText("Page 1 of 1 · 2 calls")).toBeVisible();
   await expect(page.getByRole("link", { name: "Transcript" })).toHaveCount(1);
   await shot(page, "08-calls");
+
+  // A recruiter of the company: no Clients in the sidebar, but adds a job for a client by
+  // choosing it from the company's clients
+  const recruiter = { name: "Ravi Recruiter", email: "ravi@e2e.example", password: PASSWORD };
+  expect(
+    (await page.request.post("/api/v1/team", { headers: origin, data: recruiter })).status(),
+  ).toBe(201);
+  await page.request.post("/api/v1/auth/logout", { headers: origin });
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(recruiter.email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("**/dashboard");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: "Total jobs" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Your clients" })).toHaveCount(0);
+
+  // Only the jobs they create: the admin's "Backend Developer" isn't theirs
+  await page.goto("/jobs");
+  await expect(page.getByText("No jobs yet")).toBeVisible();
+  await expect(page.getByText("Backend Developer")).toHaveCount(0);
+  await page.getByRole("link", { name: "+ Add job" }).first().click();
+  await expect(page.getByRole("heading", { name: "Add job" })).toBeVisible();
+  await page.getByRole("combobox", { name: /^Client/ }).selectOption({ label: "E2E Co" });
+  await page.getByLabel("Role / title").fill("Telecaller");
+  await shot(page, "09-recruiter-add-job");
+  await page.getByRole("button", { name: "Add job →" }).click();
+  await page.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { name: /Telecaller/ })).toBeVisible();
+  await expect(page.getByText(/E2E Co/).first()).toBeVisible();
+  await expect(page.getByText(/Created by Ravi Recruiter/)).toBeVisible();
+  await page.goto("/jobs");
+  await expect(page.getByText("Telecaller")).toBeVisible();
+  await expect(page.getByText("Backend Developer")).toHaveCount(0);
 });

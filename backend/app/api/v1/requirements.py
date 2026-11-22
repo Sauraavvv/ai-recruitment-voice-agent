@@ -30,7 +30,7 @@ async def list_requirements(
     """Open first, then on hold, filled and closed; newest first within each. Each row carries
     its candidates, how many were called and how many are interested."""
     rows = await requirement_service.list_for_client(session, user, client_id)
-    counts = await requirement_service.candidate_counts(session, [r.id for r in rows])
+    counts = await requirement_service.candidate_counts(session, user, [r.id for r in rows])
     items = []
     for r in rows:
         total, called, interested = counts.get(r.id, (0, 0, 0))
@@ -47,7 +47,7 @@ async def list_jobs(user: CurrentUser, session: SessionDep) -> dict[str, Any]:
     """Every requirement (job) across the clients this account sees, with its client and its
     screening numbers. Open first, then on hold, filled and closed; newest first."""
     rows = await requirement_service.list_all(session, user)
-    counts = await requirement_service.candidate_counts(session, [r.id for r, _ in rows])
+    counts = await requirement_service.candidate_counts(session, user, [r.id for r, _ in rows])
     items = []
     for r, client in rows:
         total, called, interested = counts.get(r.id, (0, 0, 0))

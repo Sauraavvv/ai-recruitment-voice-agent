@@ -60,6 +60,7 @@ async def create(session: AsyncSession, user: User, data: CandidateCreate) -> Ca
     candidate = Candidate(
         **data.model_dump(exclude={"job_id", "consent_attested"}),
         organization_id=org,
+        uploaded_by_id=user.id,
         job_id=job.id,
         consent_source=ConsentSource.MANUAL,
         consent_at=datetime.now(UTC),

@@ -52,6 +52,7 @@ export function RequirementView({
     req.location,
     req.work_mode ? WORK_MODES[req.work_mode] : "",
     `${req.openings} opening${req.openings === 1 ? "" : "s"}`,
+    req.created_by_name ? `Created by ${req.created_by_name}` : "",
   ].filter(Boolean);
 
   return (

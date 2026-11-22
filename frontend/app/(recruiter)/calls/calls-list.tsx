@@ -198,7 +198,7 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
                         {c.round ? (
                           <div className="text-xs text-zinc-500">
                             <Link
-                              href={`/clients/${c.round.client_id}/requirements/${c.round.requirement_id}`}
+                              href={`/jobs/${c.round.requirement_id}`}
                               className="hover:text-zinc-300 hover:underline"
                             >
                               {c.round.title}

@@ -5,7 +5,7 @@ import { useLoad } from "@/lib/use-load";
 import { listClients } from "@/services/clients";
 
 /** "All clients" or one client: narrows a list to that client's jobs. Not shown when the
- * account sees no clients (recruiters don't, for now). */
+ * company has no clients yet. */
 export function ClientFilter({
   value,
   onChange,

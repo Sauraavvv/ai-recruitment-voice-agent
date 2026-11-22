@@ -28,8 +28,12 @@ export function ClientList() {
       <>
         <PageHeader title="Clients" />
         <Alert kind="info">
-          Clients are added and managed by your company&apos;s super admin. You&apos;ll see the
-          clients you work on here once they&apos;re shared with you.
+          Clients are added and managed by your company&apos;s super admin. To add a job for a
+          client, use{" "}
+          <Link href="/jobs/new" className="underline">
+            Add job
+          </Link>{" "}
+          in Jobs.
         </Alert>
       </>
     );

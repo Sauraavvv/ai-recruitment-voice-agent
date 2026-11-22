@@ -132,9 +132,22 @@ async def test_hidden_with_the_client(api: AsyncClient) -> None:
         await api.post(f"/api/v1/clients/{client['id']}/requirements", json={"title": "Role"})
     ).json()["data"]
 
+    # a recruiter of the company sees only jobs they created: not the owner's
     await api.post("/api/v1/auth/logout")
     login = {"email": "ravi@acme.example", "password": TEST_PASSWORD}
     assert (await api.post("/api/v1/auth/login", json=login)).status_code == 200
+    url = f"/api/v1/requirements/{req['id']}"
+    assert (await api.get(url)).status_code == 404
+    assert (await api.patch(url, json={"title": "X"})).status_code == 404
+    listed = await api.get(f"/api/v1/clients/{client['id']}/requirements")
+    assert listed.status_code == 200 and listed.json()["data"] == []
+    clients = (await api.get("/api/v1/clients")).json()["data"]
+    assert [c["open_requirements"] for c in clients] == [0]  # the owner's open job isn't his
+
+    # another company gets "not found" for everything
+    await api.post("/api/v1/auth/logout")
+    other = signup | {"organization_name": "Other", "email": "boss@other.example"}
+    assert (await api.post("/api/v1/auth/signup", json=other)).status_code == 201
     base = f"/api/v1/clients/{client['id']}/requirements"
     assert (await api.get(base)).status_code == 404
     assert (await api.post(base, json={"title": "Sneaky"})).status_code == 404
@@ -167,11 +180,32 @@ async def test_all_jobs(api: AsyncClient) -> None:
     ]
     assert jobs[0]["candidates"] == 0 and jobs[0]["client_status"] == "active"
 
-    # a recruiter sees no clients, so no jobs; another company sees none of these
+    # a recruiter of the company adds a job for any client, and sees only their own jobs
     await api.post("/api/v1/auth/logout")
     login = {"email": "ravi@acme.example", "password": TEST_PASSWORD}
     assert (await api.post("/api/v1/auth/login", json=login)).status_code == 200
     assert (await api.get("/api/v1/requirements")).json()["data"] == []
+    url = f"/api/v1/clients/{first['id']}/requirements"
+    added = await api.post(url, json={"title": "Field Sales"})
+    assert added.status_code == 201, added.text
+    rid = added.json()["data"]["id"]
+    assert added.json()["data"]["created_by_name"] == "Ravi"
+    edited = await api.patch(f"/api/v1/requirements/{rid}", json={"openings": 3})
+    assert edited.status_code == 200
+    assert [j["title"] for j in (await api.get("/api/v1/requirements")).json()["data"]] == [
+        "Field Sales"
+    ]
+
+    # the super admin sees every recruiter's jobs, with who created each
+    await api.post("/api/v1/auth/logout")
+    login = {"email": "owner@acme.example", "password": TEST_PASSWORD}
+    assert (await api.post("/api/v1/auth/login", json=login)).status_code == 200
+    jobs = (await api.get("/api/v1/requirements")).json()["data"]
+    assert sorted((j["title"], j["created_by_name"]) for j in jobs) == [
+        ("Field Sales", "Ravi"),
+        ("Sales", "Owner"),
+        ("Telecaller", "Owner"),
+    ]
     await api.post("/api/v1/auth/logout")
     other = signup | {"organization_name": "Other", "email": "boss@other.example"}
     assert (await api.post("/api/v1/auth/signup", json=other)).status_code == 201

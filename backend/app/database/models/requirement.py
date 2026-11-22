@@ -7,10 +7,11 @@ round (JD-based questions) attach to a requirement in later steps.
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, Date, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.models.base import (
     Base,
@@ -20,6 +21,9 @@ from app.database.models.base import (
     uuid_pk,
 )
 from app.database.models.enums import RequirementStatus
+
+if TYPE_CHECKING:
+    from app.database.models.user import User
 
 
 class Requirement(Base):
@@ -40,6 +44,8 @@ class Requirement(Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
     )
+    # Who added it (a super admin or a recruiter), shown on the job; loaded with it
+    created_by: Mapped["User"] = relationship(lazy="joined")
     title: Mapped[str] = mapped_column(String(200))  # the role
     location: Mapped[str] = mapped_column(String(200), server_default="")
     work_mode: Mapped[str] = mapped_column(String(16), server_default="")  # "" = not said
@@ -58,3 +64,7 @@ class Requirement(Base):
     status: Mapped[str] = mapped_column(String(16), server_default=RequirementStatus.OPEN.value)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
+
+    @property
+    def created_by_name(self) -> str:
+        return self.created_by.name

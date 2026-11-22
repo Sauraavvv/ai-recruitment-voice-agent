@@ -32,13 +32,20 @@ async def get(
 
 
 def visible_to(user: User) -> ColumnElement[bool]:
-    """The candidates this account may see: only its own organization's, and a requirement's
-    only when it can see the requirement's client (super admins, for now; recruiters see the
-    original job flow's candidates)."""
+    """The candidates this account may see. A super admin: every candidate of the company,
+    whoever uploaded them. A recruiter: only the ones they uploaded. Never another company's.
+    Every list, count and lookup of candidates (and of their calls) goes through this."""
     own = Candidate.organization_id == user.organization_id
-    if user.role != UserRole.SUPER_ADMIN:
-        return and_(own, Candidate.requirement_id.is_(None))
-    return own
+    if user.role == UserRole.SUPER_ADMIN:
+        return own
+    return and_(own, Candidate.uploaded_by_id == user.id)
+
+
+def can_see(user: User, candidate: Candidate) -> bool:
+    """`visible_to` for a candidate already loaded."""
+    if candidate.organization_id != user.organization_id:
+        return False
+    return user.role == UserRole.SUPER_ADMIN or candidate.uploaded_by_id == user.id
 
 
 def _phone_scope(

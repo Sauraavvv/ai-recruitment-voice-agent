@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EmptyState, ErrorState } from "@/components/states";
-import { Alert, Card, PageHeader, buttonClass } from "@/components/ui";
+import { Card, PageHeader, buttonClass } from "@/components/ui";
 import { KpiBar } from "@/components/kpi-bar";
 import { useLoad } from "@/lib/use-load";
 import { me } from "@/services/auth";
@@ -14,25 +14,11 @@ import type { RequirementStatus } from "@/types";
 import { RequirementRow } from "../clients/[id]/client-overview";
 import { REQUIREMENT_STATUS } from "../clients/[id]/requirements/requirement-form";
 
-/** Every job (requirement) across all clients, with search and a status filter on the totals. */
+/** The jobs this account sees (a super admin: every job of the company; a recruiter: the ones
+ * they created), with search and a status filter on the totals. Both add jobs from here. */
 export function AllJobs() {
   const { data: user } = useLoad("me", me);
-  if (!user) return <Skeleton />;
-  if (user.role !== "super_admin") {
-    return (
-      <>
-        <PageHeader title="Jobs" />
-        <Alert kind="info">
-          Jobs are added under clients by your company&apos;s super admin. You&apos;ll see the jobs
-          you work on here once clients are shared with you.
-        </Alert>
-      </>
-    );
-  }
-  return <JobList />;
-}
-
-function JobList() {
+  const isSuperAdmin = user?.role === "super_admin";
   const { data, error, reload } = useLoad("jobs", listJobs);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<RequirementStatus | "">("");
@@ -55,7 +41,7 @@ function JobList() {
       (j) =>
         (!status || j.status === status) &&
         (!words ||
-          [j.title, j.client_name, j.location, ...j.skills]
+          [j.title, j.client_name, j.location, j.created_by_name, ...j.skills]
             .join(" ")
             .toLowerCase()
             .includes(words)),
@@ -64,7 +50,14 @@ function JobList() {
 
   return (
     <>
-      <PageHeader title="Jobs" subtitle="Every opening across your clients.">
+      <PageHeader
+        title="Jobs"
+        subtitle={
+          isSuperAdmin
+            ? "Every opening across your clients, from every recruiter."
+            : "The jobs you've added."
+        }
+      >
         <label className="relative w-full sm:w-72">
           <svg
             viewBox="0 0 24 24"
@@ -83,12 +76,17 @@ function JobList() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search jobs"
-            aria-label="Search jobs by role, client, location or skill"
+            aria-label="Search jobs by role, client, location, skill or creator"
             className="w-full rounded-full border border-white/10 bg-[#18191c] py-2 pr-4 pl-10 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-white/30"
           />
         </label>
-        <Link href="/clients" className={buttonClass("secondary")}>
-          Clients
+        {isSuperAdmin && (
+          <Link href="/clients" className={buttonClass("secondary")}>
+            Clients
+          </Link>
+        )}
+        <Link href="/jobs/new" className={buttonClass()}>
+          + Add job
         </Link>
       </PageHeader>
 
@@ -136,8 +134,8 @@ function JobList() {
         <Skeleton />
       ) : data.length === 0 ? (
         <Card>
-          <EmptyState title="No jobs yet" action={{ href: "/clients", label: "Go to clients" }}>
-            Jobs are added under a client: open a client and use &quot;Add requirement&quot;.
+          <EmptyState title="No jobs yet" action={{ href: "/jobs/new", label: "+ Add job" }}>
+            Add a job for one of your clients, then upload its candidate list.
           </EmptyState>
         </Card>
       ) : shown.length === 0 ? (

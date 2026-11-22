@@ -553,11 +553,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Default Questions */
+        /**
+         * Default Questions
+         * @description Your company's default questions.
+         */
         get: operations["default_questions_api_v1_jobs_default_screening_questions_get"];
         /**
          * Update Default Questions
-         * @description Replace the default questions (reword, reorder, remove, add).
+         * @description Replace your company's default questions (reword, reorder, remove, add).
          *
          *     Jobs still asking exactly the old defaults, in any order, switch to the new list.
          */
@@ -565,7 +568,7 @@ export interface paths {
         post?: never;
         /**
          * Reset Default Questions
-         * @description Restore the ten original questions.
+         * @description Restore your company's ten original questions.
          */
         delete: operations["reset_default_questions_api_v1_jobs_default_screening_questions_delete"];
         options?: never;
@@ -2344,6 +2347,8 @@ export interface components {
             /** Notes */
             notes: string;
             status: components["schemas"]["RequirementStatus"];
+            /** Created By Name */
+            created_by_name: string;
             /**
              * Created At
              * Format: date-time
@@ -2826,6 +2831,8 @@ export interface components {
             /** Notes */
             notes: string;
             status: components["schemas"]["RequirementStatus"];
+            /** Created By Name */
+            created_by_name: string;
             /**
              * Created At
              * Format: date-time
@@ -2896,6 +2903,8 @@ export interface components {
             /** Notes */
             notes: string;
             status: components["schemas"]["RequirementStatus"];
+            /** Created By Name */
+            created_by_name: string;
             /**
              * Created At
              * Format: date-time

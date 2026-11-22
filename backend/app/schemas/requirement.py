@@ -65,6 +65,7 @@ class RequirementOut(BaseModel):
     deadline: date | None
     notes: str
     status: RequirementStatus
+    created_by_name: str  # who added it: a super admin or a recruiter of the company
     created_at: datetime
     updated_at: datetime
 

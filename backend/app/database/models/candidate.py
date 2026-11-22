@@ -51,6 +51,11 @@ class Candidate(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
     )
+    # Who uploaded (or added) them: a recruiter sees only their own candidates, a super admin
+    # all of the company's (0020). None: unknown (older data), so only super admins see them.
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
     name: Mapped[str] = mapped_column(String(200))
     phone: Mapped[str] = mapped_column(String(20))  # E.164
     email: Mapped[str | None] = mapped_column(String(320))

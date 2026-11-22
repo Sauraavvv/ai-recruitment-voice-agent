@@ -1,5 +1,5 @@
-"""Client companies: list, add, view, edit. Only super admins add and edit
-clients, and they see all of their organization's clients; recruiters see none for now."""
+"""Client companies: list, add, view, edit. Everyone in an organization sees its clients
+(recruiters pick one when adding a job); only super admins add and edit them."""
 
 import uuid
 from typing import Any
@@ -22,7 +22,7 @@ async def list_clients(
 ) -> dict[str, Any]:
     """Search matches the name, city or contact person. Closed clients come last."""
     clients = await client_service.list_clients(session, user, q=q, status=status)
-    counts = await requirement_service.open_counts(session, [c.id for c in clients])
+    counts = await requirement_service.open_counts(session, user, [c.id for c in clients])
     return ok(
         [
             ClientListItem.model_validate(c).model_copy(

@@ -217,14 +217,17 @@ async def test_hidden_from_others(api: AsyncClient) -> None:
     base = f"/api/v1/requirements/{req['id']}/telephonic"
     await api.put(f"{base}/draft", json={"questions": [{"text": "Tell me about your work."}]})
 
-    await api.post("/api/v1/auth/logout")
+    # a recruiter who didn't create the job, and another company: "not found"
     login = {"email": "ravi@acme.example", "password": TEST_PASSWORD}
-    assert (await api.post("/api/v1/auth/login", json=login)).status_code == 200
-    assert (await api.get(base)).status_code == 404
-    assert (
-        await api.put(f"{base}/draft", json={"questions": [{"text": "Sneaky one?"}]})
-    ).status_code == 404
-    assert (await api.post(f"{base}/approve")).status_code == 404
+    other = owner | {"organization_name": "Other", "email": "boss@other.example"}
+    for path, body in (("/api/v1/auth/login", login), ("/api/v1/auth/signup", other)):
+        await api.post("/api/v1/auth/logout")
+        assert (await api.post(path, json=body)).status_code in (200, 201)
+        assert (await api.get(base)).status_code == 404
+        assert (
+            await api.put(f"{base}/draft", json={"questions": [{"text": "Sneaky one?"}]})
+        ).status_code == 404
+        assert (await api.post(f"{base}/approve")).status_code == 404
 
 
 def test_prompt_and_hash() -> None:

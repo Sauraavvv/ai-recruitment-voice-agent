@@ -1,24 +1,22 @@
-"""Client companies. Only super admins add, edit and see clients, and they see all of their
-organization's clients. Recruiters see none for now (assigning clients to them comes later)."""
+"""Client companies. Everyone in an organization sees all of its clients (a recruiter picks one
+when adding a job); only super admins add and edit them."""
 
 import uuid
 
-from sqlalchemy import ColumnElement, false, func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import AppError
 from app.database.models import Client, User
-from app.database.models.enums import ClientStatus, UserRole
+from app.database.models.enums import ClientStatus
 from app.schemas.client import ClientCreate, ClientUpdate
 
 NAME_TAKEN = "Your company already has a client with this name"
 
 
 def visible(user: User) -> ColumnElement[bool]:
-    """The clients this account may see: its organization's, for super admins only."""
-    if user.role != UserRole.SUPER_ADMIN:
-        return false()
+    """The clients this account may see: its organization's."""
     return Client.organization_id == user.organization_id
 
 
