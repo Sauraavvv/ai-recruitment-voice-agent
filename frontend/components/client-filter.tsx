@@ -9,9 +9,11 @@ import { listClients } from "@/services/clients";
 export function ClientFilter({
   value,
   onChange,
+  className = "max-w-56",
 }: {
   value: string;
   onChange: (clientId: string) => void;
+  className?: string;
 }) {
   const { data } = useLoad("client-filter", () => listClients());
   if (!data || data.length === 0) return null;
@@ -20,7 +22,7 @@ export function ClientFilter({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={`${inputClass} max-w-56`}
+      className={`${inputClass} ${className}`}
       aria-label="Client"
     >
       <option value="">All clients</option>

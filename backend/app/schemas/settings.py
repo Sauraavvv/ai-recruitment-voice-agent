@@ -2,7 +2,6 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.schemas.integrations import SheetsStatus
 from app.services.settings_service import GeneralSettings
 
 
@@ -44,4 +43,3 @@ class ProviderStatus(BaseModel):
 
 class StatusOut(BaseModel):
     providers: list[ProviderStatus]
-    google_sheets: SheetsStatus

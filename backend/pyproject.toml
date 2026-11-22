@@ -38,8 +38,7 @@ packages = ["app"]
 
 [[tool.mypy.overrides]]
 module = ["arq.*", "openpyxl.*", "num2words.*", "soxr.*", "onnxruntime.*", "kittenml.*", "torch.*",
-          "transformers.*", "sounddevice.*", "webrtcvad.*", "googleapiclient.*",
-          "google_auth_httplib2.*", "httplib2.*"]
+          "transformers.*", "sounddevice.*", "webrtcvad.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -52,11 +51,10 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["app/tests"]
 # Live OpenAI tests cost money and need a key: run them explicitly with `make agent-eval`.
 # Real-model TTS tests take about a minute: `make test-tts`. Live STT: `make test-stt`.
-addopts = "-m 'not llm and not tts and not deepgram and not stt and not sheets'"
+addopts = "-m 'not llm and not tts and not deepgram and not stt'"
 markers = [
   "llm: calls the real OpenAI API",
   "tts: loads the real Kitten TTS model (slow)",
   "deepgram: calls the real Deepgram API (costs money)",
   "stt: streams audio to the real Deepgram STT API (costs money)",
-  "sheets: writes to a real Google test spreadsheet (GOOGLE_TEST_SHEET_ID)",
 ]

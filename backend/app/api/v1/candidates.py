@@ -23,7 +23,6 @@ from app.services import (
     candidate_view_service,
     client_service,
     requirement_service,
-    sync_service,
 )
 
 # The latest call's status, or not_called (never called)
@@ -37,7 +36,6 @@ async def create_candidate(
     body: CandidateCreate, user: CurrentUser, session: SessionDep, settings: SettingsDep
 ) -> dict[str, Any]:
     candidate = await candidate_service.create(session, user, body)
-    await sync_service.request_sync(settings)
     return ok(candidate)
 
 
@@ -111,7 +109,6 @@ async def update_candidate(
 ) -> dict[str, Any]:
     await candidate_service.get_visible(session, user, candidate_id)  # else 404
     candidate = await candidate_service.update(session, candidate_id, body)
-    await sync_service.request_sync(settings)
     return ok(candidate)
 
 
@@ -132,7 +129,7 @@ async def candidate_overview(
     settings: EffectiveSettingsDep,
     request: Request,
 ) -> dict[str, Any]:
-    """Eligibility, the summary, the sheet sync status and open conflicts."""
+    """Eligibility, the summary, open conflicts and the retry status."""
     candidate = await candidate_service.get_visible(session, user, candidate_id)
     eligibility = await call_service.eligibility_for(
         session, [candidate], settings, voice_ready=voice_ready(request, settings)
@@ -141,8 +138,6 @@ async def candidate_overview(
         {
             "eligibility": call_service.eligibility_dict(eligibility[candidate.id]),
             "summary": await candidate_view_service.summary(session, candidate.id),
-            "sheet_sync": await candidate_view_service.sync_status(session, candidate.id),
-            "sheets_configured": settings.sheets_configured,
             "conflicts": candidate_view_service.open_conflicts(candidate),
             "retry_status": await candidate_view_service.retry_status_for(
                 session, candidate.id, settings
@@ -160,10 +155,9 @@ async def resolve_conflict(
     settings: SettingsDep,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    """Keep the stored value or use the other one; the sheet row follows."""
+    """Keep the stored value or use the other one."""
     await candidate_service.get_visible(session, user, candidate_id)  # else 404
     candidate = await candidate_service.resolve_conflict(
         session, candidate_id, field, body.choice, user_id=user.id
     )
-    await sync_service.request_sync(settings)
     return ok(candidate)

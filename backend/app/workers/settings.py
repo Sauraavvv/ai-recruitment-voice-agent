@@ -1,7 +1,7 @@
 """ARQ worker configuration.
 
 Run with: arq app.workers.settings.WorkerSettings
-Jobs: initiate_call (Phase 5), finalize_call (Phase 6/7), sync_sheets (Phase 7),
+Jobs: initiate_call (Phase 5), finalize_call (Phase 6/7),
 evaluate_round (phase-11 step 6c).
 Crons: reconcilers, and the retry dispatcher (Phase 9) every 5 minutes.
 """
@@ -29,7 +29,6 @@ from app.workers.call_worker import (
 )
 from app.workers.evaluation_worker import evaluate_round, reconcile_evaluations
 from app.workers.retry_worker import dispatch_retries
-from app.workers.sync_worker import reconcile_sync, sync_sheets
 
 logger = get_logger(__name__)
 _settings = get_settings()
@@ -75,9 +74,6 @@ class WorkerSettings:
     functions: ClassVar[list[Any]] = [
         func(initiate_call, max_tries=MAX_SLOT_WAITS + 1),
         func(finalize_call, max_tries=3),
-        # Retries are ours (backoff in sync_logs), not ARQ's; no result kept, so any number of
-        # drains can be queued
-        func(sync_sheets, max_tries=1, keep_result=0),
         # Step 6c: one try (a failure is stored and the reconciler retries); no result kept, so
         # "Re-evaluate" can queue it again
         func(evaluate_round, max_tries=1, keep_result=0, timeout=600),
@@ -87,9 +83,8 @@ class WorkerSettings:
         cron(expire_import_previews, minute={7}, second={0}, run_at_startup=True),
         # Stuck-call reconciler: every 2 minutes and once at startup (phase-05 P5-T4)
         cron(reconcile_calls, minute=set(range(0, 60, 2)), second={15}, run_at_startup=True),
-        # Phase 7: unfinished finalizations and the Sheets outbox, every 10 minutes
+        # Phase 7: unfinished finalizations, every 10 minutes
         cron(reconcile_finalize, minute=set(range(1, 60, 10)), second={30}, run_at_startup=True),
-        cron(reconcile_sync, minute=set(range(3, 60, 10)), second={45}, run_at_startup=True),
         # Phase 9: due retries and callbacks, missed retry decisions, lost call jobs
         cron(dispatch_retries, minute=set(range(0, 60, 5)), second={50}, run_at_startup=True),
         # Step 6c: missing, failed or lost evaluations of round calls

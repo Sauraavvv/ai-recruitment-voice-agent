@@ -2,7 +2,6 @@
 
 - list rows: eligibility (`can_call` + the reason, for disabled buttons), the latest call
 - the candidate's summary: the latest finalized call that collected data (else the latest)
-- Google Sheets sync status of the candidate's row
 - open data conflicts (phase-07 final pass), each with both values and the quotes
 """
 
@@ -10,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -20,11 +19,9 @@ from app.database.models import (
     CallStatus,
     Candidate,
     Conversation,
-    SyncLog,
-    SyncStatus,
 )
 from app.repositories import call_repo
-from app.services import call_service, sync_service
+from app.services import call_service
 from app.services.call_state import is_terminal
 from app.services.summary_service import collected_data, pick_summary_conversation
 
@@ -197,23 +194,4 @@ async def summary(session: AsyncSession, candidate_id: uuid.UUID) -> dict[str, A
         "collected_data": collected_data(data),
         # a newer call collected nothing: say so next to the older summary
         "newer_call_without_data": latest.id != picked.id,
-    }
-
-
-async def sync_status(session: AsyncSession, candidate_id: uuid.UUID) -> dict[str, Any]:
-    row = await sync_service.candidate_status(session, candidate_id)
-    if row is None:
-        return {"status": "never", "synced_at": None, "error": None, "next_attempt_at": None}
-    last_success = await session.scalar(
-        select(func.max(SyncLog.synced_at)).where(
-            SyncLog.provider == sync_service.PROVIDER,
-            SyncLog.candidate_id == candidate_id,
-            SyncLog.sync_status == SyncStatus.SUCCESS.value,
-        )
-    )
-    return {
-        "status": row.sync_status,
-        "synced_at": last_success,
-        "error": row.error_message if row.sync_status == SyncStatus.FAILED.value else None,
-        "next_attempt_at": row.next_attempt_at,
     }

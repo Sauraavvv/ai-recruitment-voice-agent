@@ -47,9 +47,6 @@ services:
       REDIS_URL: redis://redis:6379/0
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      # Google service-account key (Phase 7): ./secrets/google-sa.json, gitignored, read-only
-      - ./secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,8 +60,6 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/recruitment_ai
       REDIS_URL: redis://redis:6379/0
-    volumes:
-      - ./secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy

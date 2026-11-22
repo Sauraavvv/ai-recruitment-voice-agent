@@ -1,9 +1,18 @@
 """ARQ job queue client for the API process (the worker has its own)."""
 
+from typing import Any, Protocol
+
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
 QUEUE_NAME = "rcai:queue"
+
+
+class JobPool(Protocol):
+    """What enqueues a job: the API's pool, or the worker's own Redis connection."""
+
+    async def enqueue_job(self, function: str, *args: Any, **kwargs: Any) -> Any: ...
+
 
 _pool: ArqRedis | None = None
 
@@ -38,7 +47,7 @@ async def enqueue_initiate_call(attempt_id: str, *, ignore_window: bool = False)
 
 
 async def enqueue_finalize_call(attempt_id: str) -> None:
-    """Post-call work for one attempt (summary now, Phase 7 extraction and Sheets)."""
+    """Post-call work for one attempt: final extraction and summary."""
     await get_queue().enqueue_job("finalize_call", attempt_id, _job_id=f"finalize:{attempt_id}")
 
 

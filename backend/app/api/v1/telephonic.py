@@ -121,7 +121,7 @@ async def start_telephonic_calls(
         enqueue_initiate_call,
         voice_ready=voice_ready(request, settings),
     )
-    return ok([r.as_dict() for r in results])  # the sheet shows screening calls only
+    return ok([r.as_dict() for r in results])
 
 
 @router.get("/candidates", response_model=DataResponse[RoundRoster])

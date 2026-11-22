@@ -80,12 +80,6 @@ class CallEndReason(StrEnum):
     ESCALATED = "escalated"
 
 
-class SyncStatus(StrEnum):
-    PENDING = "pending"
-    SUCCESS = "success"
-    FAILED = "failed"
-
-
 class ImportBatchStatus(StrEnum):
     PREVIEW = "preview"
     CONFIRMED = "confirmed"
@@ -93,8 +87,8 @@ class ImportBatchStatus(StrEnum):
 
 
 class UserRole(StrEnum):
-    """Super admins own the organization and may also change integration settings (the Google
-    Sheet). Recruiters use the app day to day."""
+    """Super admins own the organization (its clients and team). Recruiters use the app day to
+    day."""
 
     SUPER_ADMIN = "super_admin"
     RECRUITER = "recruiter"

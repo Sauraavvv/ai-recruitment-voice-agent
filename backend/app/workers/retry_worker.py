@@ -9,7 +9,7 @@ from typing import Any
 
 from app.config import Settings, get_settings
 from app.database.connection import get_sessionmaker
-from app.services import retry_service, settings_service, sync_service
+from app.services import retry_service, settings_service
 from app.utils.clock import SYSTEM_CLOCK, Clock
 from app.utils.log import get_logger
 
@@ -34,8 +34,6 @@ async def dispatch_retries(ctx: dict[str, Any]) -> dict[str, int]:
         evaluated = await retry_service.evaluate_pending(session, settings, clock=clock)
         result = await retry_service.dispatch_due(session, settings, enqueue, clock=clock)
         requeued = await retry_service.requeue_stale(session, enqueue, clock=clock)
-    if evaluated or result.changed:
-        await sync_service.request_sync(settings, ctx.get("redis"))
     return {
         "evaluated": evaluated,
         "queued": len(result.queued),

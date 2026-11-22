@@ -5,7 +5,7 @@ VOICE_ENGINE=realtime; the Phase 6 pipeline stays the default). Design: docs/rea
     the voice) ─► response.output_audio.delta (μ-law) ──slin──► AudioSender (paced) ─► Exotel
 
 Same interface as `pipeline.CallSession` (run / caller_hung_up / end_by_recruiter →
-SessionOutcome), so the stream handler, storage, finalization, Sheets and the summary are
+SessionOutcome), so the stream handler, storage, finalization and the summary are
 unchanged. What differs:
 
 - Answers come in as tool calls (`record_answer`, `record_status`, …) and go through the same

@@ -12,8 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import CallAttempt, Candidate, Conversation, SyncLog
-from app.services import dashboard_service, sync_service
+from app.database.models import CallAttempt, Candidate, Conversation
+from app.services import dashboard_service
 from app.tests.conftest import make_settings
 from app.tests.integration.test_telephony import EXOTEL
 
@@ -33,14 +33,6 @@ ZERO_KEYS = (
 @pytest.fixture
 def settings() -> Settings:
     return make_settings(**EXOTEL)
-
-
-@pytest.fixture(autouse=True)
-def _no_sheet_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake(settings: Any, pool: Any = None) -> bool:
-        return False
-
-    monkeypatch.setattr(sync_service, "request_sync", fake)
 
 
 async def _candidate(authed: AsyncClient, phone: str, name: str | None = None) -> uuid.UUID:
@@ -176,7 +168,6 @@ async def test_attention_reasons(
         "Partial",
         "Conflict",
         "Tech Fail",
-        "Sheet Fail",
         "Question",
         "Wrong Person",
         "Exhausted",
@@ -233,14 +224,6 @@ async def test_attention_reasons(
         },
         "current_company": {"value": "Acme", "conflict": None},
     }
-    db_session.add(
-        SyncLog(
-            candidate_id=ids["Sheet Fail"],
-            provider="google_sheets",
-            sync_status="failed",
-            error_message="No permission to edit the spreadsheet.",
-        )
-    )
     await db_session.flush()
 
     items = (await authed.get("/api/v1/dashboard/attention")).json()["data"]
@@ -251,7 +234,6 @@ async def test_attention_reasons(
         ("Partial", "partially_completed"),
         ("Conflict", "data_conflict"),
         ("Tech Fail", "technical_failure"),
-        ("Sheet Fail", "sheets_sync_failed"),
         ("Question", "unanswered_question"),
         ("Wrong Person", "wrong_person"),
         ("Exhausted", "attempts_exhausted"),
@@ -323,9 +305,6 @@ async def test_resolve_conflict(
     attempt = await _with_conflict(db_session, cid)
     overview = (await authed.get(f"/api/v1/candidates/{cid}/overview")).json()["data"]
     assert [c["field"] for c in overview["conflicts"]] == ["notice_period"]
-    before = await db_session.scalar(
-        select(func.count()).select_from(SyncLog).where(SyncLog.candidate_id == cid)
-    )
 
     response = await authed.post(
         f"/api/v1/candidates/{cid}/conflicts/notice_period/resolve", json={"choice": choice}
@@ -340,11 +319,7 @@ async def test_resolve_conflict(
         assert (meta["raw_text"], meta["source"]) == ("sixty days", "recruiter")
         assert meta["previous"][-1]["value"] == "30 days"
 
-    # an outbox row for the sheet, the call's record updated, gone from "needs attention"
-    after = await db_session.scalar(
-        select(func.count()).select_from(SyncLog).where(SyncLog.candidate_id == cid)
-    )
-    assert after == (before or 0) + 1
+    # the call's record updated, gone from "needs attention"
     conv = (
         await db_session.execute(
             select(Conversation).where(Conversation.call_attempt_id == attempt.id)
@@ -387,13 +362,6 @@ async def test_summary_is_latest_call_with_data(
     assert overview["summary"]["text"] == "Works at Acme."
     assert overview["summary"]["attempt_number"] == 1
     assert overview["summary"]["newer_call_without_data"] is True
-    assert overview["sheet_sync"]["status"] == "pending"  # created → outbox row
-
-    # the sheet's Call Summary column uses the same rule
-    rows = await sync_service.build_rows(db_session, [cid], settings)
-    from app.services.sheet_mapping import HEADERS
-
-    assert rows[str(cid)][HEADERS.index("Call Summary")] == "Works at Acme."
 
     # no call with data at all → the latest one
     with_data.extracted_data = {"final": {"fields": {}}}

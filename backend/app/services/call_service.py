@@ -37,7 +37,7 @@ from app.database.models import (
 from app.providers.telephony import exotel_models as em
 from app.providers.telephony.base import ProviderCallStatus
 from app.repositories import call_repo, candidate_repo
-from app.services import call_slots, call_state, screening_job, sync_service, telephonic_service
+from app.services import call_slots, call_state, screening_job, telephonic_service
 from app.services.errors import conflict, not_found
 from app.utils.calling_window import CallingWindow
 from app.utils.log import get_logger
@@ -335,8 +335,6 @@ async def start_calls(
             # Another request created a live attempt for this candidate at the same moment.
             result.error = Ineligible.LIVE_ATTEMPT
             continue
-        if not telephonic:  # the sheet shows screening calls only
-            sync_service.record_change(session, candidate.id)  # Call Status in the sheet
         await session.commit()
         result.attempt_id = attempt.id
         logger.info(
@@ -427,7 +425,6 @@ async def cancel_scheduled(
             attempt.retry_evaluated_at = datetime.now(UTC)
             count += 1
     if count:
-        sync_service.record_change(session, candidate_id)  # Call Status, Next Retry Date
         logger.info("scheduled_calls_cancelled", candidate_id=str(candidate_id), reason=reason)
     return count
 
@@ -493,13 +490,12 @@ async def cancel(
             "Only a call that hasn't started dialing can be cancelled",
             {"call_status": current},
         )
-    changed = call_state.transition(
+    call_state.transition(
         attempt,
         CallStatus.CANCELLED,
         end_reason=CallEndReason.CANCELLED.value,
         failure_reason=f"cancelled_by_recruiter:{user_id}",
     )
-    record_if_ended(session, attempt, changed)
     await session.commit()
     await session.refresh(attempt)
     await call_slots.release(redis, str(attempt.id), size=settings.max_concurrent_calls)
@@ -554,13 +550,9 @@ def apply_provider_status(
     return changed
 
 
-def record_if_ended(session: AsyncSession, attempt: CallAttempt, changed: bool) -> bool:
-    """Sheets outbox row when an attempt just reached a final status (Call Status, Attempt
-    Count, Last Call Date). Same transaction as the status change."""
-    if changed and call_state.is_terminal(attempt.call_status):
-        sync_service.record_change(session, attempt.candidate_id)
-        return True
-    return False
+def just_ended(attempt: CallAttempt, changed: bool) -> bool:
+    """The attempt's status changed just now, to a final one."""
+    return changed and call_state.is_terminal(attempt.call_status)
 
 
 async def release_slot_if_done(redis: Redis, attempt: CallAttempt, settings: Settings) -> None:
@@ -633,7 +625,7 @@ async def handle_status_callback(
     event.processed_at = now
     if not changed:
         event.error = f"ignored:{attempt.call_status}->{status.value}"
-    ended = record_if_ended(session, attempt, changed)
+    ended = just_ended(attempt, changed)
     await session.commit()
     await release_slot_if_done(redis, attempt, settings)
     if ended:
@@ -747,7 +739,7 @@ async def reconcile_attempt(
             attempt.provider_call_id = status.provider_call_id
         changed = apply_provider_status(attempt, status)
         outcome = f"applied:{status.status}" if changed else f"unchanged:{status.status}"
-    ended = record_if_ended(session, attempt, outcome.startswith(("applied", "failed")))
+    ended = just_ended(attempt, outcome.startswith(("applied", "failed")))
     await session.commit()
     await release_slot_if_done(redis, attempt, settings)
     if ended:

@@ -1,7 +1,6 @@
 """Candidate rules and transactions (plan.md Module A).
 
-Every candidate write goes through this module and adds a Sheets outbox row (sync_service) in
-the same transaction; the API queues the sync after the commit.
+Every candidate write goes through this module.
 """
 
 import uuid
@@ -15,7 +14,7 @@ from app.agent.schemas import FieldName
 from app.database.models import Candidate, ConsentSource, Conversation, ScreeningStatus, User
 from app.repositories import candidate_repo
 from app.schemas.candidate import CandidateCreate, CandidateUpdate
-from app.services import call_service, job_service, sync_service
+from app.services import call_service, job_service
 from app.services.errors import conflict, not_found, unprocessable
 from app.utils.log import get_logger
 
@@ -67,8 +66,7 @@ async def create(session: AsyncSession, user: User, data: CandidateCreate) -> Ca
     )
     session.add(candidate)
     try:
-        await session.flush()  # the id, for the outbox row
-        sync_service.record_change(session, candidate.id)
+        await session.flush()
         await session.commit()
     except IntegrityError:
         # Lost a race with a concurrent insert of the same phone.
@@ -163,8 +161,6 @@ async def update(
     if opting_out:
         # Same transaction (phase-09 P9-T7): nothing scheduled may dial after an opt-out
         await call_service.cancel_scheduled(session, candidate.id, reason="opted_out")
-    if changes:
-        sync_service.record_change(session, candidate.id)
     try:
         await session.commit()
     except IntegrityError:
@@ -203,7 +199,7 @@ async def resolve_conflict(
 
     keep: the stored value stays. use: the other value (the final pass's, with its quote)
     replaces it. Either way the conflict is marked resolved (who, when, choice) on the field's
-    meta and in that call's `final.conflicts`, and the sheet row is updated (outbox row).
+    meta and in that call's `final.conflicts`.
     """
     candidate = await candidate_repo.get(session, candidate_id)
     if candidate is None:
@@ -263,7 +259,6 @@ async def resolve_conflict(
             final["conflicts"] = conflicts
             conv.extracted_data = dict(conv.extracted_data or {}) | {"final": final}
 
-    sync_service.record_change(session, candidate.id)
     await session.commit()
     await session.refresh(candidate)
     logger.info(

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.responses import AppError
 from app.database.models import ConsentSource, ImportBatch, ImportBatchStatus, Requirement, User
 from app.repositories import candidate_repo, import_repo
-from app.services import job_service, requirement_service, sync_service
+from app.services import job_service, requirement_service
 from app.services.errors import conflict, gone, not_found, unprocessable
 from app.services.import_validation import (
     FIELD_LABELS,
@@ -252,7 +252,6 @@ async def confirm(
     inserted = await candidate_repo.insert_ignoring_duplicates(
         session, to_insert, batch.requirement_id
     )
-    sync_service.record_changes(session, inserted)  # new rows for the sheet, same transaction
 
     batch.status = ImportBatchStatus.CONFIRMED
     batch.confirmed_at = now

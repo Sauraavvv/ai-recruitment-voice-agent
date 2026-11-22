@@ -33,7 +33,6 @@ from app.services import (
     retry_service,
     screening_job,
     settings_service,
-    sync_service,
 )
 from app.utils.calling_window import CallingWindow
 from app.utils.log import get_logger
@@ -57,10 +56,7 @@ def _provider(ctx: dict[str, Any], settings: Settings) -> TelephonyProvider:
 
 
 async def _fail(session: Any, attempt: CallAttempt, reason: str, end_reason: str) -> None:
-    changed = call_state.transition(
-        attempt, CallStatus.FAILED, end_reason=end_reason, failure_reason=reason
-    )
-    call_service.record_if_ended(session, attempt, changed)
+    call_state.transition(attempt, CallStatus.FAILED, end_reason=end_reason, failure_reason=reason)
     await session.commit()
 
 
@@ -116,15 +112,13 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
             logger.info("call_rescheduled", call_attempt_id=attempt_id, reason=problem)
             return "rescheduled"
         if problem or candidate is None:
-            changed = call_state.transition(
+            call_state.transition(
                 attempt,
                 CallStatus.CANCELLED,
                 end_reason=CallEndReason.CANCELLED,
                 failure_reason=f"ineligible:{problem}",
             )
-            call_service.record_if_ended(session, attempt, changed)
             await session.commit()
-            await sync_service.request_sync(settings, ctx.get("redis"))
             await call_slots.release(redis, attempt_id, size=settings.max_concurrent_calls)
             logger.info("call_cancelled_ineligible", call_attempt_id=attempt_id, reason=problem)
             return "cancelled"
@@ -146,7 +140,6 @@ async def initiate_call(ctx: dict[str, Any], attempt_id: str, ignore_window: boo
         except TelephonyError as exc:
             await _fail(session, attempt, f"initiate_failed: {exc}", CallEndReason.PROVIDER_FAILED)
             await call_service.evaluate_retry(session, aid, settings)
-            await sync_service.request_sync(settings, ctx.get("redis"))
             await call_slots.release(redis, attempt_id, size=settings.max_concurrent_calls)
             logger.warning("call_initiate_failed", call_attempt_id=attempt_id, error=str(exc))
             return "failed"
@@ -194,14 +187,12 @@ async def reconcile_calls(ctx: dict[str, Any], *, now: datetime | None = None) -
                     logger.warning(
                         "call_reconcile_failed", call_attempt_id=str(attempt.id), error=str(exc)
                     )
-    if count:
-        await sync_service.request_sync(settings, ctx.get("redis"))
     return count
 
 
 async def finalize_call(ctx: dict[str, Any], attempt_id: str) -> str:
     """After a conversation (phase-07 §5): final extraction, one transaction (conversation,
-    candidate, attempt, Sheets outbox), summary, Sheets sync. Idempotent."""
+    candidate, attempt), summary. Idempotent."""
     from app.providers.llm import create_llm_provider
     from app.services import finalization_service
 

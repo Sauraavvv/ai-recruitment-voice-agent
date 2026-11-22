@@ -1,6 +1,6 @@
 """Liveness and readiness endpoints.
 
-Provider connectivity (OpenAI, Deepgram, Exotel, Sheets) is deliberately not part of readiness;
+Provider connectivity (OpenAI, Deepgram, Exotel) is deliberately not part of readiness;
 it belongs to /api/v1/settings/status (Phase 8) so a provider outage never restarts the backend.
 
 /health/connections is the public summary of those checks for the /status page: generic names

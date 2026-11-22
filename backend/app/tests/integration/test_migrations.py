@@ -24,7 +24,6 @@ TABLES = {
     "organizations",
     "question_sets",
     "requirements",
-    "sync_logs",
     "users",
     "webhook_events",
 }
@@ -198,3 +197,23 @@ def test_0017_every_candidate_gets_its_company() -> None:
     asyncio.run(_sql("DELETE FROM candidates WHERE name = 'Same phone'"))
     run_alembic(URL, ("downgrade", "0016"))
     assert asyncio.run(_sql("SELECT count(*) FROM candidates")) == [(2,)]
+
+
+def test_0018_google_sheets_is_gone() -> None:
+    try:
+        asyncio.run(asyncio.wait_for(ensure_database(URL, recreate=True), timeout=10))
+    except Exception:
+        pytest.skip("Postgres not reachable")
+
+    run_alembic(URL, ("upgrade", "0017"))
+    asyncio.run(
+        _sql(
+            "INSERT INTO app_settings (key, value) VALUES "
+            "('google_sheets', '{\"sheet_id\": \"x\"}'), ('general', '{}')"
+        )
+    )
+    run_alembic(URL, ("upgrade", "0018"))
+    assert asyncio.run(_sql("SELECT to_regclass('sync_logs')")) == [(None,)]
+    assert asyncio.run(_sql("SELECT key FROM app_settings")) == [("general",)]
+    run_alembic(URL, ("downgrade", "0017"))
+    assert asyncio.run(_sql("SELECT count(*) FROM sync_logs")) == [(0,)]

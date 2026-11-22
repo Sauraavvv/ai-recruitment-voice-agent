@@ -7,7 +7,7 @@ from app.api.deps import CurrentUser, SessionDep, SettingsDep
 from app.api.responses import ok
 from app.schemas.common import DataResponse
 from app.schemas.imports import ImportConfirm, ImportOut, MappingUpdate
-from app.services import import_service, sync_service
+from app.services import import_service
 from app.services.errors import unprocessable
 from app.utils.file_parsing import MAX_FILE_BYTES
 
@@ -57,5 +57,4 @@ async def confirm_import(
 ) -> dict[str, Any]:
     await import_service.check_access(session, user, import_id)
     result = await import_service.confirm(session, import_id, body.consent_attested)
-    await sync_service.request_sync(settings)
     return ok(result)

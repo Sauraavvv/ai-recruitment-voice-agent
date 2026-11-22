@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Isolated backend for the Playwright E2E test (phase-08 §7): its own database
 # (recruitment_ai_e2e, recreated each run), Redis db 1, and NO provider keys, so nothing is
-# dialed and nothing reaches the real Google Sheet. Started by playwright.config.ts.
+# dialed. Started by playwright.config.ts.
 set -euo pipefail
 cd "$(dirname "$0")/../../../backend"
 
@@ -18,8 +18,7 @@ export CALLING_HOUR_START=0
 export CALLING_HOUR_END=24
 # Empty = not configured (overrides anything in an .env file)
 for name in OPENAI_API_KEY DEEPGRAM_API_KEY EXOTEL_API_KEY EXOTEL_API_TOKEN EXOTEL_ACCOUNT_SID \
-  EXOTEL_SUBDOMAIN EXOTEL_CALLER_ID EXOTEL_APP_ID PUBLIC_BACKEND_URL \
-  GOOGLE_SERVICE_ACCOUNT_JSON GOOGLE_SHEET_ID TELEPHONY_CAPTURE_DIR; do
+  EXOTEL_SUBDOMAIN EXOTEL_CALLER_ID EXOTEL_APP_ID PUBLIC_BACKEND_URL TELEPHONY_CAPTURE_DIR; do
   export "$name="
 done
 

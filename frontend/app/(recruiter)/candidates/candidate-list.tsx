@@ -118,16 +118,18 @@ export function CandidateList() {
       </PageHeader>
 
       <Card>
-        <div className="mb-5 flex flex-wrap gap-3">
+        {/* One line from tablet width up: the search a little wider, the filters sharing the rest */}
+        <div className="relative mb-5 flex flex-col gap-3 md:flex-row md:items-center">
           <input
             type="search"
             placeholder="Search name, phone or email"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className={`${inputClass} max-w-xs`}
+            className={`${inputClass} md:min-w-0 md:flex-[1.2]`}
             aria-label="Search candidates"
           />
           <ClientFilter
+            className="md:min-w-0 md:flex-1"
             value={client}
             onChange={(v) => {
               setClient(v);
@@ -167,7 +169,10 @@ export function CandidateList() {
             ]}
             all="Any interest"
           />
-          {loading && data && <span className="self-center text-sm text-zinc-500">Loading…</span>}
+          {loading && data && (
+            // Above the row, so the filters don't move while a list loads
+            <span className="absolute -top-5 right-1 text-xs text-zinc-500">Loading…</span>
+          )}
         </div>
 
         {selected.size > 0 && (
@@ -286,7 +291,7 @@ function FilterSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={`${inputClass} max-w-48`}
+      className={`${inputClass} md:min-w-0 md:flex-1`}
       aria-label={label}
     >
       <option value="">{all}</option>

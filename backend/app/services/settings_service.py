@@ -1,14 +1,13 @@
 """Recruiter-editable settings (phase-08 §5.4), stored in `app_settings`.
 
-Two rows, each a JSON object:
+One row, a JSON object:
 
   general         organization name, agent introduction, calling window, max concurrent calls,
                   retry configuration, calling enabled (the global pause)
-  google_sheets   the spreadsheet id and tab (admin only); empty = the .env values
 
 Environment values are the defaults, and the hard limits stay in the environment: the
 concurrency set here can't exceed MAX_CONCURRENT_CALLS. `effective()` returns a copy of the
-`Settings` with the stored values applied; everything that dials or syncs uses that copy, so a
+`Settings` with the stored values applied; everything that dials uses that copy, so a
 change applies at once without a restart.
 """
 
@@ -36,13 +35,10 @@ from app.utils.log import get_logger
 logger = get_logger(__name__)
 
 GENERAL_KEY = "general"
-SHEETS_KEY = "google_sheets"
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # What an introduction template may use. {first_name} is the candidate's first name.
 INTRO_PLACEHOLDERS = frozenset({"first_name", "company", "job_title", "organization"})
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
-SHEET_ID = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
-SHEET_URL_ID = re.compile(r"/spreadsheets/d/([A-Za-z0-9_-]{20,100})")
 
 
 class _Strict(BaseModel):
@@ -142,13 +138,6 @@ class GeneralUpdate(_Strict):
     voice_engine: Literal["pipeline", "realtime"] | None = None
 
 
-class SheetSettings(_Strict):
-    sheet_id: str | None = None
-    tab: str | None = Field(default=None, max_length=100)
-    changed_by: str | None = None  # user id
-    changed_at: str | None = None
-
-
 def defaults(settings: Settings) -> GeneralSettings:
     days = [d.strip().lower()[:3] for d in settings.calling_days.split(",") if d.strip()]
     return GeneralSettings(
@@ -170,9 +159,7 @@ def defaults(settings: Settings) -> GeneralSettings:
 
 async def _rows(session: AsyncSession) -> dict[str, Any]:
     rows = await session.execute(
-        select(AppSetting.key, AppSetting.value).where(
-            AppSetting.key.in_([GENERAL_KEY, SHEETS_KEY])
-        )
+        select(AppSetting.key, AppSetting.value).where(AppSetting.key.in_([GENERAL_KEY]))
     )
     return {key: value for key, value in rows}
 
@@ -192,16 +179,7 @@ def _general(stored: Any, settings: Settings) -> GeneralSettings:
         return defaults(settings)
 
 
-def _sheets(stored: Any) -> SheetSettings:
-    if not isinstance(stored, dict):
-        return SheetSettings()
-    try:
-        return SheetSettings.model_validate(stored)
-    except ValueError:
-        return SheetSettings()
-
-
-def apply(settings: Settings, general: GeneralSettings, sheets: SheetSettings) -> Settings:
+def apply(settings: Settings, general: GeneralSettings) -> Settings:
     return settings.model_copy(
         update={
             "calling_days": ",".join(general.calling.days),
@@ -220,21 +198,18 @@ def apply(settings: Settings, general: GeneralSettings, sheets: SheetSettings) -
             "organization_name": general.organization_name,
             "agent_introduction": general.agent_introduction,
             "voice_engine": general.voice_engine or settings.voice_engine,
-            "google_sheet_id": sheets.sheet_id or settings.google_sheet_id,
-            "google_sheet_tab": sheets.tab or settings.google_sheet_tab,
         }
     )
 
 
-async def load(session: AsyncSession, settings: Settings) -> tuple[GeneralSettings, SheetSettings]:
+async def load(session: AsyncSession, settings: Settings) -> GeneralSettings:
     rows = await _rows(session)
-    return _general(rows.get(GENERAL_KEY), settings), _sheets(rows.get(SHEETS_KEY))
+    return _general(rows.get(GENERAL_KEY), settings)
 
 
 async def effective(session: AsyncSession, settings: Settings) -> Settings:
     """The environment settings with the stored ones applied."""
-    general, sheets = await load(session, settings)
-    return apply(settings, general, sheets)
+    return apply(settings, await load(session, settings))
 
 
 async def effective_new_session(settings: Settings) -> Settings:
@@ -254,7 +229,7 @@ async def _put(session: AsyncSession, key: str, value: dict[str, Any]) -> None:
 async def update_general(
     session: AsyncSession, settings: Settings, changes: GeneralUpdate, *, user_id: uuid.UUID
 ) -> GeneralSettings:
-    current, _ = await load(session, settings)
+    current = await load(session, settings)
     sent = changes.model_dump(exclude_unset=True)
     if isinstance(sent.get("retry"), dict):
         # a partial retry section changes only the fields sent
@@ -285,25 +260,6 @@ async def update_general(
         calling_enabled=new.calling_enabled if "calling_enabled" in changed else None,
     )
     return new
-
-
-def parse_sheet_link(link: str) -> str | None:
-    """The spreadsheet id from a Google Sheets link (…/spreadsheets/d/<id>/…) or a bare id."""
-    link = link.strip()
-    match = SHEET_URL_ID.search(link)
-    if match:
-        return match.group(1)
-    return link if SHEET_ID.match(link) else None
-
-
-async def update_sheet(
-    session: AsyncSession, *, sheet_id: str, tab: str | None, user_id: uuid.UUID, now: str
-) -> SheetSettings:
-    value = SheetSettings(sheet_id=sheet_id, tab=tab, changed_by=str(user_id), changed_at=now)
-    await _put(session, SHEETS_KEY, value.model_dump(mode="json"))
-    await session.commit()
-    logger.info("sheet_changed", user_id=str(user_id), sheet_id=sheet_id, tab=tab)
-    return value
 
 
 def render_introduction(

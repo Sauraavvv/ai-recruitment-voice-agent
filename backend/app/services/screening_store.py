@@ -2,7 +2,7 @@
 
 `conversations` gets the final transcript and the live result. The candidate record is NOT
 changed here: finalization (finalization_service, the `finalize_call` job a few seconds later)
-reconciles, validates and writes it in one transaction with the Sheets outbox row.
+reconciles, validates and writes it in one transaction.
 
 One exception: an opt-out is written at once (it only ever changes false → true), so no other
 call can be placed to someone who asked not to be called while finalization is still queued.
@@ -17,7 +17,6 @@ from app.agent.conversation_manager import ScreeningResult
 from app.agent.telephonic_manager import TelephonicResult
 from app.database.connection import get_sessionmaker
 from app.database.models import Candidate, Conversation, ScreeningStatus
-from app.services import sync_service
 from app.services.transcript_service import compact
 from app.utils.log import get_logger
 
@@ -55,7 +54,6 @@ async def store_outcome(
             if candidate is not None and not candidate.opted_out:
                 candidate.opted_out = True
                 candidate.screening_status = ScreeningStatus.OPTED_OUT.value
-                sync_service.record_change(db, candidate_id)
         await db.commit()
         await db.refresh(conversation)
     logger.info(
@@ -100,7 +98,6 @@ async def store_telephonic_outcome(
             candidate = await db.get(Candidate, candidate_id, with_for_update=True)
             if candidate is not None and not candidate.opted_out:
                 candidate.opted_out = True
-                sync_service.record_change(db, candidate_id)
         await db.commit()
         await db.refresh(conversation)
     logger.info(

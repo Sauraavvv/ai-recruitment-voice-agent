@@ -28,7 +28,6 @@ from app.database.models import (
     Job,
     Organization,
     ScreeningStatus,
-    SyncLog,
 )
 from app.providers.telephony import webhook_token
 from app.services import (
@@ -38,7 +37,6 @@ from app.services import (
     retry_service,
     screening_store,
     settings_service,
-    sync_service,
 )
 from app.tests.conftest import make_settings
 from app.tests.integration.test_telephony import EXOTEL, FakeProvider, _candidate, _start
@@ -70,14 +68,6 @@ async def _clean_slots(client: AsyncClient) -> AsyncIterator[None]:
     yield
     for key in await redis.keys("rcai:call:slot:*"):
         await redis.delete(key)
-
-
-@pytest.fixture(autouse=True)
-def _no_sheet_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake(settings: Any, pool: Any = None) -> bool:
-        return True
-
-    monkeypatch.setattr(sync_service, "request_sync", fake)
 
 
 @pytest.fixture
@@ -686,7 +676,6 @@ async def test_concurrent_evaluate_creates_one_attempt(migrated_database: str) -
         assert sorted(a.call_status for a in rows) == ["no_answer", "retry_scheduled"]
     finally:
         async with maker() as s:
-            await s.execute(delete(SyncLog).where(SyncLog.candidate_id == ids[1]))
             await s.execute(delete(CallAttempt).where(CallAttempt.candidate_id == ids[1]))
             await s.execute(delete(Candidate).where(Candidate.id == ids[1]))
             await s.execute(delete(Job).where(Job.id == ids[0]))

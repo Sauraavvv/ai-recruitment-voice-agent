@@ -9,9 +9,8 @@
             ▼
     a facts-only summary (no model: counts and what happened, never a judgement)
 
-Unlike a screening call it never touches the candidate's screening fields or screening status
-and never writes to the Google Sheet: the answers stay in extracted_data["telephonic"], where
-6c adds the scores.
+Unlike a screening call it never touches the candidate's screening fields or screening status:
+the answers stay in extracted_data["telephonic"], where 6c adds the scores.
 """
 
 import uuid

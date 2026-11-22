@@ -9,8 +9,7 @@ none). With several organizations, --organization is required.
 
 The password is prompted for (never pass it on the command line). Running it again for an
 existing email resets that user's password and re-activates the account; --role changes the
-role only when it's given (new accounts default to recruiter). Super admins may also change
-the Google Sheet the candidates are copied to.
+role only when it's given (new accounts default to recruiter).
 """
 
 import argparse

@@ -52,7 +52,6 @@ from app.services import (
     call_state,
     screening_job,
     settings_service,
-    sync_service,
     telephonic_service,
 )
 from app.utils.calling_window import CallingWindow, Half
@@ -471,8 +470,6 @@ async def evaluate(
     attempt.retry_decision = decision.code
     attempt.retry_note = decision.note
     attempt.retry_evaluated_at = now
-    if new_attempt is not None or decision.action == "exhausted":
-        sync_service.record_change(session, attempt.candidate_id)  # Call Status, Next Retry
     await session.commit()
     logger.info(
         "retry_evaluated",
@@ -627,11 +624,9 @@ async def dispatch_due(
             )
             attempt.retry_decision = f"no_retry:{reason}"[:48]
             attempt.retry_evaluated_at = now
-            sync_service.record_change(session, attempt.candidate_id)
             out.cancelled += 1
             continue
         call_state.transition(attempt, CallStatus.QUEUED, now=now)
-        sync_service.record_change(session, attempt.candidate_id)  # Call Status in the sheet
         out.queued.append(str(attempt.id))
     await session.commit()
 

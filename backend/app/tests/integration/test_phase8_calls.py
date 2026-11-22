@@ -1,9 +1,8 @@
 """Phase 8 call controls and settings: retry, cancel, dry run, eligibility on list rows, the
 global pause (P8-AC7), settings validation, provider status without secrets (P8-AC6) and the
-admin-only sheet change."""
+roles."""
 
 import contextlib
-import json
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -16,8 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import CallAttempt, Conversation, User
-from app.services import provider_status_service, settings_service, sync_service
-from app.services.sheets_service import SheetCheck, SheetsService
+from app.services import provider_status_service, settings_service
 from app.tests.conftest import TEST_PASSWORD, make_settings
 from app.tests.integration.test_telephony import EXOTEL, FakeProvider
 from app.utils.redis import get_redis
@@ -37,14 +35,13 @@ def settings(tmp_path: Path) -> Settings:
     return make_settings(
         **{**EXOTEL, **SECRETS},
         telephony_capture_dir=str(tmp_path / "calls"),
-        google_service_account_json="/run/secrets/none.json",
     )
 
 
 @pytest.fixture(autouse=True)
 async def _clean_redis(client: AsyncClient) -> AsyncIterator[None]:
     redis = get_redis()
-    patterns = ("rcai:call:slot:*", "rcai:provider-status:*", "rcai:sheets:check")
+    patterns = ("rcai:call:slot:*", "rcai:provider-status:*")
     for pattern in patterns:
         for key in await redis.keys(pattern):
             await redis.delete(key)
@@ -52,19 +49,6 @@ async def _clean_redis(client: AsyncClient) -> AsyncIterator[None]:
     for pattern in patterns:
         for key in await redis.keys(pattern):
             await redis.delete(key)
-
-
-@pytest.fixture(autouse=True)
-def _no_sheet_jobs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """The test Redis is the dev Redis: never queue a real sync job."""
-    queued: list[str] = []
-
-    async def fake(settings: Any, pool: Any = None) -> bool:
-        queued.append("sync")
-        return True
-
-    monkeypatch.setattr(sync_service, "request_sync", fake)
-    return queued
 
 
 @pytest.fixture
@@ -478,19 +462,13 @@ async def test_status_never_contains_secrets(
 
     monkeypatch.setattr(provider_status_service, "_get", fake_get)
 
-    async def fake_check(self: SheetsService) -> SheetCheck:
-        return SheetCheck(True, "ok", None, "bot@project.iam.gserviceaccount.com")
-
-    monkeypatch.setattr(SheetsService, "check_unlocked", fake_check)
-    monkeypatch.setattr(settings, "google_sheet_id", "sheet-id-from-env-000000000")
-
     response = await authed.get("/api/v1/settings/status", params={"refresh": "true"})
     assert response.status_code == 200, response.text
     text = response.text
     for secret in SECRETS.values():
         if "SECRET" in secret:
             assert secret not in text
-    for value in ("exo-SECRET", "sk-test-SECRET", "dg-SECRET", "none.json"):
+    for value in ("exo-SECRET", "sk-test-SECRET", "dg-SECRET"):
         assert value not in text
     providers = {p["name"]: p for p in response.json()["data"]["providers"]}
     assert providers["openai"]["reachable"] is True
@@ -500,18 +478,14 @@ async def test_status_never_contains_secrets(
     }
     assert providers["exotel"]["reachable"] is True
     assert providers["tts"]["reachable"] is False  # no voice loaded in tests
-    sheets = response.json()["data"]["google_sheets"]
-    assert sheets["state"] != "error" and sheets["header"] == "ok"
-    assert sheets["service_account_email"] == "bot@project.iam.gserviceaccount.com"
     assert len(seen) == 3
 
     # cached: a second call makes no requests
     await authed.get("/api/v1/settings/status")
     assert len(seen) == 3
     # and every other settings response is clean too
-    for path in ("/api/v1/settings", "/api/v1/integrations/google-sheets/status"):
-        body = (await authed.get(path)).text
-        assert not any(s in body for s in SECRETS.values() if "SECRET" in s)
+    body = (await authed.get("/api/v1/settings")).text
+    assert not any(s in body for s in SECRETS.values() if "SECRET" in s)
 
 
 async def test_public_connections_summary(
@@ -548,87 +522,7 @@ async def test_public_connections_summary(
     assert len(seen) == 3
 
 
-# --- Admin-only sheet change ------------------------------------------------------------------
-
-
-def test_parse_sheet_link() -> None:
-    sid = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
-    assert settings_service.parse_sheet_link(
-        f"https://docs.google.com/spreadsheets/d/{sid}/edit#gid=0"
-    ) == (sid)
-    assert settings_service.parse_sheet_link(f"  {sid} ") == sid
-    assert settings_service.parse_sheet_link("https://example.com/not-a-sheet") is None
-    assert settings_service.parse_sheet_link("short") is None
-
-
-async def test_only_an_admin_changes_the_sheet(
-    authed: AsyncClient,
-    active_job: dict[str, Any],
-    user: User,
-    db_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
-    settings: Settings,
-    _no_sheet_jobs: list[str],
-) -> None:
-    sid = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
-    link = f"https://docs.google.com/spreadsheets/d/{sid}/edit"
-    checked: list[str | None] = []
-
-    async def fake_check(self: SheetsService) -> SheetCheck:
-        checked.append(self._settings.google_sheet_id)
-        if self._settings.google_sheet_id == "1NoAccessNoAccessNoAccess000":
-            return SheetCheck(False, "unknown", "No permission to edit the spreadsheet.", "bot@x")
-        return SheetCheck(True, "empty", None, "bot@x")
-
-    monkeypatch.setattr(SheetsService, "check", fake_check)
-    monkeypatch.setattr(SheetsService, "check_unlocked", fake_check)
-    await _candidate(authed, "+91 90000 08020")
-
-    # a recruiter can't
-    refused = await authed.put("/api/v1/integrations/google-sheets/sheet", json={"link": link})
-    assert refused.status_code == 403 and refused.json()["error"]["code"] == "admin_required"
-    me = (await authed.get("/api/v1/auth/me")).json()["data"]
-    assert me["role"] == "recruiter"
-
-    user.role = "super_admin"
-    await db_session.flush()
-    bad_link = await authed.post(
-        "/api/v1/integrations/google-sheets/check", json={"link": "not a link"}
-    )
-    assert bad_link.status_code == 422
-    no_access = await authed.put(
-        "/api/v1/integrations/google-sheets/sheet",
-        json={"link": "1NoAccessNoAccessNoAccess000"},
-    )
-    assert no_access.status_code == 409
-    assert no_access.json()["error"]["code"] == "sheet_not_usable"
-
-    check = await authed.post("/api/v1/integrations/google-sheets/check", json={"link": link})
-    assert check.json()["data"] | {"can_save": True} == check.json()["data"]
-    saved = await authed.put("/api/v1/integrations/google-sheets/sheet", json={"link": link})
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["data"]["sheet_id"] == sid
-
-    effective = await settings_service.effective(db_session, settings)
-    assert effective.google_sheet_id == sid and effective.google_sheet_tab == "Candidates"
-    status = (await authed.get("/api/v1/integrations/google-sheets/status")).json()["data"]
-    assert (status["sheet_id"], status["sheet_source"], status["can_edit"]) == (
-        sid,
-        "settings",
-        True,
-    )
-    assert status["sheet_url"] == f"https://docs.google.com/spreadsheets/d/{sid}/edit"
-    # every active candidate was queued for the new sheet, and a sync was requested
-    from sqlalchemy import func, select
-
-    from app.database.models import SyncLog
-
-    pending = await db_session.scalar(
-        select(func.count()).select_from(SyncLog).where(SyncLog.sync_status == "pending")
-    )
-    assert pending and pending >= 1
-    assert _no_sheet_jobs
-    assert json.dumps(status).count("none.json") == 0
+# --- Roles ------------------------------------------------------------------------------------
 
 
 async def test_super_admin_role(api: AsyncClient, db_session: AsyncSession) -> None:
@@ -648,39 +542,3 @@ async def test_super_admin_role(api: AsyncClient, db_session: AsyncSession) -> N
         "/api/v1/auth/login", json={"email": admin.email, "password": TEST_PASSWORD}
     )
     assert response.json()["data"]["role"] == "super_admin"
-
-
-async def test_parallel_status_requests_run_one_sheets_check(
-    authed: AsyncClient, monkeypatch: pytest.MonkeyPatch, settings: Settings
-) -> None:
-    """The Settings page asks for both statuses at once. They used to run two checks in
-    parallel threads on one (not thread-safe) client and hang for 20 s; now one check runs
-    and the other request reuses its result."""
-    import asyncio
-
-    running = 0
-    calls = 0
-
-    async def slow_check(self: SheetsService) -> SheetCheck:
-        nonlocal running, calls
-        running += 1
-        calls += 1
-        assert running == 1, "two Sheets checks at the same time"
-        await asyncio.sleep(0.2)
-        running -= 1
-        return SheetCheck(True, "ok", None, "bot@x")
-
-    monkeypatch.setattr(SheetsService, "check_unlocked", slow_check)
-    monkeypatch.setattr(settings, "google_sheet_id", "sheet-id-from-env-000000000")
-
-    async def fake_get(url: str, transport: Any, **kwargs: Any) -> httpx.Response:
-        return httpx.Response(200, json={})
-
-    monkeypatch.setattr(provider_status_service, "_get", fake_get)
-    responses = await asyncio.gather(
-        authed.get("/api/v1/settings/status"),
-        authed.get("/api/v1/integrations/google-sheets/status"),
-        authed.get("/api/v1/integrations/google-sheets/status"),
-    )
-    assert [r.status_code for r in responses] == [200, 200, 200]
-    assert calls == 1

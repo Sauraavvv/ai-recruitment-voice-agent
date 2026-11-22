@@ -123,7 +123,6 @@ export const ATTENTION_LABELS: Record<string, string> = {
   wrong_person: "Wrong person",
   attempts_exhausted: "No more attempts",
   callback_not_scheduled: "Callback not scheduled",
-  sheets_sync_failed: "Sheet sync failed",
 };
 
 /** Why an ended call was or wasn't followed up automatically (phase-09, `retry_decision`). */

@@ -7,7 +7,6 @@ Each check is the cheapest authenticated read the provider has, cached in Redis 
   Deepgram   GET /v1/projects             the key works (STT and the fallback voice)
   Exotel     GET /v1/Accounts/{sid}.json  the key/token work for this account
   Voice      the loaded TTS in this process (Kitten Iris + Deepgram Aura fallback), no call
-  Sheets     the Phase 7 check (its own 60 s cache), see api/v1/integrations.py
 
 Messages never contain a key, a token or a response body: only HTTP status codes and our own
 text. (The test asserts that no configured secret value appears in the response.)
@@ -205,7 +204,7 @@ async def cached(redis: Redis, name: str, check: Check, *, refresh: bool) -> dic
 async def all_statuses(
     redis: Redis, settings: Settings, *, tts: Any, refresh: bool, transport: Transport = None
 ) -> list[dict[str, Any]]:
-    """OpenAI, Deepgram, Exotel and the voice. (Sheets is added by the API.)"""
+    """OpenAI, Deepgram, Exotel and the voice."""
     checks: list[tuple[str, Check]] = [
         ("openai", lambda: check_openai(settings, transport)),
         ("deepgram", lambda: check_deepgram(settings, transport)),

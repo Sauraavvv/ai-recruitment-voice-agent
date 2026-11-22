@@ -200,7 +200,7 @@ const STEPS = [
   },
   {
     title: "Your team picks it up",
-    text: "Results land on the dashboard and in your Google Sheet. Missed calls are retried and callbacks happen at the time the candidate asked for.",
+    text: "Results land on the dashboard. Missed calls are retried and callbacks happen at the time the candidate asked for.",
   },
 ];
 
@@ -255,12 +255,12 @@ const FEATURES: { title: string; text: string; icon: ReactNode }[] = [
     ),
   },
   {
-    title: "Your Google Sheet, always current",
-    text: "Every candidate is copied to your team's sheet and kept up to date after each call or edit.",
+    title: "A second round, scored",
+    text: "Interested candidates get a short round of questions made from the job description. Each answer is scored with the candidate's own words, and you decide.",
     icon: (
       <>
-        <rect x="4" y="3" width="16" height="18" rx="2" />
-        <path d="M4 9h16M4 15h16M10 3v18" />
+        <path d="M9 6h11M9 12h11M9 18h11" />
+        <path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
       </>
     ),
   },

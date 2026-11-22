@@ -1,7 +1,6 @@
 """Finalization against the database (phase-07 §5, P7-T1 to P7-T4, P7-AC1 to AC3)."""
 
 import contextlib
-import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -18,9 +17,8 @@ from app.database.models import (
     Job,
     Organization,
     ScreeningStatus,
-    SyncLog,
 )
-from app.services import finalization_service, screening_store, sync_service
+from app.services import finalization_service, screening_store
 from app.tests.conftest import make_settings
 from app.tests.unit.agent.results import final_output, make_result
 from app.tests.unit.agent.stub_llm import ScriptedLLM
@@ -72,14 +70,7 @@ def sessions(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> list[
 
     for module in (screening_store, finalization_service, call_worker):
         monkeypatch.setattr(module, "get_sessionmaker", lambda: factory)
-    requested: list[str] = []
-
-    async def request_sync(settings: Any, pool: Any = None) -> bool:
-        requested.append("sync")
-        return True
-
-    monkeypatch.setattr(sync_service, "request_sync", request_sync)
-    return requested
+    return []
 
 
 async def _attempt(db: AsyncSession, phone: str = "+919000009070", **candidate: Any) -> CallAttempt:
@@ -122,16 +113,10 @@ async def _state(db: AsyncSession, attempt: CallAttempt) -> tuple[Candidate, Con
     return candidate, conv
 
 
-async def _outbox(db: AsyncSession, cid: uuid.UUID) -> list[SyncLog]:
-    return list(
-        (await db.execute(select(SyncLog).where(SyncLog.candidate_id == cid))).scalars().all()
-    )
-
-
 async def test_completed_call_updates_the_candidate(
     db_session: AsyncSession, sessions: list[str]
 ) -> None:
-    """P7-AC1 (automated), P7-AC3: fields, status, conversation, summary, outbox."""
+    """P7-AC1 (automated), P7-AC3: fields, status, conversation, summary."""
     attempt = await _attempt(db_session)
     await _store(db_session, attempt, full_result())
     out = await finalization_service.finalize_attempt(attempt.id, settings=SETTINGS, llm=None)
@@ -149,9 +134,6 @@ async def test_completed_call_updates_the_candidate(
     assert conv.summary and "Missing" not in conv.summary
     await db_session.refresh(attempt)
     assert attempt.end_reason == "agent_completed"
-    # One outbox row from the finalization transaction, one from the summary
-    assert [r.sync_status for r in await _outbox(db_session, candidate.id)] == ["pending"] * 2
-    assert sessions == ["sync", "sync"]
 
 
 async def test_finalize_twice_gives_one_result(
@@ -164,9 +146,8 @@ async def test_finalize_twice_gives_one_result(
     _, conv = await _state(db_session, attempt)
     first = (conv.finalized_at, conv.summary)
     assert await call_worker.finalize_call(ctx, str(attempt.id)) == "already_done"
-    candidate, conv = await _state(db_session, attempt)
+    _, conv = await _state(db_session, attempt)
     assert (conv.finalized_at, conv.summary) == first
-    assert len(await _outbox(db_session, candidate.id)) == 2
 
 
 async def test_no_result_yet(db_session: AsyncSession, sessions: list[str]) -> None:
@@ -262,16 +243,16 @@ async def test_final_pass_failure_still_saves_the_live_state(
 async def test_failure_mid_transaction_saves_nothing(
     db_session: AsyncSession, sessions: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Outbox atomicity: neither the candidate update nor the outbox row exists."""
+    """One transaction: when it fails after the fields were merged, nothing is saved."""
     attempt = await _attempt(db_session)
     await _store(db_session, attempt, full_result())
-    real = sync_service.record_change
+    real = finalization_service.merge_candidate
 
-    def explode(session: AsyncSession, candidate_id: uuid.UUID) -> SyncLog:
-        real(session, candidate_id)  # the outbox row is added, then the transaction fails
+    def explode(*args: Any, **kwargs: Any) -> Any:
+        real(*args, **kwargs)  # the candidate's fields are changed, then the transaction fails
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(sync_service, "record_change", explode)
+    monkeypatch.setattr(finalization_service, "merge_candidate", explode)
     with pytest.raises(RuntimeError):
         await finalization_service.finalize_attempt(attempt.id, settings=SETTINGS, llm=None)
     await db_session.rollback()  # what closing the session does in production
@@ -279,9 +260,8 @@ async def test_failure_mid_transaction_saves_nothing(
     candidate, conv = await _state(db_session, attempt)
     assert candidate.current_location is None and candidate.screening_status == "not_started"
     assert conv.finalized_at is None and "final" not in conv.extracted_data
-    assert await _outbox(db_session, candidate.id) == []
 
-    monkeypatch.setattr(sync_service, "record_change", real)  # fixed: the retry works
+    monkeypatch.setattr(finalization_service, "merge_candidate", real)  # fixed: the retry works
     out = await finalization_service.finalize_attempt(attempt.id, settings=SETTINGS, llm=None)
     assert out == "finalized"
 

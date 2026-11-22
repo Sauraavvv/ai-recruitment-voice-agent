@@ -247,7 +247,7 @@ export interface paths {
         };
         /**
          * Candidate Overview
-         * @description Eligibility, the summary, the sheet sync status and open conflicts.
+         * @description Eligibility, the summary, open conflicts and the retry status.
          */
         get: operations["candidate_overview_api_v1_candidates__candidate_id__overview_get"];
         put?: never;
@@ -269,7 +269,7 @@ export interface paths {
         put?: never;
         /**
          * Resolve Conflict
-         * @description Keep the stored value or use the other one; the sheet row follows.
+         * @description Keep the stored value or use the other one.
          */
         post: operations["resolve_conflict_api_v1_candidates__candidate_id__conflicts__field__resolve_post"];
         delete?: never;
@@ -897,107 +897,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/google-sheets/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sheets Status
-         * @description Configured, reachable, header ok, last success, pending and failed counts.
-         */
-        get: operations["sheets_status_api_v1_integrations_google_sheets_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/google-sheets/sync/{candidate_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sync Candidate
-         * @description Queue a sync of this candidate's row (also retries one that failed for good).
-         */
-        post: operations["sync_candidate_api_v1_integrations_google_sheets_sync__candidate_id__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/google-sheets/backfill": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Backfill
-         * @description "Sync all": queue every active candidate's row.
-         */
-        post: operations["backfill_api_v1_integrations_google_sheets_backfill_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/google-sheets/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Sheet
-         * @description Admin: can the service account edit this sheet, and is its header ours or empty?
-         */
-        post: operations["check_sheet_api_v1_integrations_google_sheets_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/google-sheets/sheet": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Change Sheet
-         * @description Admin: copy candidates to another sheet from now on. Checked first; then every active
-         *     candidate is queued so the new sheet is filled. The old sheet keeps its rows.
-         */
-        put: operations["change_sheet_api_v1_integrations_google_sheets_sheet_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings": {
         parameters: {
             query?: never;
@@ -1118,7 +1017,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "callback_due" | "data_conflict" | "unanswered_question" | "vague_callback" | "callback_not_scheduled" | "technical_failure" | "partially_completed" | "wrong_person" | "attempts_exhausted" | "sheets_sync_failed";
+            reason: "callback_due" | "data_conflict" | "unanswered_question" | "vague_callback" | "callback_not_scheduled" | "technical_failure" | "partially_completed" | "wrong_person" | "attempts_exhausted";
             /** At */
             at: string | null;
             /** Call Attempt Id */
@@ -1126,13 +1025,6 @@ export interface components {
             /** Detail */
             detail: string | null;
             conflict: components["schemas"]["Conflict"] | null;
-        };
-        /** BackfillResult */
-        BackfillResult: {
-            /** Queued Candidates */
-            queued_candidates: number;
-            /** Queued */
-            queued: boolean;
         };
         /** Body_upload_import_api_v1_candidates_import_post */
         Body_upload_import_api_v1_candidates_import_post: {
@@ -1567,9 +1459,6 @@ export interface components {
         CandidateOverview: {
             eligibility: components["schemas"]["Eligibility"];
             summary: components["schemas"]["CandidateSummary"] | null;
-            sheet_sync: components["schemas"]["SheetSyncState"];
-            /** Sheets Configured */
-            sheets_configured: boolean;
             /** Conflicts */
             conflicts: components["schemas"]["Conflict"][];
             retry_status: components["schemas"]["RetryStatus"] | null;
@@ -1942,10 +1831,6 @@ export interface components {
              */
             generated_at: string;
         };
-        /** DataResponse[BackfillResult] */
-        DataResponse_BackfillResult_: {
-            data: components["schemas"]["BackfillResult"];
-        };
         /** DataResponse[CallAnswers] */
         DataResponse_CallAnswers_: {
             data: components["schemas"]["CallAnswers"];
@@ -1994,10 +1879,6 @@ export interface components {
         DataResponse_JobOut_: {
             data: components["schemas"]["JobOut"];
         };
-        /** DataResponse[ManualSyncResult] */
-        DataResponse_ManualSyncResult_: {
-            data: components["schemas"]["ManualSyncResult"];
-        };
         /** DataResponse[NoneType] */
         DataResponse_NoneType_: {
             /** Data */
@@ -2022,14 +1903,6 @@ export interface components {
         /** DataResponse[SettingsOut] */
         DataResponse_SettingsOut_: {
             data: components["schemas"]["SettingsOut"];
-        };
-        /** DataResponse[SheetAccessCheck] */
-        DataResponse_SheetAccessCheck_: {
-            data: components["schemas"]["SheetAccessCheck"];
-        };
-        /** DataResponse[SheetsStatus] */
-        DataResponse_SheetsStatus_: {
-            data: components["schemas"]["SheetsStatus"];
         };
         /** DataResponse[StartCallResult] */
         DataResponse_StartCallResult_: {
@@ -2637,23 +2510,6 @@ export interface components {
             email: string;
             /** Password */
             password: string;
-        };
-        /** ManualSyncResult */
-        ManualSyncResult: {
-            /**
-             * Candidate Id
-             * Format: uuid
-             */
-            candidate_id: string;
-            /**
-             * Sync Log Id
-             * Format: uuid
-             */
-            sync_log_id: string;
-            /** Sync Status */
-            sync_status: string;
-            /** Queued */
-            queued: boolean;
         };
         /** MappingUpdate */
         MappingUpdate: {
@@ -3392,94 +3248,6 @@ export interface components {
             /** Calling Now */
             calling_now: boolean;
         };
-        /** SheetAccessCheck */
-        SheetAccessCheck: {
-            /** Sheet Id */
-            sheet_id: string;
-            /** Sheet Url */
-            sheet_url: string;
-            /** Tab */
-            tab: string;
-            /** Reachable */
-            reachable: boolean;
-            /**
-             * Header
-             * @enum {string}
-             */
-            header: "ok" | "empty" | "mismatch" | "unknown";
-            /** Message */
-            message: string | null;
-            /** Service Account Email */
-            service_account_email: string | null;
-            /** Can Save */
-            can_save: boolean;
-        };
-        /** SheetChange */
-        SheetChange: {
-            /**
-             * Link
-             * @description Sheet link or id
-             */
-            link: string;
-            /** Tab */
-            tab?: string | null;
-        };
-        /** SheetSyncState */
-        SheetSyncState: {
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "never" | "pending" | "success" | "failed";
-            /** Synced At */
-            synced_at: string | null;
-            /** Error */
-            error: string | null;
-            /** Next Attempt At */
-            next_attempt_at: string | null;
-        };
-        /** SheetsStatus */
-        SheetsStatus: {
-            /** Configured */
-            configured: boolean;
-            /** Tab */
-            tab: string;
-            /** Sheet Id */
-            sheet_id: string | null;
-            /** Sheet Url */
-            sheet_url: string | null;
-            /** Sheet Source */
-            sheet_source: ("settings" | "env") | null;
-            /** Sheet Changed At */
-            sheet_changed_at: string | null;
-            /** Can Edit */
-            can_edit: boolean;
-            /** Key Configured */
-            key_configured: boolean;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "ok" | "degraded" | "error" | "unknown" | "not_configured";
-            /** Message */
-            message: string | null;
-            /** Reachable */
-            reachable: boolean | null;
-            /** Header */
-            header: ("ok" | "empty" | "mismatch" | "unknown") | null;
-            /** Service Account Email */
-            service_account_email: string | null;
-            /** Last Success At */
-            last_success_at: string | null;
-            /** Last Error At */
-            last_error_at: string | null;
-            /** Pending Candidates */
-            pending_candidates: number;
-            /** Failed Candidates */
-            failed_candidates: number;
-            /** Checked At */
-            checked_at: string | null;
-        };
         /**
          * SignupRequest
          * @description A new organization and its super admin.
@@ -3533,7 +3301,6 @@ export interface components {
         StatusOut: {
             /** Providers */
             providers: components["schemas"]["ProviderStatus"][];
-            google_sheets: components["schemas"]["SheetsStatus"];
         };
         /** TeamMemberCreate */
         TeamMemberCreate: {
@@ -3660,8 +3427,8 @@ export interface components {
         };
         /**
          * UserRole
-         * @description Super admins own the organization and may also change integration settings (the Google
-         *     Sheet). Recruiters use the app day to day.
+         * @description Super admins own the organization (its clients and team). Recruiters use the app day to
+         *     day.
          * @enum {string}
          */
         UserRole: "super_admin" | "recruiter";
@@ -5421,154 +5188,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataResponse_QuickStart_"];
-                };
-            };
-        };
-    };
-    sheets_status_api_v1_integrations_google_sheets_status_get: {
-        parameters: {
-            query?: {
-                refresh?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_SheetsStatus_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sync_candidate_api_v1_integrations_google_sheets_sync__candidate_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                candidate_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_ManualSyncResult_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    backfill_api_v1_integrations_google_sheets_backfill_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_BackfillResult_"];
-                };
-            };
-        };
-    };
-    check_sheet_api_v1_integrations_google_sheets_check_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SheetChange"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_SheetAccessCheck_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    change_sheet_api_v1_integrations_google_sheets_sheet_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SheetChange"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataResponse_SheetAccessCheck_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

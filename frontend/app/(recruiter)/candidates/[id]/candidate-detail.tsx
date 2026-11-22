@@ -14,12 +14,11 @@ import { useToast } from "@/components/toast";
 import { TranscriptView } from "@/components/transcript-view";
 import { Alert, Button, Card, Field, PageHeader, inputClass } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
-import { formatDate, initials, retryStatusText, timeAgo } from "@/lib/labels";
+import { formatDate, initials, retryStatusText } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
 import { deleteCandidate, getCandidate, getOverview, updateCandidate } from "@/services/candidates";
 import { listJobs } from "@/services/jobs";
-import { syncCandidate } from "@/services/settings";
-import type { Candidate, CandidateOverview, CandidateUpdate } from "@/types";
+import type { Candidate, CandidateUpdate } from "@/types";
 
 import { CallsPanel, useCalls } from "./calls-panel";
 
@@ -144,16 +143,6 @@ export function CandidateDetail() {
       setMessage({ kind: "error", text: errorMessage(err) });
       setBusy(false);
       setConfirm(null);
-    }
-  }
-
-  async function onSyncNow() {
-    try {
-      await syncCandidate(id);
-      notify("success", "Sheet sync queued.");
-      setTimeout(overview.reload, 3000);
-    } catch (err) {
-      notify("error", errorMessage(err));
     }
   }
 
@@ -343,8 +332,6 @@ export function CandidateDetail() {
             </dl>
           </Card>
 
-          <SheetSyncCard overview={overview.data} onSyncNow={onSyncNow} />
-
           <CallsPanel
             calls={calls}
             eligibility={eligibility}
@@ -360,7 +347,7 @@ export function CandidateDetail() {
           {overview.data && overview.data.conflicts.length > 0 && (
             <Card
               title="Answers that disagree"
-              description="The call's final check heard a different answer. Pick the right one; the sheet follows."
+              description="The call's final check heard a different answer. Pick the right one."
             >
               <ConflictList
                 candidateId={id}
@@ -429,49 +416,6 @@ export function CandidateDetail() {
         They are hidden from lists and never called. Their call history is kept.
       </ConfirmDialog>
     </>
-  );
-}
-
-function SheetSyncCard({
-  overview,
-  onSyncNow,
-}: {
-  overview: CandidateOverview | undefined;
-  onSyncNow: () => void;
-}) {
-  if (!overview) return null;
-  const sync = overview.sheet_sync;
-  const text = !overview.sheets_configured
-    ? "Google Sheets isn't set up"
-    : sync.status === "failed"
-      ? "Sync failed"
-      : sync.status === "pending"
-        ? "Waiting to sync"
-        : sync.synced_at
-          ? `Synced ${timeAgo(sync.synced_at)}`
-          : "Not synced yet";
-  return (
-    <Card
-      title="Google Sheet"
-      action={
-        overview.sheets_configured && (
-          <Button variant="secondary" onClick={onSyncNow}>
-            Sync now
-          </Button>
-        )
-      }
-    >
-      <p
-        className={`text-sm ${sync.status === "failed" ? "text-red-300" : "text-zinc-300"}`}
-        role="status"
-      >
-        {text}
-      </p>
-      {sync.error && <p className="mt-1 text-xs text-zinc-500">{sync.error}</p>}
-      {sync.status === "failed" && sync.next_attempt_at && (
-        <p className="mt-1 text-xs text-zinc-500">Retrying {timeAgo(sync.next_attempt_at)}</p>
-      )}
-    </Card>
   );
 }
 

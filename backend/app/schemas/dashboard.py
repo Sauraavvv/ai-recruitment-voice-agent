@@ -113,7 +113,6 @@ AttentionReason = Literal[
     "partially_completed",
     "wrong_person",
     "attempts_exhausted",
-    "sheets_sync_failed",
 ]
 
 

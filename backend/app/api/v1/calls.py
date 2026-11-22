@@ -35,7 +35,7 @@ from app.schemas.call import (
 )
 from app.schemas.common import DataResponse, PageResponse
 from app.schemas.telephonic import CallAnswers
-from app.services import call_service, client_service, sync_service, telephonic_calls
+from app.services import call_service, client_service, telephonic_calls
 from app.services.errors import conflict, not_found
 from app.utils.queue import enqueue_evaluate_round, enqueue_initiate_call
 from app.voice.session_registry import REGISTRY
@@ -82,8 +82,6 @@ async def start_calls(
         by_id.get(i) or call_service.StartResult(i, error=call_service.Ineligible.NOT_FOUND)
         for i in ids
     ]
-    if any(r.attempt_id for r in results):
-        await sync_service.request_sync(settings)
     return ok([r.as_dict() for r in results])
 
 
@@ -273,8 +271,6 @@ async def retry_call(
         override_limit=bool(body and body.override_limit),
         call_again=bool(body and body.call_again),
     )
-    if result.attempt_id:
-        await sync_service.request_sync(settings)
     return ok(result.as_dict())
 
 
@@ -289,7 +285,6 @@ async def cancel_call(
     """Cancel a call that hasn't dialed yet (pending, queued, retry or callback scheduled)."""
     await call_service.get_visible(session, user, call_attempt_id)  # else 404
     attempt = await call_service.cancel(session, redis, call_attempt_id, settings, user_id=user.id)
-    await sync_service.request_sync(settings)
     return ok(attempt)
 
 

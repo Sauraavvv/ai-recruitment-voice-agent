@@ -26,8 +26,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True)  # stored lowercase
     name: Mapped[str] = mapped_column(String(200))
     password_hash: Mapped[str] = mapped_column(String(255))
-    # super_admin: owns the organization; may also change integration settings (the Google
-    # Sheet). Default recruiter.
+    # super_admin: owns the organization (its clients and team). Default recruiter.
     role: Mapped[str] = mapped_column(String(16), server_default=UserRole.RECRUITER.value)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     created_at: Mapped[datetime] = created_at_column()

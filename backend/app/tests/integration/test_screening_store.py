@@ -1,5 +1,5 @@
 """End of the call: the conversation row gets the transcript and live result; the candidate is
-left to finalization, except an opt-out (written at once, with its outbox row)."""
+left to finalization, except an opt-out (written at once)."""
 
 import contextlib
 import uuid
@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.conversation_manager import ScreeningResult
-from app.database.models import CallAttempt, Candidate, Conversation, ScreeningStatus, SyncLog
+from app.database.models import CallAttempt, Candidate, Conversation, ScreeningStatus
 from app.services import screening_store
 from app.tests.unit.agent.results import make_result
 
@@ -50,15 +50,10 @@ async def _setup(authed: AsyncClient, db: AsyncSession) -> tuple[uuid.UUID, Call
     return cid, attempt
 
 
-async def _outbox(db: AsyncSession, cid: uuid.UUID) -> int:
-    return int(await db.scalar(select(func.count()).where(SyncLog.candidate_id == cid)) or 0)
-
-
 async def test_store_outcome_stores_the_conversation_only(
     authed: AsyncClient, active_job: dict[str, Any], db_session: AsyncSession, sessions: None
 ) -> None:
     cid, attempt = await _setup(authed, db_session)
-    before = await _outbox(db_session, cid)
     await screening_store.store_outcome(
         attempt_id=attempt.id, candidate_id=cid, result=make_result(), extra={"end_reason": "x"}
     )
@@ -77,7 +72,6 @@ async def test_store_outcome_stores_the_conversation_only(
     await db_session.refresh(candidate)
     assert candidate.current_location is None  # finalization writes the fields
     assert candidate.screening_status == "not_started"
-    assert await _outbox(db_session, cid) == before
 
     # Stored again (e.g. a retry of the end-of-call write): one row, updated
     await screening_store.store_outcome(
@@ -95,7 +89,6 @@ async def test_opt_out_is_written_at_once(
     authed: AsyncClient, active_job: dict[str, Any], db_session: AsyncSession, sessions: None
 ) -> None:
     cid, attempt = await _setup(authed, db_session)
-    before = await _outbox(db_session, cid)
     await screening_store.store_outcome(
         attempt_id=attempt.id,
         candidate_id=cid,
@@ -105,4 +98,3 @@ async def test_opt_out_is_written_at_once(
     assert candidate is not None
     await db_session.refresh(candidate)
     assert candidate.opted_out and candidate.screening_status == "opted_out"
-    assert await _outbox(db_session, cid) == before + 1

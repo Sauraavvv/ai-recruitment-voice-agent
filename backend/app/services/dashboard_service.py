@@ -25,8 +25,6 @@ from app.database.models import (
     Candidate,
     Conversation,
     ScreeningStatus,
-    SyncLog,
-    SyncStatus,
     User,
 )
 from app.repositories import candidate_repo
@@ -430,7 +428,6 @@ ATTENTION_ORDER = (
     "partially_completed",
     "wrong_person",
     "attempts_exhausted",
-    "sheets_sync_failed",
 )
 ATTENTION_LIMIT = 100
 NOT_SCHEDULED = {
@@ -628,28 +625,6 @@ async def attention(
                 detail=c["field"],
                 conflict=c,
             )
-
-    # Sheets: the candidate's latest outbox row failed
-    latest_sync = (
-        select(SyncLog)
-        .ext(distinct_on(SyncLog.candidate_id))
-        .order_by(SyncLog.candidate_id, SyncLog.created_at.desc())
-        .subquery()
-    )
-    sync = aliased(SyncLog, latest_sync)
-    sync_rows = (
-        await session.execute(
-            select(sync, Candidate)
-            .join(Candidate, Candidate.id == sync.candidate_id)
-            .where(
-                Candidate.deleted_at.is_(None),
-                _seen(viewer),
-                sync.sync_status == SyncStatus.FAILED.value,
-            )
-        )
-    ).all()
-    for row, cand in sync_rows:
-        add(cand, "sheets_sync_failed", row.updated_at, detail=(row.error_message or "")[:200])
 
     order = {r: i for i, r in enumerate(ATTENTION_ORDER)}
     items.sort(key=lambda i: (order.get(i["reason"], 99), -(i["at"].timestamp() if i["at"] else 0)))

@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from app.api.deps import RedisDep, SessionDep, SettingsDep
 from app.providers.telephony import exotel_models as em
 from app.providers.telephony import stream_token, webhook_token
-from app.services import call_service, sync_service
+from app.services import call_service
 from app.utils.log import get_logger
 from app.voice.websocket_handler import handle_exotel_stream
 
@@ -60,8 +60,6 @@ async def exotel_status(
         # the stored event cover the gap.
         logger.exception("webhook_processing_failed", provider_call_id=payload.get("CallSid"))
         outcome = "error"
-    if outcome == "applied":
-        await sync_service.request_sync(settings)  # a final status may have been recorded
     return JSONResponse({"ok": True, "outcome": outcome})
 
 

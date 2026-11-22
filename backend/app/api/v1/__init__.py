@@ -16,7 +16,6 @@ from app.api.v1 import (
     clients,
     dashboard,
     imports,
-    integrations,
     jobs,
     requirements,
     settings,
@@ -38,7 +37,6 @@ protected.include_router(telephonic.router)
 protected.include_router(jobs.router)
 protected.include_router(calls.router)
 protected.include_router(dashboard.router)
-protected.include_router(integrations.router)
 protected.include_router(settings.router)
 protected.include_router(team.router)
 api_router.include_router(protected)

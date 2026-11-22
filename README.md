@@ -2,7 +2,7 @@
 
 AI recruitment voice calling agent.
 
-Recruiters add or import candidates, and an AI recruiter calls them on a real phone line, holds a short screening conversation in English, and records structured answers, a transcript and a summary. Results appear in the app and in the team's Google Sheet.
+Recruiters add or import candidates, and an AI recruiter calls them on a real phone line, holds a short screening conversation in English, and records structured answers, a transcript and a summary. Results appear in the app.
 
 **Status:** Phases 0 to 9 are complete. Phase 10 (real-world testing and going live) is next.
 
@@ -247,7 +247,8 @@ The voice, the listening and the conversation now work together on a real phone 
 
 ## Phase 7: Final results and Google Sheet sync
 
-*Completed 19 November 2026*
+*Completed 19 November 2026. The Google Sheet copy was removed on 22 November 2026: the app is
+now the only record of candidates.*
 
 After every call, the answers are checked once more against the whole conversation, saved to the candidate, summarised, and copied to the team's Google Sheet.
 

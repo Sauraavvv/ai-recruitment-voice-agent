@@ -48,7 +48,7 @@ export async function deleteCandidate(id: string) {
   await send<null>("DELETE", `/api/v1/candidates/${id}`);
 }
 
-/** Eligibility, the summary, the sheet sync status and open conflicts. */
+/** Eligibility, the summary, open conflicts and the retry status. */
 export async function getOverview(id: string) {
   return (
     await apiFetch<CandidateOverview>(`/api/v1/candidates/${id}/overview`, { cache: "no-store" })

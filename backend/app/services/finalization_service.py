@@ -1,4 +1,4 @@
-"""Post-call finalization (phase-07 §5): final extraction → one transaction → summary → Sheets.
+"""Post-call finalization (phase-07 §5): final extraction → one transaction → summary.
 
     load conversation ──► already finalized? ──yes──► (summary missing? write it) stop
             │ no
@@ -9,9 +9,8 @@
       conversations   extracted_data.final, screening_completed, finalized_at
       candidates      merged fields, screening_field_meta, screening_status, opted_out
       call_attempts   end data; scheduled attempts cancelled on opt-out
-      sync_logs       pending row (outbox)
             ▼ commit
-    summary (LLM, retried, deterministic fallback) ─► save (+ outbox row) ─► queue the sync
+    summary (LLM, retried, deterministic fallback) ─► save
 
 Idempotent: `finalized_at` is checked again under SELECT … FOR UPDATE. A failing LLM never
 blocks persistence: without the final pass the live state is used as it is, and without the
@@ -47,7 +46,6 @@ from app.services import (
     call_service,
     retry_service,
     screening_job,
-    sync_service,
     telephonic_evaluation,
     telephonic_finalization,
 )
@@ -55,6 +53,7 @@ from app.services.summary_service import generate_summary
 
 __all__ = ["finalize_attempt", "generate_summary", "merge_candidate", "save_final"]
 from app.utils.log import get_logger
+from app.utils.queue import JobPool
 
 logger = get_logger(__name__)
 
@@ -166,7 +165,6 @@ async def save_final(
     if attempt.end_reason is None:
         attempt.end_reason = _END_REASON.get(result.end_reason, CallEndReason.AGENT_COMPLETED).value
 
-    sync_service.record_change(session, candidate.id)
     await session.commit()
     logger.info(
         "call_finalized",
@@ -228,7 +226,6 @@ async def save_summary(
         }
         attempt = await session.get(CallAttempt, attempt_id)
         assert attempt is not None
-        sync_service.record_change(session, attempt.candidate_id)  # Call Summary column
         await session.commit()
     logger.info("summary_saved", call_attempt_id=str(attempt_id), summary_by=summary.generated_by)
     return summary.text
@@ -239,7 +236,7 @@ async def finalize_attempt(
     *,
     settings: Settings,
     llm: LLMProvider | None,
-    pool: sync_service.JobPool | None = None,
+    pool: JobPool | None = None,
 ) -> str:
     """Run the pipeline for one attempt. Returns no_result | already_done | finalized |
     summarized (finalized earlier, only the summary was missing). A telephonic round call
@@ -288,7 +285,6 @@ async def finalize_attempt(
                 return "already_done"
         final = final_outcome.to_json()
         outcome = "finalized"
-        await sync_service.request_sync(settings, pool)
 
     # Phase 9: retry or callback, now that the conversation's outcome is known
     note = await _evaluate_retry(attempt_id, settings)
@@ -306,8 +302,6 @@ async def finalize_attempt(
     except Exception:
         # Never undoes or blocks the saved data; the reconciler retries a missing summary
         logger.exception("summary_failed", call_attempt_id=str(attempt_id))
-    else:
-        await sync_service.request_sync(settings, pool)
     return outcome
 
 
@@ -316,9 +310,9 @@ async def _finalize_round(
     *,
     already: bool,
     settings: Settings,
-    pool: sync_service.JobPool | None,
+    pool: JobPool | None,
 ) -> str:
-    """A telephonic round call: answers kept as stored, no screening fields, no Sheet. Then the
+    """A telephonic round call: answers kept as stored, no screening fields. Then the
     AI evaluation of the answers is queued (step 6c; the reconciler catches a miss)."""
     outcome = "summarized"
     if not already:

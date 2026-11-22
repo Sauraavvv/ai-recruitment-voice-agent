@@ -231,7 +231,7 @@ export function AttentionList({
         <Skeleton className="h-32" />
       ) : items.length === 0 ? (
         <EmptyState title="Nothing needs attention">
-          Callbacks, failed calls, answers that disagree and sheet problems show up here.
+          Callbacks, failed calls and answers that disagree show up here.
         </EmptyState>
       ) : (
         <ul className="-mr-2 max-h-[30rem] min-h-0 flex-1 space-y-2 overflow-y-auto pr-2 xl:max-h-none">

@@ -766,7 +766,7 @@
           "candidates"
         ],
         "summary": "Candidate Overview",
-        "description": "Eligibility, the summary, the sheet sync status and open conflicts.",
+        "description": "Eligibility, the summary, open conflicts and the retry status.",
         "operationId": "candidate_overview_api_v1_candidates__candidate_id__overview_get",
         "parameters": [
           {
@@ -810,7 +810,7 @@
           "candidates"
         ],
         "summary": "Resolve Conflict",
-        "description": "Keep the stored value or use the other one; the sheet row follows.",
+        "description": "Keep the stored value or use the other one.",
         "operationId": "resolve_conflict_api_v1_candidates__candidate_id__conflicts__field__resolve_post",
         "parameters": [
           {
@@ -2634,200 +2634,6 @@
         }
       }
     },
-    "/api/v1/integrations/google-sheets/status": {
-      "get": {
-        "tags": [
-          "integrations"
-        ],
-        "summary": "Sheets Status",
-        "description": "Configured, reachable, header ok, last success, pending and failed counts.",
-        "operationId": "sheets_status_api_v1_integrations_google_sheets_status_get",
-        "parameters": [
-          {
-            "name": "refresh",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Refresh"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DataResponse_SheetsStatus_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/integrations/google-sheets/sync/{candidate_id}": {
-      "post": {
-        "tags": [
-          "integrations"
-        ],
-        "summary": "Sync Candidate",
-        "description": "Queue a sync of this candidate's row (also retries one that failed for good).",
-        "operationId": "sync_candidate_api_v1_integrations_google_sheets_sync__candidate_id__post",
-        "parameters": [
-          {
-            "name": "candidate_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Candidate Id"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DataResponse_ManualSyncResult_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/integrations/google-sheets/backfill": {
-      "post": {
-        "tags": [
-          "integrations"
-        ],
-        "summary": "Backfill",
-        "description": "\"Sync all\": queue every active candidate's row.",
-        "operationId": "backfill_api_v1_integrations_google_sheets_backfill_post",
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DataResponse_BackfillResult_"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/integrations/google-sheets/check": {
-      "post": {
-        "tags": [
-          "integrations"
-        ],
-        "summary": "Check Sheet",
-        "description": "Admin: can the service account edit this sheet, and is its header ours or empty?",
-        "operationId": "check_sheet_api_v1_integrations_google_sheets_check_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SheetChange"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DataResponse_SheetAccessCheck_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/integrations/google-sheets/sheet": {
-      "put": {
-        "tags": [
-          "integrations"
-        ],
-        "summary": "Change Sheet",
-        "description": "Admin: copy candidates to another sheet from now on. Checked first; then every active\ncandidate is queued so the new sheet is filled. The old sheet keeps its rows.",
-        "operationId": "change_sheet_api_v1_integrations_google_sheets_sheet_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SheetChange"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DataResponse_SheetAccessCheck_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/settings": {
       "get": {
         "tags": [
@@ -3123,8 +2929,7 @@
               "technical_failure",
               "partially_completed",
               "wrong_person",
-              "attempts_exhausted",
-              "sheets_sync_failed"
+              "attempts_exhausted"
             ],
             "title": "Reason"
           },
@@ -3185,24 +2990,6 @@
           "conflict"
         ],
         "title": "AttentionItem"
-      },
-      "BackfillResult": {
-        "properties": {
-          "queued_candidates": {
-            "type": "integer",
-            "title": "Queued Candidates"
-          },
-          "queued": {
-            "type": "boolean",
-            "title": "Queued"
-          }
-        },
-        "type": "object",
-        "required": [
-          "queued_candidates",
-          "queued"
-        ],
-        "title": "BackfillResult"
       },
       "Body_upload_import_api_v1_candidates_import_post": {
         "properties": {
@@ -4756,13 +4543,6 @@
               }
             ]
           },
-          "sheet_sync": {
-            "$ref": "#/components/schemas/SheetSyncState"
-          },
-          "sheets_configured": {
-            "type": "boolean",
-            "title": "Sheets Configured"
-          },
           "conflicts": {
             "items": {
               "$ref": "#/components/schemas/Conflict"
@@ -4785,8 +4565,6 @@
         "required": [
           "eligibility",
           "summary",
-          "sheet_sync",
-          "sheets_configured",
           "conflicts",
           "retry_status"
         ],
@@ -6042,18 +5820,6 @@
         ],
         "title": "DashboardSummary"
       },
-      "DataResponse_BackfillResult_": {
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/BackfillResult"
-          }
-        },
-        "type": "object",
-        "required": [
-          "data"
-        ],
-        "title": "DataResponse[BackfillResult]"
-      },
       "DataResponse_CallAnswers_": {
         "properties": {
           "data": {
@@ -6198,18 +5964,6 @@
         ],
         "title": "DataResponse[JobOut]"
       },
-      "DataResponse_ManualSyncResult_": {
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/ManualSyncResult"
-          }
-        },
-        "type": "object",
-        "required": [
-          "data"
-        ],
-        "title": "DataResponse[ManualSyncResult]"
-      },
       "DataResponse_NoneType_": {
         "properties": {
           "data": {
@@ -6282,30 +6036,6 @@
           "data"
         ],
         "title": "DataResponse[SettingsOut]"
-      },
-      "DataResponse_SheetAccessCheck_": {
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/SheetAccessCheck"
-          }
-        },
-        "type": "object",
-        "required": [
-          "data"
-        ],
-        "title": "DataResponse[SheetAccessCheck]"
-      },
-      "DataResponse_SheetsStatus_": {
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/SheetsStatus"
-          }
-        },
-        "type": "object",
-        "required": [
-          "data"
-        ],
-        "title": "DataResponse[SheetsStatus]"
       },
       "DataResponse_StartCallResult_": {
         "properties": {
@@ -8020,36 +7750,6 @@
           "password"
         ],
         "title": "LoginRequest"
-      },
-      "ManualSyncResult": {
-        "properties": {
-          "candidate_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Candidate Id"
-          },
-          "sync_log_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Sync Log Id"
-          },
-          "sync_status": {
-            "type": "string",
-            "title": "Sync Status"
-          },
-          "queued": {
-            "type": "boolean",
-            "title": "Queued"
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_id",
-          "sync_log_id",
-          "sync_status",
-          "queued"
-        ],
-        "title": "ManualSyncResult"
       },
       "MappingUpdate": {
         "properties": {
@@ -10047,355 +9747,6 @@
         ],
         "title": "SettingsOut"
       },
-      "SheetAccessCheck": {
-        "properties": {
-          "sheet_id": {
-            "type": "string",
-            "title": "Sheet Id"
-          },
-          "sheet_url": {
-            "type": "string",
-            "title": "Sheet Url"
-          },
-          "tab": {
-            "type": "string",
-            "title": "Tab"
-          },
-          "reachable": {
-            "type": "boolean",
-            "title": "Reachable"
-          },
-          "header": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "empty",
-              "mismatch",
-              "unknown"
-            ],
-            "title": "Header"
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "service_account_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Service Account Email"
-          },
-          "can_save": {
-            "type": "boolean",
-            "title": "Can Save"
-          }
-        },
-        "type": "object",
-        "required": [
-          "sheet_id",
-          "sheet_url",
-          "tab",
-          "reachable",
-          "header",
-          "message",
-          "service_account_email",
-          "can_save"
-        ],
-        "title": "SheetAccessCheck"
-      },
-      "SheetChange": {
-        "properties": {
-          "link": {
-            "type": "string",
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Link",
-            "description": "Sheet link or id"
-          },
-          "tab": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tab"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "link"
-        ],
-        "title": "SheetChange"
-      },
-      "SheetSyncState": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "never",
-              "pending",
-              "success",
-              "failed"
-            ],
-            "title": "Status"
-          },
-          "synced_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Synced At"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "next_attempt_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Attempt At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "synced_at",
-          "error",
-          "next_attempt_at"
-        ],
-        "title": "SheetSyncState"
-      },
-      "SheetsStatus": {
-        "properties": {
-          "configured": {
-            "type": "boolean",
-            "title": "Configured"
-          },
-          "tab": {
-            "type": "string",
-            "title": "Tab"
-          },
-          "sheet_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sheet Id"
-          },
-          "sheet_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sheet Url"
-          },
-          "sheet_source": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "settings",
-                  "env"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sheet Source"
-          },
-          "sheet_changed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sheet Changed At"
-          },
-          "can_edit": {
-            "type": "boolean",
-            "title": "Can Edit"
-          },
-          "key_configured": {
-            "type": "boolean",
-            "title": "Key Configured"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "degraded",
-              "error",
-              "unknown",
-              "not_configured"
-            ],
-            "title": "State"
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "reachable": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reachable"
-          },
-          "header": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "ok",
-                  "empty",
-                  "mismatch",
-                  "unknown"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Header"
-          },
-          "service_account_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Service Account Email"
-          },
-          "last_success_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Success At"
-          },
-          "last_error_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error At"
-          },
-          "pending_candidates": {
-            "type": "integer",
-            "title": "Pending Candidates"
-          },
-          "failed_candidates": {
-            "type": "integer",
-            "title": "Failed Candidates"
-          },
-          "checked_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Checked At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "configured",
-          "tab",
-          "sheet_id",
-          "sheet_url",
-          "sheet_source",
-          "sheet_changed_at",
-          "can_edit",
-          "key_configured",
-          "state",
-          "message",
-          "reachable",
-          "header",
-          "service_account_email",
-          "last_success_at",
-          "last_error_at",
-          "pending_candidates",
-          "failed_candidates",
-          "checked_at"
-        ],
-        "title": "SheetsStatus"
-      },
       "SignupRequest": {
         "properties": {
           "organization_name": {
@@ -10531,15 +9882,11 @@
             },
             "type": "array",
             "title": "Providers"
-          },
-          "google_sheets": {
-            "$ref": "#/components/schemas/SheetsStatus"
           }
         },
         "type": "object",
         "required": [
-          "providers",
-          "google_sheets"
+          "providers"
         ],
         "title": "StatusOut"
       },
@@ -10891,7 +10238,7 @@
           "recruiter"
         ],
         "title": "UserRole",
-        "description": "Super admins own the organization and may also change integration settings (the Google\nSheet). Recruiters use the app day to day."
+        "description": "Super admins own the organization (its clients and team). Recruiters use the app day to\nday."
       },
       "ValidationError": {
         "properties": {

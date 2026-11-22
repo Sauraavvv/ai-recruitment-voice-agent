@@ -200,20 +200,11 @@ class CandidateSummary(BaseModel):
     newer_call_without_data: bool
 
 
-class SheetSyncState(BaseModel):
-    status: Literal["never", "pending", "success", "failed"]
-    synced_at: datetime | None
-    error: str | None
-    next_attempt_at: datetime | None
-
-
 class CandidateOverview(BaseModel):
     """Everything on the candidate page besides the candidate and its calls."""
 
     eligibility: Eligibility
     summary: CandidateSummary | None
-    sheet_sync: SheetSyncState
-    sheets_configured: bool
     conflicts: list[Conflict]
     retry_status: RetryStatus | None
 

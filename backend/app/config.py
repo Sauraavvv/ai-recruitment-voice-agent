@@ -207,13 +207,6 @@ class Settings(BaseSettings):
     # when audio is generated, and fired mid-sentence in the first trial) → "still there?",
     # then a goodbye. Uses SILENCE_TIMEOUT_S like the pipeline.
 
-    # Google Sheets (Phase 7, docs/google-sheets.md). The key is a PATH to a read-only mounted
-    # file (secrets/google-sa.json, gitignored), never the JSON itself.
-    google_service_account_json: str | None = None
-    google_sheet_id: str | None = None
-    google_sheet_tab: str = "Candidates"
-    google_sheets_timeout_s: float = Field(default=20.0, gt=0, le=120)
-
     # Calling. The Settings page (app_settings, phase-08) can lower the concurrency, change the
     # window and retries and pause calling; these values are the defaults and the hard limits.
     calling_enabled: bool = True  # false = nothing dials, whatever the Settings page says
@@ -319,10 +312,6 @@ class Settings(BaseSettings):
             and self.public_backend_url
         )
 
-    @property
-    def sheets_configured(self) -> bool:
-        return bool(self.google_service_account_json and self.google_sheet_id)
-
     def derived_secret(self, purpose: str, *, hex_only: bool = False) -> str:
         """A stable per-purpose secret derived from APP_SECRET_KEY (URL-safe, 43 chars).
 
@@ -343,7 +332,6 @@ class Settings(BaseSettings):
             "deepgram": bool(self.deepgram_api_key),
             "exotel": self.exotel_configured,
             "kitten_tts": True,  # local model with defaults; whether it loaded is in TTS status
-            "google_sheets": self.sheets_configured,
         }
 
 

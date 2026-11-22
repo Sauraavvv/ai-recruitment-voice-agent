@@ -18,7 +18,6 @@ from app.database.models.enums import (
     QuestionSetStatus,
     RequirementStatus,
     ScreeningStatus,
-    SyncStatus,
     UserRole,
     WorkMode,
 )
@@ -27,7 +26,6 @@ from app.database.models.job import Job
 from app.database.models.organization import Organization
 from app.database.models.question_set import QuestionSet
 from app.database.models.requirement import Requirement
-from app.database.models.sync_log import SyncLog
 from app.database.models.user import User
 from app.database.models.webhook_event import WebhookEvent
 
@@ -54,8 +52,6 @@ __all__ = [
     "Requirement",
     "RequirementStatus",
     "ScreeningStatus",
-    "SyncLog",
-    "SyncStatus",
     "User",
     "UserRole",
     "WebhookEvent",
