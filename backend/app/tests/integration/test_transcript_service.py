@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import CallAttempt, Candidate, Conversation, Job
+from app.database.models import CallAttempt, Candidate, Conversation, Job, Organization
 from app.services import finalization_service, screening_store, transcript_service
 from app.tests.conftest import make_settings
 from app.tests.unit.agent.results import make_result
@@ -28,10 +28,15 @@ def sessions(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def _attempt(db: AsyncSession) -> CallAttempt:
     job = Job(job_title="Backend Developer", company_name="Test Co", is_active=True)
-    db.add(job)
+    org = Organization(name="Test Co")
+    db.add_all([job, org])
     await db.flush()
     candidate = Candidate(
-        name="Asha Rao", phone="+919000009070", job_id=job.id, applied_role="Backend Developer"
+        organization_id=org.id,
+        name="Asha Rao",
+        phone="+919000009070",
+        job_id=job.id,
+        applied_role="Backend Developer",
     )
     db.add(candidate)
     await db.flush()

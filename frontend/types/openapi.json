@@ -525,6 +525,25 @@
             "description": "Only this requirement's candidates"
           },
           {
+            "name": "client_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the candidates of this client's jobs",
+              "title": "Client Id"
+            },
+            "description": "Only the candidates of this client's jobs"
+          },
+          {
             "name": "interested",
             "in": "query",
             "required": false,
@@ -1939,7 +1958,7 @@
           "calls"
         ],
         "summary": "Start Calls",
-        "description": "Queue a screening call per candidate. Each candidate gets its own result (ok or a\nreason). `dry_run`: only the results, nothing queued (the confirmation dialog).",
+        "description": "Queue a screening call per candidate. Each candidate gets its own result (ok or a\nreason). `dry_run`: only the results, nothing queued (the confirmation dialog). Another\ncompany's candidate is \"not found\".",
         "operationId": "start_calls_api_v1_calls_start_post",
         "requestBody": {
           "content": {
@@ -2089,6 +2108,25 @@
               "title": "Purpose"
             },
             "description": "screening | telephonic"
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the calls of this client's jobs",
+              "title": "Client Id"
+            },
+            "description": "Only the calls of this client's jobs"
           },
           {
             "name": "page",

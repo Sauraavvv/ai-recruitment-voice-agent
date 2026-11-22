@@ -5,9 +5,11 @@ one failed call. Run by start-backend.sh after the migrations."""
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
+
 from app.config import get_settings
 from app.database.connection import dispose_engine, get_sessionmaker, init_engine
-from app.database.models import CallAttempt, Candidate, Conversation, Job
+from app.database.models import CallAttempt, Candidate, Conversation, Job, User
 
 T0 = datetime.now(UTC) - timedelta(hours=2)
 LINES = [
@@ -40,7 +42,10 @@ async def main() -> None:
         job = Job(job_title="Data Engineer", company_name="Seed Co", is_active=False)
         db.add(job)
         await db.flush()
+        # The E2E account's company: it only sees its own candidates
+        org = await db.scalar(select(User.organization_id).where(User.email == "e2e@example.com"))
         cand = Candidate(
+            organization_id=org,
             name="Priya Sharma",
             phone="+919876500099",
             job_id=job.id,

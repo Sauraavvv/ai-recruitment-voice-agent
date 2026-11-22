@@ -637,7 +637,8 @@ export interface paths {
         /**
          * Start Calls
          * @description Queue a screening call per candidate. Each candidate gets its own result (ok or a
-         *     reason). `dry_run`: only the results, nothing queued (the confirmation dialog).
+         *     reason). `dry_run`: only the results, nothing queued (the confirmation dialog). Another
+         *     company's candidate is "not found".
          */
         post: operations["start_calls_api_v1_calls_start_post"];
         delete?: never;
@@ -4001,6 +4002,8 @@ export interface operations {
                 job_id?: string | null;
                 /** @description Only this requirement's candidates */
                 requirement_id?: string | null;
+                /** @description Only the candidates of this client's jobs */
+                client_id?: string | null;
                 interested?: boolean | null;
                 sort?: "created_at" | "-created_at" | "name" | "-name" | "updated_at" | "-updated_at";
                 page?: number;
@@ -5059,6 +5062,8 @@ export interface operations {
                 q?: string | null;
                 /** @description screening | telephonic */
                 purpose?: components["schemas"]["CallPurpose"] | null;
+                /** @description Only the calls of this client's jobs */
+                client_id?: string | null;
                 page?: number;
                 page_size?: number;
             };

@@ -68,7 +68,8 @@ async def main() -> int:
     problems = 0
     try:
         async with get_sessionmaker()() as session:
-            stats = await dashboard_service.stats(session, tz=settings.app_timezone)
+            # Every company together, as the raw SQL below counts
+            stats = await dashboard_service.stats(session, viewer=None, tz=settings.app_timezone)
             for metric, query in SQL.items():
                 expected = int((await session.execute(text(query))).scalar_one())
                 got = stats[metric]

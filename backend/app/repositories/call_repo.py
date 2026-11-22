@@ -17,9 +17,11 @@ from app.database.models import (
     CallPurpose,
     CallStatus,
     Candidate,
+    Requirement,
+    User,
     WebhookEvent,
 )
-from app.repositories.candidate_repo import escape_like
+from app.repositories.candidate_repo import escape_like, visible_to
 
 SCHEDULED_STATUSES = (CallStatus.RETRY_SCHEDULED.value, CallStatus.CALLBACK_REQUESTED.value)
 # Attempts that ended after dialing (or trying to): these count toward max_attempts
@@ -165,6 +167,8 @@ async def search(
     created_to: datetime | None = None,
     q: str | None = None,
     purpose: CallPurpose | str | None = None,
+    client_id: uuid.UUID | None = None,
+    viewer: User | None = None,
 ) -> tuple[list[tuple[CallAttempt, str, str]], int]:
     """Attempts newest first, with the candidate's name and applied role."""
     stmt = (
@@ -172,8 +176,13 @@ async def search(
         .join(Candidate, Candidate.id == CallAttempt.candidate_id)
         .where(_of_purpose(purpose))
     )
+    if viewer is not None:
+        stmt = stmt.where(visible_to(viewer))  # only this company's (and visible) candidates
     if candidate_id:
         stmt = stmt.where(CallAttempt.candidate_id == candidate_id)
+    if client_id:
+        of_client = select(Requirement.id).where(Requirement.client_id == client_id)
+        stmt = stmt.where(Candidate.requirement_id.in_(of_client))
     if isinstance(status, str):
         stmt = stmt.where(CallAttempt.call_status == status)
     elif status:

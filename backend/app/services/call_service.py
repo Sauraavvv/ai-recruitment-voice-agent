@@ -32,6 +32,7 @@ from app.database.models import (
     Candidate,
     Job,
     ScreeningStatus,
+    User,
 )
 from app.providers.telephony import exotel_models as em
 from app.providers.telephony.base import ProviderCallStatus
@@ -359,6 +360,32 @@ async def start_calls(
             await session.commit()
             result.error = "enqueue_failed"
     return results
+
+
+async def get_visible(session: AsyncSession, user: User, attempt_id: uuid.UUID) -> CallAttempt:
+    """The call, if this account may see its candidate (its organization, and the
+    requirement's client); otherwise not found, the same as a call that doesn't exist."""
+    stmt = (
+        select(CallAttempt)
+        .join(Candidate, Candidate.id == CallAttempt.candidate_id)
+        .where(CallAttempt.id == attempt_id, candidate_repo.visible_to(user))
+    )
+    attempt = (await session.execute(stmt)).scalar_one_or_none()
+    if attempt is None:
+        raise not_found("call_not_found", "Call attempt not found")
+    return attempt
+
+
+async def visible_ids(
+    session: AsyncSession, user: User, candidate_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of these candidates this account may see (and so call)."""
+    if not candidate_ids:
+        return set()
+    stmt = select(Candidate.id).where(
+        Candidate.id.in_(candidate_ids), candidate_repo.visible_to(user)
+    )
+    return set((await session.execute(stmt)).scalars())
 
 
 async def get(session: AsyncSession, attempt_id: uuid.UUID) -> CallAttempt:

@@ -1,8 +1,9 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui";
+import { useModal } from "@/hooks/use-modal";
 
 /** Modal confirmation (native <dialog>: focus trap, Esc to close). */
 export function ConfirmDialog({
@@ -28,18 +29,11 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal?.();
-    if (!open && dialog.open) dialog.close?.();
-  }, [open]);
+  const ref = useModal(open, onClose);
 
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
       onCancel={(e) => {
         e.preventDefault();
         if (!busy) onClose();

@@ -727,8 +727,8 @@ async def test_round_calls_never_change_the_screening_numbers(
     await db_session.commit()
 
     async def numbers() -> dict[str, Any]:
-        stats = await dashboard_service.stats(db_session, tz="Asia/Kolkata")
-        summary = await dashboard_service.summary(db_session, tz="Asia/Kolkata")
+        stats = await dashboard_service.stats(db_session, viewer=None, tz="Asia/Kolkata")
+        summary = await dashboard_service.summary(db_session, viewer=None, tz="Asia/Kolkata")
         listed = await admin.get("/api/v1/candidates", params={"requirement_id": rid})
         rows = {r["id"]: r["last_call"] for r in listed.json()["data"]}
         stats.pop("generated_at")
@@ -739,7 +739,7 @@ async def test_round_calls_never_change_the_screening_numbers(
             "outcomes": summary["outcomes"],
             "live": summary["live_calls"],
             "rows": rows,
-            "activity": len(await dashboard_service.activity(db_session)),
+            "activity": len(await dashboard_service.activity(db_session, viewer=None)),
             "latest": summary["latest_conversation"],
         }
 

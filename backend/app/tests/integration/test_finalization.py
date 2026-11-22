@@ -16,6 +16,7 @@ from app.database.models import (
     Candidate,
     Conversation,
     Job,
+    Organization,
     ScreeningStatus,
     SyncLog,
 )
@@ -83,10 +84,16 @@ def sessions(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> list[
 
 async def _attempt(db: AsyncSession, phone: str = "+919000009070", **candidate: Any) -> CallAttempt:
     job = Job(job_title="Backend Developer", company_name="Test Co", is_active=True)
-    db.add(job)
+    org = Organization(name="Test Co")
+    db.add_all([job, org])
     await db.flush()
     person = Candidate(
-        name="Asha Rao", phone=phone, job_id=job.id, applied_role="Backend Developer", **candidate
+        organization_id=org.id,
+        name="Asha Rao",
+        phone=phone,
+        job_id=job.id,
+        applied_role="Backend Developer",
+        **candidate,
     )
     db.add(person)
     await db.flush()

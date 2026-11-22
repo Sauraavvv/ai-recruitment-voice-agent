@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 
+import { ClientFilter } from "@/components/client-filter";
 import { RoundAnswers } from "@/components/round-answers";
 import { AI_NOTE, EvaluationBadge } from "@/components/round-evaluation";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/states";
@@ -57,6 +58,7 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [client, setClient] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
     created_from: dayStart(from),
     created_to: dayAfter(to),
     purpose,
+    client_id: client,
     page,
     page_size: PAGE_SIZE,
   };
@@ -80,7 +83,7 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
   usePolling(reload, data?.items.some((c) => ACTIVE_CALL_STATUSES.has(c.call_status)) ?? false);
   const total = data?.meta.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtered = Boolean(q || status || from || to);
+  const filtered = Boolean(q || status || from || to || client);
 
   return (
     <>
@@ -94,6 +97,13 @@ export function CallsList({ purpose }: { purpose: Purpose }) {
             onChange={(e) => setSearch(e.target.value)}
             className={`${inputClass} max-w-xs`}
             aria-label="Search calls"
+          />
+          <ClientFilter
+            value={client}
+            onChange={(v) => {
+              setClient(v);
+              setPage(1);
+            }}
           />
           <select
             value={status}

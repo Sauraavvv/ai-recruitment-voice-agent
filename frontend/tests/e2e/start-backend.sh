@@ -30,5 +30,5 @@ asyncio.run(ensure_database("postgresql+asyncpg://postgres:postgres@localhost:54
 PY
 .venv/bin/alembic upgrade head >/dev/null
 echo "e2e-only-password-123" | .venv/bin/python -m app.scripts.create_user \
-  --email e2e@example.com --name "E2E Admin" --role admin
+  --email e2e@example.com --name "E2E Admin" --role super_admin
 exec .venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8011

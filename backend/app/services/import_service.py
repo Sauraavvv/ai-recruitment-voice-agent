@@ -48,6 +48,18 @@ async def _default_role(session: AsyncSession, batch: ImportBatch) -> str | None
     return requirement.title if requirement else None
 
 
+async def _organization(session: AsyncSession, batch: ImportBatch) -> uuid.UUID:
+    """The company the uploaded candidates belong to: the requirement's, or the uploader's."""
+    if batch.requirement_id is not None:
+        requirement = await session.get(Requirement, batch.requirement_id)
+        if requirement is not None:
+            return requirement.organization_id
+    uploader = await session.get(User, batch.uploaded_by)
+    if uploader is None:
+        raise not_found("import_not_found", "Import not found")
+    return uploader.organization_id
+
+
 async def _validate(session: AsyncSession, batch: ImportBatch) -> list[ValidatedRow]:
     stored = batch.rows or []
     cells = [r["cells"] for r in stored]
@@ -57,7 +69,12 @@ async def _validate(session: AsyncSession, batch: ImportBatch) -> list[Validated
     # First pass to learn the phones, then look them all up in one query.
     first = validate_rows(cells, numbers, mapping, {}, role)
     phones = [r.values["phone"] for r in first if r.values.get("phone")]
-    existing = await candidate_repo.ids_by_phone(session, phones, batch.requirement_id)
+    existing = await candidate_repo.ids_by_phone(
+        session,
+        phones,
+        organization_id=await _organization(session, batch),
+        requirement_id=batch.requirement_id,
+    )
     return validate_rows(cells, numbers, mapping, existing, role)
 
 
@@ -177,6 +194,8 @@ async def check_access(session: AsyncSession, user: User, import_id: uuid.UUID) 
             await requirement_service.get_requirement(session, user, batch.requirement_id)
         except AppError:
             raise not_found("import_not_found", "Import not found") from None
+    elif await _organization(session, batch) != user.organization_id:
+        raise not_found("import_not_found", "Import not found")  # another company's upload
 
 
 async def get(session: AsyncSession, import_id: uuid.UUID) -> dict[str, Any]:
@@ -217,9 +236,11 @@ async def confirm(
     batch = await _load_preview(session, import_id)  # row-locked: no double confirm
     rows = await _validate(session, batch)
     now = datetime.now(UTC)
+    organization_id = await _organization(session, batch)
     to_insert = [
         {
             **row.values,
+            "organization_id": organization_id,
             "job_id": batch.job_id,
             "requirement_id": batch.requirement_id,
             "consent_source": ConsentSource.RECRUITER_ATTESTED_IMPORT.value,

@@ -26,6 +26,7 @@ from app.database.models import (
     Candidate,
     Conversation,
     Job,
+    Organization,
     ScreeningStatus,
     SyncLog,
 )
@@ -644,9 +645,11 @@ async def test_concurrent_evaluate_creates_one_attempt(migrated_database: str) -
     phone = f"+9190000{uuid.uuid4().int % 100000:05d}"
     async with maker() as s:
         job = Job(job_title="Backend Developer", company_name="Test Co", is_active=True)
-        s.add(job)
+        org = Organization(name="Race Co")
+        s.add_all([job, org])
         await s.flush()
         cand = Candidate(
+            organization_id=org.id,
             name="Race Test",
             phone=phone,
             job_id=job.id,

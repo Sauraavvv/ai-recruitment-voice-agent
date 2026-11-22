@@ -10,7 +10,8 @@ import {
 } from "@/components/start-calls-dialog";
 import { ErrorState } from "@/components/states";
 import { StatusBadge } from "@/components/status-badge";
-import { Button, buttonClass } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { UploadListDialog } from "@/components/upload-list-dialog";
 import { usePolling } from "@/hooks/use-polling";
 import { ACTIVE_CALL_STATUSES, initials, retryStatusText, timeAgo } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
@@ -41,14 +42,17 @@ function groupOf(r: CandidateListItem): Exclude<Filter, "all"> {
 /** A requirement's candidates and their screening calls: upload, call, see who's interested. */
 export function ScreeningCard({
   requirementId,
+  jobLabel,
   version,
   editHref,
 }: {
   requirementId: string;
+  jobLabel: string;
   version: string;
   editHref: string;
 }) {
   const [targets, setTargets] = useState<CallTarget[] | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [filter, setFilter] = useState<Filter>("all");
   const { data, error, reload } = useLoad(`screening:${requirementId}`, () =>
@@ -58,7 +62,6 @@ export function ScreeningCard({
   const active = rows.some((r) => r.last_call && ACTIVE_CALL_STATUSES.has(r.last_call.call_status));
   usePolling(reload, active);
 
-  const upload = `/candidates/upload?requirement=${requirementId}`;
   const notCalledYet = rows.filter((r) => r.eligibility.can_call && !r.last_call);
   const counts = useMemo(() => {
     const out: Record<Filter, number> = {
@@ -121,9 +124,9 @@ export function ScreeningCard({
         </div>
         {rows.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            <Link href={upload} className={buttonClass("secondary")}>
+            <Button variant="secondary" onClick={() => setUploading(true)}>
               Upload list
-            </Link>
+            </Button>
             <Button
               disabled={notCalledYet.length === 0}
               title={notCalledYet.length === 0 ? "Nobody left who can be called now" : undefined}
@@ -152,7 +155,7 @@ export function ScreeningCard({
             <div className="h-48 animate-pulse rounded-2xl bg-white/[0.03]" />
           </div>
         ) : rows.length === 0 ? (
-          <EmptyUpload href={upload} />
+          <EmptyUpload onUpload={() => setUploading(true)} />
         ) : (
           <>
             <Breakdown counts={counts} />
@@ -244,6 +247,13 @@ export function ScreeningCard({
           setSelected(new Map());
           reload();
         }}
+      />
+      <UploadListDialog
+        open={uploading}
+        requirementId={requirementId}
+        jobLabel={jobLabel}
+        onClose={() => setUploading(false)}
+        onImported={reload}
       />
     </section>
   );
@@ -438,7 +448,7 @@ function CandidateRow({
 }
 
 /** No list yet: a big friendly upload area with the three steps. */
-function EmptyUpload({ href }: { href: string }) {
+function EmptyUpload({ onUpload }: { onUpload: () => void }) {
   const steps = ["Upload a list", "We call everyone", "See who's interested"];
   return (
     <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center">
@@ -475,9 +485,9 @@ function EmptyUpload({ href }: { href: string }) {
           </li>
         ))}
       </ol>
-      <Link href={href} className={`${buttonClass("primary")} mt-6`}>
+      <Button onClick={onUpload} className="mt-6">
         Upload a list
-      </Link>
+      </Button>
     </div>
   );
 }

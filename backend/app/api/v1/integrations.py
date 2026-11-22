@@ -159,12 +159,12 @@ async def sheets_status(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def sync_candidate(
-    candidate_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep
+    candidate_id: uuid.UUID, user: CurrentUser, session: SessionDep, settings: EffectiveSettingsDep
 ) -> dict[str, Any]:
     """Queue a sync of this candidate's row (also retries one that failed for good)."""
     if not settings.sheets_configured:
         raise conflict("sheets_not_configured", "Google Sheets is not configured")
-    candidate = await candidate_service.get(session, candidate_id)
+    candidate = await candidate_service.get_visible(session, user, candidate_id)
     row = sync_service.record_change(session, candidate.id)
     await session.commit()
     await session.refresh(row)

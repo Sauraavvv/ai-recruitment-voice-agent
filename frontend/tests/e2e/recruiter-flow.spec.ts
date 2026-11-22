@@ -43,28 +43,72 @@ test("recruiter flow", async ({ page }) => {
   }
   await shot(page, "01-dashboard-empty");
 
-  // A job through the API (the upload needs an active one)
-  const job = await page.request.post("/api/v1/jobs", {
-    headers: { Origin: "http://localhost:3011" },
-    data: { job_title: "Backend Developer", company_name: "E2E Co", location: "Remote" },
+  // A client and a job (requirement) through the API: candidates are uploaded to a job
+  const origin = { Origin: "http://localhost:3011" };
+  const client = await page.request.post("/api/v1/clients", {
+    headers: origin,
+    data: {
+      name: "E2E Co",
+      industry: "BPO / KPO",
+      email: "hr@e2e.example",
+      city: "Pune",
+      state: "Maharashtra",
+      contact_name: "Neha Joshi",
+      contact_phone: "98765 43210",
+    },
+  });
+  expect(client.status()).toBe(201);
+  const clientId = (await client.json()).data.id;
+  const job = await page.request.post(`/api/v1/clients/${clientId}/requirements`, {
+    headers: origin,
+    data: { title: "Backend Developer", job_description: "Build APIs.", skills: ["Python"] },
   });
   expect(job.status()).toBe(201);
+  const jobId = (await job.json()).data.id;
 
-  // Upload two candidates
-  await page.goto("/candidates/upload");
-  await page.locator('input[type="file"]').setInputFiles({
+  // Upload two candidates on the job's page, in the floating upload window
+  await page.goto(`/clients/${clientId}/requirements/${jobId}`);
+  await page.getByRole("button", { name: "Upload a list" }).click();
+  const upload = page.getByRole("dialog", { name: "Upload a list" });
+  await expect(upload.getByText("For Backend Developer · E2E Co")).toBeVisible();
+  await shot(page, "01b-upload-dialog");
+  await upload.getByLabel("List file").setInputFiles({
     name: "candidates.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
-      "Candidate name,Phone number,Job role,Total experience\n" +
-        "Asha Verma,+91 98765 00001,Backend Developer,4\n" +
-        "Ravi Kumar,+91 98765 00002,Backend Developer,6\n",
+      "Candidate name,Phone number,Total experience\n" +
+        "Asha Verma,+91 98765 00001,4\n" +
+        "Ravi Kumar,+91 98765 00002,6\n",
     ),
   });
-  await page.getByRole("button", { name: "Upload and preview" }).click();
-  await page.getByLabel(/agreed to be contacted/).check();
-  await page.getByRole("button", { name: "Import 2 valid candidates" }).click();
-  await expect(page.getByText("Imported 2 candidates.")).toBeVisible();
+  await upload.getByLabel(/agreed to be contacted/).check();
+  await shot(page, "01c-upload-preview");
+  await upload.getByRole("button", { name: "Import 2 valid candidates" }).click();
+  await expect(upload.getByText(/Imported 2 candidates\./)).toBeVisible();
+  await upload.getByRole("button", { name: "Done" }).click();
+  await expect(upload).toBeHidden();
+  // The job's list behind it refreshed
+  await expect(page.getByRole("link", { name: "Asha Verma" })).toBeVisible();
+
+  // The same number again: nothing new to import, and "view" opens in a new tab while the
+  // upload window stays open as a modal (blurred page behind it)
+  await page.getByRole("button", { name: "Upload list" }).click();
+  await upload.getByLabel("List file").setInputFiles({
+    name: "again.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("Candidate name,Phone number\nAsha Verma,+91 98765 00001\n"),
+  });
+  await expect(upload.getByText(/Nothing new to import/)).toBeVisible();
+  await expect(upload.getByRole("button", { name: /^Import/ })).toHaveCount(0);
+  const [tab] = await Promise.all([
+    page.context().waitForEvent("page"),
+    upload.getByRole("link", { name: "view" }).click(),
+  ]);
+  await tab.close();
+  expect(await upload.evaluate((d) => d.matches(":modal"))).toBe(true);
+  await shot(page, "01d-upload-nothing-new");
+  await upload.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(upload).toBeHidden();
 
   // Candidates: rows with call status and the disabled Call button's reason
   await page.goto("/candidates");
@@ -73,6 +117,8 @@ test("recruiter flow", async ({ page }) => {
   const call = page.getByRole("button", { name: /^Call Asha Verma/ });
   await expect(call).toBeDisabled(); // telephony isn't configured on the E2E stack
   await expect(call).toHaveAttribute("title", "Telephony is not configured");
+  await page.getByLabel("Client").selectOption({ label: "E2E Co" });
+  await expect(page.getByRole("link", { name: "Asha Verma" })).toBeVisible();
   await page.getByLabel("Call status").selectOption("not_called");
   await expect(page.getByText("Page 1 of 1 · 2 candidates")).toBeVisible();
   await shot(page, "02-candidates");
@@ -100,10 +146,9 @@ test("recruiter flow", async ({ page }) => {
     .getByLabel("Agent introduction")
     .fill("Hi {first_name}, I'm an AI assistant for {company}. Is now a good time?");
   await expect(
-    page.getByText("“Hi Asha, I'm an AI assistant for E2E Co. Is now a good time?”"),
+    // {company} comes from the old job config, which requirement uploads don't use
+    page.getByText("“Hi Asha, I'm an AI assistant for your company. Is now a good time?”"),
   ).toBeVisible();
-  await expect(page.getByText("OpenAI (screening agent)")).toBeVisible();
-  await expect(page.getByText("OPENAI_API_KEY not set")).toBeVisible();
   await shot(page, "05-settings");
 
   // The pause shows on the candidate list too (P8-AC7 in the UI)

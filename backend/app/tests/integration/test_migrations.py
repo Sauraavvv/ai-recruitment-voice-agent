@@ -145,3 +145,56 @@ def test_0015_existing_calls_are_screening_calls() -> None:
         )
     run_alembic(URL, ("downgrade", "0014"))
     assert asyncio.run(_sql("SELECT count(*) FROM call_attempts")) == [(1,)]
+
+
+# test_0017: the original company (older), one signed up later, and their rows
+_0017_ROWS = (
+    "INSERT INTO organizations (id, name, created_at) VALUES "
+    "('00000000-0000-0000-0000-0000000000a1', 'Original', now() - interval '1 day'), "
+    "('00000000-0000-0000-0000-0000000000b2', 'Signed up', now())",
+    "INSERT INTO users (id, organization_id, email, name, password_hash, role) VALUES "
+    "('00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000b2', "
+    "'b@b.example', 'B', 'x', 'super_admin')",
+    "INSERT INTO clients (id, organization_id, name, created_by_id) VALUES "
+    "('00000000-0000-0000-0000-0000000000d4', '00000000-0000-0000-0000-0000000000b2', "
+    "'Client', '00000000-0000-0000-0000-0000000000c3')",
+    "INSERT INTO requirements (id, organization_id, client_id, title, created_by_id) VALUES "
+    "('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000b2', "
+    "'00000000-0000-0000-0000-0000000000d4', 'Dev', '00000000-0000-0000-0000-0000000000c3')",
+    "INSERT INTO jobs (id, job_title, company_name) "
+    "VALUES ('00000000-0000-0000-0000-000000000001', 'Dev', 'Acme')",
+    "INSERT INTO candidates (id, job_id, name, phone, applied_role) VALUES "
+    "('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', "
+    "'Old flow', '+919876543210', 'Dev')",
+    "INSERT INTO candidates (id, requirement_id, name, phone, applied_role) VALUES "
+    "('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-0000000000e5', "
+    "'Requirement', '+919876543210', 'Dev')",
+)
+_0017_SAME_PHONE = (
+    "INSERT INTO candidates (job_id, organization_id, name, phone, applied_role) VALUES "
+    "('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000{org}', "
+    "'{name}', '+919876543210', 'Dev')"
+)
+
+
+def test_0017_every_candidate_gets_its_company() -> None:
+    try:
+        asyncio.run(asyncio.wait_for(ensure_database(URL, recreate=True), timeout=10))
+    except Exception:
+        pytest.skip("Postgres not reachable")
+
+    run_alembic(URL, ("upgrade", "0016"))
+    asyncio.run(_sql(*_0017_ROWS))
+    run_alembic(URL, ("upgrade", "0017"))
+    rows = asyncio.run(_sql("SELECT name, organization_id::text FROM candidates ORDER BY name"))
+    assert rows == [
+        ("Old flow", "00000000-0000-0000-0000-0000000000a1"),  # the original company
+        ("Requirement", "00000000-0000-0000-0000-0000000000b2"),  # its requirement's
+    ]
+    # The original flow's phone rule is per company now
+    asyncio.run(_sql(_0017_SAME_PHONE.format(org="b2", name="Same phone")))
+    with pytest.raises(Exception, match="uq_candidates_organization_id_phone"):
+        asyncio.run(_sql(_0017_SAME_PHONE.format(org="a1", name="Dup")))
+    asyncio.run(_sql("DELETE FROM candidates WHERE name = 'Same phone'"))
+    run_alembic(URL, ("downgrade", "0016"))
+    assert asyncio.run(_sql("SELECT count(*) FROM candidates")) == [(2,)]

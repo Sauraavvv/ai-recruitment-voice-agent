@@ -19,11 +19,13 @@ from app.database.models.enums import ConsentSource, ScreeningStatus
 class Candidate(Base):
     __tablename__ = "candidates"
     __table_args__ = (
-        # Job candidates: phone numbers are unique across all jobs (Phase 1 decision), including
-        # soft-deleted rows, so re-importing a deleted person is reported as a duplicate rather
-        # than re-created. Requirement candidates: unique per requirement (migration 0011).
+        # Job candidates: phone numbers are unique across the organization's jobs (Phase 1
+        # decision; per organization since migration 0017), including soft-deleted rows, so
+        # re-importing a deleted person is reported as a duplicate rather than re-created.
+        # Requirement candidates: unique per requirement (migration 0011).
         Index(
-            "uq_candidates_phone",
+            "uq_candidates_organization_id_phone",
+            "organization_id",
             "phone",
             unique=True,
             postgresql_where=text("requirement_id IS NULL"),
@@ -45,6 +47,10 @@ class Candidate(Base):
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
+    # The company the candidate belongs to: nobody from another company sees them (0017)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
+    )
     name: Mapped[str] = mapped_column(String(200))
     phone: Mapped[str] = mapped_column(String(20))  # E.164
     email: Mapped[str | None] = mapped_column(String(320))

@@ -4,11 +4,11 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, false, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import CallAttempt, CallPurpose, Candidate, Client, Requirement, User
+from app.database.models import CallAttempt, CallPurpose, Candidate, Requirement, User
 from app.database.models.enums import UserRole
 
 SORT_COLUMNS = {
@@ -31,29 +31,53 @@ async def get(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-def _phone_scope(requirement_id: uuid.UUID | None) -> ColumnElement[bool]:
-    """Job candidates share one phone space; each requirement has its own."""
+def visible_to(user: User) -> ColumnElement[bool]:
+    """The candidates this account may see: only its own organization's, and a requirement's
+    only when it can see the requirement's client (super admins, for now; recruiters see the
+    original job flow's candidates)."""
+    own = Candidate.organization_id == user.organization_id
+    if user.role != UserRole.SUPER_ADMIN:
+        return and_(own, Candidate.requirement_id.is_(None))
+    return own
+
+
+def _phone_scope(
+    requirement_id: uuid.UUID | None, organization_id: uuid.UUID
+) -> ColumnElement[bool]:
+    """Job candidates share one phone space per organization; each requirement has its own."""
     if requirement_id is None:
-        return Candidate.requirement_id.is_(None)
+        return and_(
+            Candidate.requirement_id.is_(None), Candidate.organization_id == organization_id
+        )
     return Candidate.requirement_id == requirement_id
 
 
 async def get_by_phone(
-    session: AsyncSession, phone: str, requirement_id: uuid.UUID | None = None
+    session: AsyncSession,
+    phone: str,
+    *,
+    organization_id: uuid.UUID,
+    requirement_id: uuid.UUID | None = None,
 ) -> Candidate | None:
     """Includes soft-deleted candidates: phones stay unique after deletion."""
-    stmt = select(Candidate).where(Candidate.phone == phone, _phone_scope(requirement_id))
+    stmt = select(Candidate).where(
+        Candidate.phone == phone, _phone_scope(requirement_id, organization_id)
+    )
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
 async def ids_by_phone(
-    session: AsyncSession, phones: Sequence[str], requirement_id: uuid.UUID | None = None
+    session: AsyncSession,
+    phones: Sequence[str],
+    *,
+    organization_id: uuid.UUID,
+    requirement_id: uuid.UUID | None = None,
 ) -> dict[str, str]:
     """Phone -> candidate id for phones that already exist (including soft-deleted)."""
     if not phones:
         return {}
     stmt = select(Candidate.phone, Candidate.id).where(
-        Candidate.phone.in_(set(phones)), _phone_scope(requirement_id)
+        Candidate.phone.in_(set(phones)), _phone_scope(requirement_id, organization_id)
     )
     return {phone: str(cid) for phone, cid in (await session.execute(stmt)).all()}
 
@@ -85,23 +109,16 @@ def _filtered(
     call_status: str | None = None,
     requirement_id: uuid.UUID | None = None,
     viewer: User | None = None,
+    client_id: uuid.UUID | None = None,
 ) -> Select[Candidate]:
     stmt = select(Candidate).where(Candidate.deleted_at.is_(None))
     if viewer is not None:
-        # A requirement's candidates are seen only by whoever sees its client: the
-        # organization's super admins (recruiters don't see clients yet)
-        visible = (
-            select(Requirement.id)
-            .join(Client, Client.id == Requirement.client_id)
-            .where(Client.organization_id == viewer.organization_id)
-        )
-        if viewer.role != UserRole.SUPER_ADMIN:
-            visible = visible.where(false())
-        stmt = stmt.where(
-            or_(Candidate.requirement_id.is_(None), Candidate.requirement_id.in_(visible))
-        )
+        stmt = stmt.where(visible_to(viewer))
     if requirement_id:
         stmt = stmt.where(Candidate.requirement_id == requirement_id)
+    if client_id:
+        of_client = select(Requirement.id).where(Requirement.client_id == client_id)
+        stmt = stmt.where(Candidate.requirement_id.in_(of_client))
     if q:
         pattern = f"%{escape_like(q.strip())}%"
         conditions: list[ColumnElement[bool]] = [
@@ -143,8 +160,11 @@ async def search(
     call_status: str | None = None,
     requirement_id: uuid.UUID | None = None,
     viewer: User | None = None,
+    client_id: uuid.UUID | None = None,
 ) -> tuple[list[Candidate], int]:
-    stmt = _filtered(q, screening_status, job_id, interested, call_status, requirement_id, viewer)
+    stmt = _filtered(
+        q, screening_status, job_id, interested, call_status, requirement_id, viewer, client_id
+    )
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
 
     descending = sort.startswith("-")
@@ -167,7 +187,8 @@ async def insert_ignoring_duplicates(
         return []
     if requirement_id is None:
         conflict = insert(Candidate).on_conflict_do_nothing(
-            index_elements=[Candidate.phone], index_where=Candidate.requirement_id.is_(None)
+            index_elements=[Candidate.organization_id, Candidate.phone],
+            index_where=Candidate.requirement_id.is_(None),
         )
     else:
         conflict = insert(Candidate).on_conflict_do_nothing(

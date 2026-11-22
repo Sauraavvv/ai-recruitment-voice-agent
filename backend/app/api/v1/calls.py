@@ -35,7 +35,7 @@ from app.schemas.call import (
 )
 from app.schemas.common import DataResponse, PageResponse
 from app.schemas.telephonic import CallAnswers
-from app.services import call_service, sync_service, telephonic_calls
+from app.services import call_service, client_service, sync_service, telephonic_calls
 from app.services.errors import conflict, not_found
 from app.utils.queue import enqueue_evaluate_round, enqueue_initiate_call
 from app.voice.session_registry import REGISTRY
@@ -56,13 +56,20 @@ def voice_ready(request: Request, settings: Settings) -> bool:
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def start_calls(
-    body: StartCallsRequest, session: SessionDep, settings: EffectiveSettingsDep, request: Request
+    body: StartCallsRequest,
+    user: CurrentUser,
+    session: SessionDep,
+    settings: EffectiveSettingsDep,
+    request: Request,
 ) -> dict[str, Any]:
     """Queue a screening call per candidate. Each candidate gets its own result (ok or a
-    reason). `dry_run`: only the results, nothing queued (the confirmation dialog)."""
-    results = await call_service.start_calls(
+    reason). `dry_run`: only the results, nothing queued (the confirmation dialog). Another
+    company's candidate is "not found"."""
+    ids = list(dict.fromkeys(body.candidate_ids))
+    mine = await call_service.visible_ids(session, user, ids)
+    started = await call_service.start_calls(
         session,
-        body.candidate_ids,
+        [i for i in ids if i in mine],
         settings,
         enqueue_initiate_call,
         attempt_type=CallAttemptType.MANUAL,
@@ -70,6 +77,11 @@ async def start_calls(
         dry_run=body.dry_run,
         override_limit=body.override_limit,
     )
+    by_id = {r.candidate_id: r for r in started}
+    results = [
+        by_id.get(i) or call_service.StartResult(i, error=call_service.Ineligible.NOT_FOUND)
+        for i in ids
+    ]
     if any(r.attempt_id for r in results):
         await sync_service.request_sync(settings)
     return ok([r.as_dict() for r in results])
@@ -77,6 +89,7 @@ async def start_calls(
 
 @router.get("", response_model=PageResponse[CallListItem])
 async def list_calls(
+    user: CurrentUser,
     session: SessionDep,
     candidate_id: uuid.UUID | None = None,
     call_status: Annotated[list[CallStatus] | None, Query()] = None,
@@ -84,17 +97,24 @@ async def list_calls(
     created_to: datetime | None = None,
     q: Annotated[str | None, Query(max_length=200, description="Candidate name or phone")] = None,
     purpose: Annotated[CallPurpose | None, Query(description="screening | telephonic")] = None,
+    client_id: Annotated[
+        uuid.UUID | None, Query(description="Only the calls of this client's jobs")
+    ] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> dict[str, Any]:
+    if client_id is not None:
+        await client_service.get_client(session, user, client_id)  # else 404
     rows, total = await call_repo.search(
         session,
+        viewer=user,
         candidate_id=candidate_id,
         status=[s.value for s in call_status] if call_status else None,
         created_from=created_from,
         created_to=created_to,
         q=q,
         purpose=purpose,
+        client_id=client_id,
         page=page,
         page_size=page_size,
     )
@@ -149,8 +169,10 @@ async def list_calls(
 
 
 @router.get("/{call_attempt_id}", response_model=DataResponse[CallAttemptOut])
-async def get_call(call_attempt_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
-    return ok(await call_service.get(session, call_attempt_id))
+async def get_call(
+    call_attempt_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> dict[str, Any]:
+    return ok(await call_service.get_visible(session, user, call_attempt_id))
 
 
 def _entry(e: dict[str, Any]) -> dict[str, Any] | None:
@@ -169,9 +191,11 @@ def _entry(e: dict[str, Any]) -> dict[str, Any] | None:
 
 
 @router.get("/{call_attempt_id}/transcript", response_model=DataResponse[CallTranscript])
-async def get_transcript(call_attempt_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
+async def get_transcript(
+    call_attempt_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> dict[str, Any]:
     """The call's transcript (empty for a call nobody answered), and its summary."""
-    attempt = await call_service.get(session, call_attempt_id)
+    attempt = await call_service.get_visible(session, user, call_attempt_id)
     conv = (
         await session.execute(
             select(Conversation).where(Conversation.call_attempt_id == attempt.id)
@@ -231,6 +255,7 @@ async def reevaluate(
 )
 async def retry_call(
     call_attempt_id: uuid.UUID,
+    user: CurrentUser,
     session: SessionDep,
     settings: EffectiveSettingsDep,
     request: Request,
@@ -238,6 +263,7 @@ async def retry_call(
 ) -> dict[str, Any]:
     """Call this attempt's candidate again (a new `manual` attempt) when eligible.
     `max_attempts_reached` → ask the recruiter, then send `override_limit: true`."""
+    await call_service.get_visible(session, user, call_attempt_id)  # else 404
     result = await call_service.retry(
         session,
         call_attempt_id,
@@ -261,6 +287,7 @@ async def cancel_call(
     user: CurrentUser,
 ) -> dict[str, Any]:
     """Cancel a call that hasn't dialed yet (pending, queued, retry or callback scheduled)."""
+    await call_service.get_visible(session, user, call_attempt_id)  # else 404
     attempt = await call_service.cancel(session, redis, call_attempt_id, settings, user_id=user.id)
     await sync_service.request_sync(settings)
     return ok(attempt)
@@ -272,7 +299,7 @@ async def hangup_call(
 ) -> dict[str, Any]:
     """Safety control: end a call in progress. The agent says its closing line and hangs up
     (the flow's Hangup step ends the call). Only a call this server is handling."""
-    attempt = await call_service.get(session, call_attempt_id)
+    attempt = await call_service.get_visible(session, user, call_attempt_id)
     if attempt.call_status != CallStatus.IN_PROGRESS:
         raise conflict(
             "call_not_in_progress",

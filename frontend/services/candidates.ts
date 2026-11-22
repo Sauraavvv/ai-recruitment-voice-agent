@@ -15,6 +15,7 @@ export type CandidateQuery = {
   interested?: string;
   job_id?: string;
   requirement_id?: string;
+  client_id?: string;
   sort?: string;
   page?: number;
   page_size?: number;

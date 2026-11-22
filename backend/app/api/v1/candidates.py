@@ -21,6 +21,7 @@ from app.services import (
     call_service,
     candidate_service,
     candidate_view_service,
+    client_service,
     requirement_service,
     sync_service,
 )
@@ -33,9 +34,9 @@ router = APIRouter(prefix="/candidates", tags=["candidates"])
 
 @router.post("", response_model=DataResponse[CandidateOut], status_code=status.HTTP_201_CREATED)
 async def create_candidate(
-    body: CandidateCreate, session: SessionDep, settings: SettingsDep
+    body: CandidateCreate, user: CurrentUser, session: SessionDep, settings: SettingsDep
 ) -> dict[str, Any]:
-    candidate = await candidate_service.create(session, body)
+    candidate = await candidate_service.create(session, user, body)
     await sync_service.request_sync(settings)
     return ok(candidate)
 
@@ -59,6 +60,9 @@ async def list_candidates(
     requirement_id: Annotated[
         uuid.UUID | None, Query(description="Only this requirement's candidates")
     ] = None,
+    client_id: Annotated[
+        uuid.UUID | None, Query(description="Only the candidates of this client's jobs")
+    ] = None,
     interested: bool | None = None,
     sort: CandidateSort = "-created_at",
     page: Annotated[int, Query(ge=1)] = 1,
@@ -68,6 +72,8 @@ async def list_candidates(
     candidates are listed only for whoever can see the requirement's client."""
     if requirement_id is not None:
         await requirement_service.get_requirement(session, user, requirement_id)  # else 404
+    if client_id is not None:
+        await client_service.get_client(session, user, client_id)  # else 404
     items, total = await candidate_service.search(
         session,
         q=q,
@@ -75,6 +81,7 @@ async def list_candidates(
         call_status=call_status,
         job_id=job_id,
         requirement_id=requirement_id,
+        client_id=client_id,
         viewer=user,
         interested=interested,
         sort=sort,
@@ -88,31 +95,45 @@ async def list_candidates(
 
 
 @router.get("/{candidate_id}", response_model=DataResponse[CandidateOut])
-async def get_candidate(candidate_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
-    return ok(await candidate_service.get(session, candidate_id))
+async def get_candidate(
+    candidate_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> dict[str, Any]:
+    return ok(await candidate_service.get_visible(session, user, candidate_id))
 
 
 @router.patch("/{candidate_id}", response_model=DataResponse[CandidateOut])
 async def update_candidate(
-    candidate_id: uuid.UUID, body: CandidateUpdate, session: SessionDep, settings: SettingsDep
+    candidate_id: uuid.UUID,
+    body: CandidateUpdate,
+    user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
 ) -> dict[str, Any]:
+    await candidate_service.get_visible(session, user, candidate_id)  # else 404
     candidate = await candidate_service.update(session, candidate_id, body)
     await sync_service.request_sync(settings)
     return ok(candidate)
 
 
 @router.delete("/{candidate_id}", response_model=DataResponse[None])
-async def delete_candidate(candidate_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
+async def delete_candidate(
+    candidate_id: uuid.UUID, user: CurrentUser, session: SessionDep
+) -> dict[str, Any]:
+    await candidate_service.get_visible(session, user, candidate_id)  # else 404
     await candidate_service.soft_delete(session, candidate_id)
     return ok(None)
 
 
 @router.get("/{candidate_id}/overview", response_model=DataResponse[CandidateOverview])
 async def candidate_overview(
-    candidate_id: uuid.UUID, session: SessionDep, settings: EffectiveSettingsDep, request: Request
+    candidate_id: uuid.UUID,
+    user: CurrentUser,
+    session: SessionDep,
+    settings: EffectiveSettingsDep,
+    request: Request,
 ) -> dict[str, Any]:
     """Eligibility, the summary, the sheet sync status and open conflicts."""
-    candidate = await candidate_service.get(session, candidate_id)
+    candidate = await candidate_service.get_visible(session, user, candidate_id)
     eligibility = await call_service.eligibility_for(
         session, [candidate], settings, voice_ready=voice_ready(request, settings)
     )
@@ -140,6 +161,7 @@ async def resolve_conflict(
     user: CurrentUser,
 ) -> dict[str, Any]:
     """Keep the stored value or use the other one; the sheet row follows."""
+    await candidate_service.get_visible(session, user, candidate_id)  # else 404
     candidate = await candidate_service.resolve_conflict(
         session, candidate_id, field, body.choice, user_id=user.id
     )

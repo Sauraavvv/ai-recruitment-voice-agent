@@ -51,13 +51,6 @@ const ICONS = {
       <path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5" />
     </>,
   ),
-  upload: icon(
-    <>
-      <path d="M12 15V4" />
-      <path d="m7 9 5-5 5 5" />
-      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-    </>,
-  ),
   questions: icon(
     <>
       <path d="M9 6h11" />
@@ -124,7 +117,7 @@ const ICONS = {
 
 // disabled: shown greyed out and not clickable. "soon" = not built yet; "off" = built but
 // switched off while the recruiter flow (Clients → Requirements) is being reworked. The pages
-// still open from inside that flow (a candidate's page, the upload for a requirement).
+// still open from inside that flow (a candidate's page). Lists are uploaded on a job's page.
 type NavLink = {
   href: string;
   label: string;
@@ -156,16 +149,12 @@ const LINKS: NavLink[] = [
     href: "/candidates",
     label: "Candidates",
     icon: ICONS.candidates,
-    // a candidate's page too, but not the old upload or add-by-hand pages
+    // a candidate's page too, but not the old add-by-hand page
     isActive: (p: string) =>
-      p === "/candidates" ||
-      (p.startsWith("/candidates/") &&
-        !p.startsWith("/candidates/upload") &&
-        !p.startsWith("/candidates/new")),
+      p === "/candidates" || (p.startsWith("/candidates/") && !p.startsWith("/candidates/new")),
   },
   { href: "/calls", label: "Screening calls", icon: ICONS.calls },
   { href: "/telephonic-round", label: "Telephonic round", icon: ICONS.telephonic },
-  { href: "/candidates/upload", label: "Upload", icon: ICONS.upload, disabled: "off" },
   {
     href: "/default-questions",
     label: "Default questions",

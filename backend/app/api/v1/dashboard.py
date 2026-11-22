@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
 
-from app.api.deps import EffectiveSettingsDep, RedisDep, SessionDep, SettingsDep
+from app.api.deps import CurrentUser, EffectiveSettingsDep, RedisDep, SessionDep, SettingsDep
 from app.api.responses import ok
 from app.api.v1.calls import voice_ready
 from app.repositories import candidate_repo
@@ -25,33 +25,42 @@ QUICK_START_SCAN = 500
 
 
 @router.get("/summary", response_model=DataResponse[DashboardSummary])
-async def get_summary(session: SessionDep, settings: SettingsDep) -> dict[str, Any]:
-    return ok(await dashboard_service.summary(session, tz=settings.app_timezone))
+async def get_summary(
+    user: CurrentUser, session: SessionDep, settings: SettingsDep
+) -> dict[str, Any]:
+    return ok(await dashboard_service.summary(session, viewer=user, tz=settings.app_timezone))
 
 
 @router.get("/stats", response_model=DataResponse[DashboardStats])
 async def get_stats(
+    user: CurrentUser,
     session: SessionDep,
     settings: SettingsDep,
     range: Annotated[Literal["today", "7d", "all"], Query()] = "all",
 ) -> dict[str, Any]:
     """The stat tiles; `definitions` holds each one's tooltip."""
-    return ok(await dashboard_service.stats(session, tz=settings.app_timezone, range_=range))
+    return ok(
+        await dashboard_service.stats(session, viewer=user, tz=settings.app_timezone, range_=range)
+    )
 
 
 @router.get("/activity", response_model=DataResponse[list[ActivityItem]])
-async def get_activity(session: SessionDep) -> dict[str, Any]:
-    return ok(await dashboard_service.activity(session))
+async def get_activity(user: CurrentUser, session: SessionDep) -> dict[str, Any]:
+    return ok(await dashboard_service.activity(session, viewer=user))
 
 
 @router.get("/attention", response_model=DataResponse[list[AttentionItem]])
-async def get_attention(session: SessionDep) -> dict[str, Any]:
-    return ok(await dashboard_service.attention(session))
+async def get_attention(user: CurrentUser, session: SessionDep) -> dict[str, Any]:
+    return ok(await dashboard_service.attention(session, viewer=user))
 
 
 @router.get("/quick-start", response_model=DataResponse[QuickStart])
 async def get_quick_start(
-    session: SessionDep, redis: RedisDep, settings: EffectiveSettingsDep, request: Request
+    user: CurrentUser,
+    session: SessionDep,
+    redis: RedisDep,
+    settings: EffectiveSettingsDep,
+    request: Request,
 ) -> dict[str, Any]:
     """Eligible candidates who were never called, oldest first (the dashboard's quick start)."""
     never_called, _ = await candidate_repo.search(
@@ -64,6 +73,7 @@ async def get_quick_start(
         sort="created_at",
         page=1,
         page_size=QUICK_START_SCAN,
+        viewer=user,
     )
     ready = voice_ready(request, settings)
     eligibility = await call_service.eligibility_for(

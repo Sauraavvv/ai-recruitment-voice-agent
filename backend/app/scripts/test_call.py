@@ -29,9 +29,17 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import select
+
 from app.config import get_settings
 from app.database.connection import dispose_engine, get_sessionmaker, init_engine
-from app.database.models import CallAttemptType, CallPurpose, Candidate, ConsentSource
+from app.database.models import (
+    CallAttemptType,
+    CallPurpose,
+    Candidate,
+    ConsentSource,
+    Organization,
+)
 from app.repositories import call_repo, candidate_repo
 from app.services import call_service, call_state, job_service
 from app.utils.phone import normalize_phone
@@ -48,13 +56,20 @@ async def _candidate_for_phone(phone: str, name: str) -> uuid.UUID:
     if e164 is None:
         raise SystemExit(f"Not a valid phone number: {phone}")
     async with get_sessionmaker()() as session:
-        existing = await candidate_repo.get_by_phone(session, e164)
+        # The tester belongs to the oldest company (the one that existed before sign-up)
+        organization_id = await session.scalar(
+            select(Organization.id).order_by(Organization.created_at, Organization.id).limit(1)
+        )
+        if organization_id is None:
+            raise SystemExit("No organization yet: sign up first")
+        existing = await candidate_repo.get_by_phone(session, e164, organization_id=organization_id)
         if existing is not None:
             if existing.deleted_at is not None:
                 raise SystemExit("That number belongs to a deleted candidate")
             return existing.id
         job = await job_service.get_active(session)
         candidate = Candidate(
+            organization_id=organization_id,
             name=name,
             phone=e164,
             job_id=job.id,

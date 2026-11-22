@@ -86,6 +86,7 @@ export function RequirementView({
           <div className="min-w-0">
             <ScreeningCard
               requirementId={req.id}
+              jobLabel={client?.name ? `${req.title} · ${client.name}` : req.title}
               version={req.updated_at}
               editHref={`${requirementPath(section, req.client_id, rid)}/edit`}
             />

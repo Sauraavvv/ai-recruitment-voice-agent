@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ClientFilter } from "@/components/client-filter";
 import {
   MAX_CALLS_PER_ACTION,
   StartCallsDialog,
@@ -45,6 +46,7 @@ export function CandidateList() {
   const [status, setStatus] = useState("");
   const [callStatus, setCallStatus] = useState("");
   const [interested, setInterested] = useState("");
+  const [client, setClient] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [targets, setTargets] = useState<CallTarget[] | null>(null);
@@ -63,6 +65,7 @@ export function CandidateList() {
     screening_status: status,
     call_status: callStatus,
     interested,
+    client_id: client,
     page,
     page_size: PAGE_SIZE,
   };
@@ -76,7 +79,7 @@ export function CandidateList() {
 
   const total = data?.meta.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtered = Boolean(q || status || callStatus || interested);
+  const filtered = Boolean(q || status || callStatus || interested || client);
 
   function toggle(row: CandidateListItem) {
     setSelected((current) => {
@@ -123,6 +126,13 @@ export function CandidateList() {
             onChange={(e) => setSearch(e.target.value)}
             className={`${inputClass} max-w-xs`}
             aria-label="Search candidates"
+          />
+          <ClientFilter
+            value={client}
+            onChange={(v) => {
+              setClient(v);
+              setPage(1);
+            }}
           />
           <FilterSelect
             label="Call status"

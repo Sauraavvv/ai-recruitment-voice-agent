@@ -28,10 +28,13 @@ async def _ensure_phone_free(
     session: AsyncSession,
     phone: str,
     *,
+    organization_id: uuid.UUID,
     exclude_id: uuid.UUID | None = None,
     requirement_id: uuid.UUID | None = None,
 ) -> None:
-    existing = await candidate_repo.get_by_phone(session, phone, requirement_id)
+    existing = await candidate_repo.get_by_phone(
+        session, phone, organization_id=organization_id, requirement_id=requirement_id
+    )
     if existing is None or existing.id == exclude_id:
         return
     deleted = existing.deleted_at is not None
@@ -44,17 +47,20 @@ async def _ensure_phone_free(
     )
 
 
-async def create(session: AsyncSession, data: CandidateCreate) -> Candidate:
+async def create(session: AsyncSession, user: User, data: CandidateCreate) -> Candidate:
+    """A candidate of the original job flow, in the user's organization."""
     if not data.consent_attested:
         raise unprocessable(
             "consent_required",
             "Confirm the candidate agreed to be contacted by phone about this role",
         )
     job = await job_service.resolve(session, data.job_id)
-    await _ensure_phone_free(session, data.phone)
+    org = user.organization_id
+    await _ensure_phone_free(session, data.phone, organization_id=org)
 
     candidate = Candidate(
         **data.model_dump(exclude={"job_id", "consent_attested"}),
+        organization_id=org,
         job_id=job.id,
         consent_source=ConsentSource.MANUAL,
         consent_at=datetime.now(UTC),
@@ -67,10 +73,24 @@ async def create(session: AsyncSession, data: CandidateCreate) -> Candidate:
     except IntegrityError:
         # Lost a race with a concurrent insert of the same phone.
         await session.rollback()
-        await _ensure_phone_free(session, data.phone)
+        await _ensure_phone_free(session, data.phone, organization_id=org)
         raise
     await session.refresh(candidate)
     logger.info("candidate_created", candidate_id=str(candidate.id))
+    return candidate
+
+
+async def get_visible(session: AsyncSession, user: User, candidate_id: uuid.UUID) -> Candidate:
+    """The candidate, if this account may see it (its organization, and the requirement's
+    client); otherwise not found, the same as a candidate that doesn't exist."""
+    stmt = select(Candidate).where(
+        Candidate.id == candidate_id,
+        Candidate.deleted_at.is_(None),
+        candidate_repo.visible_to(user),
+    )
+    candidate = (await session.execute(stmt)).scalar_one_or_none()
+    if candidate is None:
+        raise not_found("candidate_not_found", "Candidate not found")
     return candidate
 
 
@@ -94,6 +114,7 @@ async def search(
     call_status: str | None = None,
     requirement_id: uuid.UUID | None = None,
     viewer: User | None = None,
+    client_id: uuid.UUID | None = None,
 ) -> tuple[list[Candidate], int]:
     return await candidate_repo.search(
         session,
@@ -104,6 +125,7 @@ async def search(
         call_status=call_status,
         requirement_id=requirement_id,
         viewer=viewer,
+        client_id=client_id,
         sort=sort,
         page=max(page, 1),
         page_size=min(max(page_size, 1), MAX_PAGE_SIZE),
@@ -122,6 +144,7 @@ async def update(
         await _ensure_phone_free(
             session,
             changes["phone"],
+            organization_id=candidate.organization_id,
             exclude_id=candidate.id,
             requirement_id=candidate.requirement_id,
         )
@@ -150,6 +173,7 @@ async def update(
             await _ensure_phone_free(
                 session,
                 changes["phone"],
+                organization_id=candidate.organization_id,
                 exclude_id=candidate_id,
                 requirement_id=candidate.requirement_id,
             )

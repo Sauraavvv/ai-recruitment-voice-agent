@@ -25,6 +25,7 @@ export type CallQuery = {
   created_from?: string;
   created_to?: string;
   purpose?: "screening" | "telephonic";
+  client_id?: string;
   page?: number;
   page_size?: number;
 };

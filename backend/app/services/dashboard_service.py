@@ -27,7 +27,9 @@ from app.database.models import (
     ScreeningStatus,
     SyncLog,
     SyncStatus,
+    User,
 )
+from app.repositories import candidate_repo
 
 LIVE = (CallStatus.QUEUED, CallStatus.INITIATING, CallStatus.RINGING, CallStatus.IN_PROGRESS)
 DAYS = 14
@@ -36,6 +38,20 @@ TRANSCRIPT_TAIL = 8
 
 def _screening() -> Any:
     return CallAttempt.purpose == CallPurpose.SCREENING.value
+
+
+def _seen(viewer: User | None) -> Any:
+    """Candidates the viewer may see (only its own company's); None: all (the CLI check)."""
+    return candidate_repo.visible_to(viewer) if viewer is not None else true()
+
+
+def _seen_calls(viewer: User | None) -> Any:
+    """Calls whose candidate the viewer may see, for queries without a Candidate join."""
+    if viewer is None:
+        return true()
+    return CallAttempt.candidate_id.in_(
+        select(Candidate.id).where(candidate_repo.visible_to(viewer))
+    )
 
 
 def _connected() -> Any:
@@ -48,7 +64,10 @@ def _connected() -> Any:
     )
 
 
-async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None) -> dict[str, Any]:
+async def summary(
+    session: AsyncSession, *, viewer: User | None, tz: str, now: datetime | None = None
+) -> dict[str, Any]:
+    """The dashboard, counted over the viewer's company's candidates and calls only."""
     now = now or datetime.now(UTC)
     zone = ZoneInfo(tz)
     today = now.astimezone(zone).date()
@@ -64,7 +83,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
                 func.count().filter(Candidate.screening_status == ScreeningStatus.COMPLETED),
                 func.count().filter(Candidate.interested.is_(True)),
                 func.count().filter(Candidate.opted_out.is_(True)),
-            ).where(active)
+            ).where(active, _seen(viewer))
         )
     ).one()
     candidates_total, screened, interested, opted_out = (int(v) for v in cand)
@@ -79,7 +98,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
                 func.count().filter(local_day == today),
                 func.count(func.distinct(CallAttempt.candidate_id)),
                 func.count(func.distinct(CallAttempt.candidate_id)).filter(_connected()),
-            ).where(_screening())
+            ).where(_screening(), _seen_calls(viewer))
         )
     ).one()
     calls_total, connected, avg_duration, calls_today, called_people, connected_people = calls
@@ -91,7 +110,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
                 func.count(),
                 func.count().filter(_connected()),
             )
-            .where(local_day >= first_day, _screening())
+            .where(local_day >= first_day, _screening(), _seen_calls(viewer))
             .group_by("day")
         )
     ).all()
@@ -105,7 +124,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
     outcome_rows = (
         await session.execute(
             select(CallAttempt.call_status, func.count())
-            .where(_screening())
+            .where(_screening(), _seen_calls(viewer))
             .group_by(CallAttempt.call_status)
         )
     ).all()
@@ -116,7 +135,9 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
         await session.execute(
             select(CallAttempt, Candidate.name, Candidate.applied_role)
             .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-            .where(CallAttempt.call_status.in_([s.value for s in LIVE]), _screening())
+            .where(
+                CallAttempt.call_status.in_([s.value for s in LIVE]), _screening(), _seen(viewer)
+            )
             .order_by(CallAttempt.created_at)
             .limit(10)
         )
@@ -139,7 +160,9 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
             select(Conversation, CallAttempt, Candidate.name)
             .join(CallAttempt, CallAttempt.id == Conversation.call_attempt_id)
             .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-            .where(func.jsonb_array_length(Conversation.transcript) > 0, _screening())
+            .where(
+                func.jsonb_array_length(Conversation.transcript) > 0, _screening(), _seen(viewer)
+            )
             .order_by(Conversation.created_at.desc())
             .limit(1)
         )
@@ -174,6 +197,7 @@ async def summary(session: AsyncSession, *, tz: str, now: datetime | None = None
             )
             .where(
                 active,
+                _seen(viewer),
                 Candidate.interested.is_(True),
                 Candidate.interview_availability.is_not(None),
             )
@@ -260,7 +284,7 @@ def range_start(range_: str, *, tz: str, now: datetime) -> datetime | None:
     return None
 
 
-def _latest_attempts() -> Any:
+def _latest_attempts(viewer: User | None) -> Any:
     """Each active candidate's newest attempt that isn't only scheduled (subquery:
     candidate_id, call_status, end_reason, created_at). A scheduled retry doesn't hide the
     unanswered call before it."""
@@ -274,6 +298,7 @@ def _latest_attempts() -> Any:
         .join(Candidate, Candidate.id == CallAttempt.candidate_id)
         .where(
             Candidate.deleted_at.is_(None),
+            _seen(viewer),
             CallAttempt.call_status.not_in(_vals(SCHEDULED)),
             _screening(),
         )
@@ -284,7 +309,12 @@ def _latest_attempts() -> Any:
 
 
 async def stats(
-    session: AsyncSession, *, tz: str, range_: str = "all", now: datetime | None = None
+    session: AsyncSession,
+    *,
+    viewer: User | None,
+    tz: str,
+    range_: str = "all",
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """The stat tiles. Each is one query over real rows; an empty database gives zeros.
     `range_` limits the call outcome metrics (completed, unanswered, failed) by when the call
@@ -299,7 +329,7 @@ async def stats(
                 func.count(),
                 func.count().filter(Candidate.interested.is_(True)),
                 func.count().filter(Candidate.screening_status == ScreeningStatus.COMPLETED),
-            ).where(active)
+            ).where(active, _seen(viewer))
         )
     ).one()
 
@@ -311,11 +341,11 @@ async def stats(
                 func.count().filter(CallAttempt.call_status.in_(_vals(PENDING))),
                 func.count().filter(CallAttempt.call_status.in_(_vals(IN_PROGRESS))),
                 func.count().filter(CallAttempt.call_status.in_(_vals(SCHEDULED))),
-            ).where(_screening())
+            ).where(_screening(), _seen_calls(viewer))
         )
     ).one()
 
-    latest = _latest_attempts()
+    latest = _latest_attempts(viewer)
     latest_in_range = latest.c.created_at >= since if since else true()
     # Phase 9: the last allowed attempt becomes `exhausted`; its end reason says how it ended
     exhausted = latest.c.call_status == CallStatus.EXHAUSTED
@@ -362,14 +392,16 @@ async def stats(
     }
 
 
-async def activity(session: AsyncSession, *, limit: int = 20) -> list[dict[str, Any]]:
+async def activity(
+    session: AsyncSession, *, viewer: User | None, limit: int = 20
+) -> list[dict[str, Any]]:
     """The latest call status changes: each attempt at its current status, newest change
     first. (Attempts keep no status history; the provider events are in webhook_events.)"""
     rows = (
         await session.execute(
             select(CallAttempt, Candidate.name)
             .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-            .where(_screening())
+            .where(_screening(), _seen(viewer))
             .order_by(CallAttempt.updated_at.desc())
             .limit(limit)
         )
@@ -414,7 +446,11 @@ def _result_of(conv: Conversation) -> dict[str, Any]:
 
 
 async def attention(
-    session: AsyncSession, *, now: datetime | None = None, limit: int = ATTENTION_LIMIT
+    session: AsyncSession,
+    *,
+    viewer: User | None,
+    now: datetime | None = None,
+    limit: int = ATTENTION_LIMIT,
 ) -> list[dict[str, Any]]:
     """Candidates a recruiter should look at, each with a reason code and the details."""
     from app.services.candidate_view_service import open_conflicts
@@ -435,13 +471,13 @@ async def attention(
             }
         )
 
-    callable_ = and_(Candidate.deleted_at.is_(None), Candidate.opted_out.is_(False))
+    callable_ = and_(Candidate.deleted_at.is_(None), Candidate.opted_out.is_(False), _seen(viewer))
 
     # Latest attempt per candidate: technical failures, exhausted, callbacks scheduled (P9)
     latest = (
         select(CallAttempt)
         .join(Candidate, Candidate.id == CallAttempt.candidate_id)
-        .where(Candidate.deleted_at.is_(None))
+        .where(Candidate.deleted_at.is_(None), _seen(viewer))
         .ext(distinct_on(CallAttempt.candidate_id))
         .order_by(CallAttempt.candidate_id, CallAttempt.attempt_number.desc())
         .subquery()
@@ -571,6 +607,7 @@ async def attention(
             await session.execute(
                 select(Candidate).where(
                     Candidate.deleted_at.is_(None),
+                    _seen(viewer),
                     func.jsonb_path_exists(
                         Candidate.screening_field_meta,
                         cast('$.* ? (@.conflict.type() == "object")', JSONPATH),
@@ -604,7 +641,11 @@ async def attention(
         await session.execute(
             select(sync, Candidate)
             .join(Candidate, Candidate.id == sync.candidate_id)
-            .where(Candidate.deleted_at.is_(None), sync.sync_status == SyncStatus.FAILED.value)
+            .where(
+                Candidate.deleted_at.is_(None),
+                _seen(viewer),
+                sync.sync_status == SyncStatus.FAILED.value,
+            )
         )
     ).all()
     for row, cand in sync_rows:
