@@ -18,10 +18,9 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
-    # Migrations, then the API (one process: live calls share its state). Render sets $PORT.
-    dockerCommand: >-
-      sh -c "alembic upgrade head && exec uvicorn app.main:create_app --factory
-      --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips '*'"
+    # Migrations, then the API (backend/start.sh). Render runs this through its own shell, so
+    # it stays a plain command: no `sh -c "…"` wrapper (its quotes broke the first deploy).
+    dockerCommand: sh start.sh
     envVars:
       - key: APP_ENV
         value: production
