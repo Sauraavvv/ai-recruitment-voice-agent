@@ -282,3 +282,15 @@ def test_0020_uploaded_candidates_get_their_uploader() -> None:
     ]
     run_alembic(URL, ("downgrade", "0019"))
     assert asyncio.run(_sql("SELECT count(*) FROM candidates")) == [(2,)]
+
+
+def test_a_hosting_platform_url_migrates_an_empty_database() -> None:
+    """Render hands out postgresql:// URLs: the migrations use the async driver all the same."""
+    try:
+        asyncio.run(asyncio.wait_for(ensure_database(URL, recreate=True), timeout=10))
+    except Exception:
+        pytest.skip("Postgres not reachable")
+
+    plain = URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+    run_alembic(plain, ("upgrade", "head"))
+    assert asyncio.run(_tables()) >= TABLES

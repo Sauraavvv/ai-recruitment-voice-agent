@@ -27,6 +27,17 @@ class ConfigError(RuntimeError):
     """Raised when required settings are missing or invalid. Never contains secret values."""
 
 
+def async_database_url(url: str) -> str:
+    """The database URL with the async driver. Hosting platforms (Render) hand out postgres://
+    or postgresql:// URLs; the app and the migrations (alembic env.py) both use asyncpg."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            url = "postgresql+asyncpg://" + url.removeprefix(prefix)
+    if not url.startswith("postgresql+asyncpg://"):
+        raise ValueError("must be a PostgreSQL URL (postgresql+asyncpg://…)")
+    return url
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
@@ -247,15 +258,8 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="before")
     @classmethod
     def _async_postgres(cls, value: object) -> object:
-        """Hosting platforms hand out postgres:// or postgresql:// URLs: use the async driver."""
         raw = value.get_secret_value() if isinstance(value, SecretStr) else value
-        if isinstance(raw, str):
-            for prefix in ("postgres://", "postgresql://"):
-                if raw.startswith(prefix):
-                    raw = "postgresql+asyncpg://" + raw.removeprefix(prefix)
-            if not raw.startswith("postgresql+asyncpg://"):
-                raise ValueError("must be a PostgreSQL URL (postgresql+asyncpg://…)")
-        return raw
+        return async_database_url(raw) if isinstance(raw, str) else raw
 
     @field_validator("redis_url")
     @classmethod

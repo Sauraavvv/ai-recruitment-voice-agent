@@ -8,6 +8,7 @@ from alembic import context
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.config import async_database_url
 from app.database.models import Base
 
 config = context.config
@@ -21,7 +22,7 @@ def _database_url() -> str:
     url = context.get_x_argument(as_dictionary=True).get("db_url") or os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
-    return url
+    return async_database_url(url)  # postgres:// from a hosting platform: the async driver
 
 
 def run_migrations_offline() -> None:
