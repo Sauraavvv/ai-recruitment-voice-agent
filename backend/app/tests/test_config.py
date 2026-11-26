@@ -25,9 +25,24 @@ def test_short_secret_rejected() -> None:
     assert "too-short" not in str(exc_info.value)
 
 
-def test_sync_database_driver_rejected() -> None:
-    with pytest.raises(ConfigError, match="DATABASE_URL"):
-        make_settings(database_url="postgresql://u:p@localhost/db")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgres://u:p@db:5432/x",
+        "postgresql://u:p@db:5432/x",
+        "postgresql+asyncpg://u:p@db:5432/x",
+    ],
+)
+def test_hosting_database_urls_use_the_async_driver(url: str) -> None:
+    """Hosting platforms (Render) hand out postgres:// URLs: converted, not rejected."""
+    settings = make_settings(database_url=url)
+    assert settings.database_url.get_secret_value() == "postgresql+asyncpg://u:p@db:5432/x"
+
+
+def test_non_postgres_database_rejected() -> None:
+    for url in ("mysql://u:p@localhost/db", "postgresql+psycopg2://u:p@localhost/db"):
+        with pytest.raises(ConfigError, match="DATABASE_URL"):
+            make_settings(database_url=url)
 
 
 def test_secrets_are_masked_in_repr() -> None:

@@ -31,29 +31,31 @@ def fixed_phrases() -> list[str]:
 
 
 def create_tts_provider(settings: Settings) -> TTSProvider:
-    """Which voice speaks (decided 2026-11-19 after live calls: Kitten's Iris sounded better than
-    Deepgram's Harmonia on the phone):
+    """Which voice speaks:
 
-    - TTS_PROVIDER=auto or kitten: Kitten (local) first, Deepgram Aura as the fallback when a
-      Deepgram key is set and TTS_FALLBACK is on.
-    - TTS_PROVIDER=deepgram: Deepgram first, Kitten as the fallback (TTS_FALLBACK on).
+    - TTS_PROVIDER=deepgram or auto (the default): Deepgram Aura over its API. With
+      TTS_FALLBACK=true, Kitten as the fallback (only if its model is in the image).
+    - TTS_PROVIDER=kitten: Kitten (local, switched off in the image for now) first, Deepgram as
+      the fallback when a Deepgram key is set and TTS_FALLBACK=true.
 
-    With a fallback, the primary doesn't retry: the fallback takes the sentence at once. See
-    providers/tts/fallback.py for the switching rules."""
+    Raises TTSConfigError when the chosen voice has no key. With a fallback, the primary doesn't
+    retry: the fallback takes the sentence at once (providers/tts/fallback.py)."""
     from pathlib import Path
 
-    from app.providers.tts.kitten_provider import (
-        DEFAULT_VOICE,
-        KittenTTSProvider,
-        resolve_model_dir,
-    )
-
     has_deepgram = bool(settings.deepgram_api_key)
-    if settings.tts_provider == "deepgram" and not has_deepgram:
-        raise TTSConfigError("TTS_PROVIDER=deepgram needs DEEPGRAM_API_KEY")
+    use_kitten = settings.tts_provider == "kitten"
+    if not use_kitten and not has_deepgram:
+        raise TTSConfigError("The API voice needs DEEPGRAM_API_KEY (or set TTS_PROVIDER=kitten)")
     with_fallback = settings.tts_fallback and has_deepgram
 
-    def kitten(attempts: int) -> KittenTTSProvider:
+    def kitten(attempts: int) -> TTSProvider:
+        # Imported only when chosen: the default (API) voice never loads the local model
+        from app.providers.tts.kitten_provider import (
+            DEFAULT_VOICE,
+            KittenTTSProvider,
+            resolve_model_dir,
+        )
+
         return KittenTTSProvider(
             model_dir=resolve_model_dir(settings.kitten_model_path),
             voice=settings.kitten_voice or DEFAULT_VOICE,
@@ -80,7 +82,7 @@ def create_tts_provider(settings: Settings) -> TTSProvider:
 
     from app.providers.tts.fallback import FallbackTTSProvider
 
-    if settings.tts_provider == "deepgram":
+    if not use_kitten:
         if not settings.tts_fallback:
             return deepgram(attempts=2)
         return FallbackTTSProvider(deepgram(attempts=1), kitten(attempts=2))

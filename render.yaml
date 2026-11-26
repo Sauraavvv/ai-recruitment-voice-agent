@@ -1,0 +1,86 @@
+# Render Blueprint: the CallZest backend on Render's free tier (Singapore, nearest to India).
+# Render dashboard → New → Blueprint → this repository. See deploy/README.md ("Free hosting").
+#
+# One free web service runs the API and the background worker together (RUN_WORKER_IN_API),
+# with a free Postgres and a free Key Value (Redis) reachable only inside Render. The website
+# itself runs on Vercel and forwards /api here.
+#
+# Free-tier limits: the service sleeps after 15 idle minutes (the next visit waits about a
+# minute), the free database expires 30 days after creation, and Key Value keeps no data on
+# restart (only the job queue lives there).
+
+services:
+  - type: web
+    name: callzest-api
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    # Migrations, then the API (one process: live calls share its state). Render sets $PORT.
+    dockerCommand: >-
+      sh -c "alembic upgrade head && exec uvicorn app.main:create_app --factory
+      --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips '*'"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL # postgresql://… is converted to the async driver by the app
+        fromDatabase:
+          name: callzest-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: callzest-redis
+          property: connectionString
+      - key: RUN_WORKER_IN_API
+        value: "true"
+      - key: FRONTEND_ORIGIN
+        value: https://callzest.in
+      - key: FRONTEND_URL
+        value: https://callzest.in
+      - key: PUBLIC_BACKEND_URL
+        value: https://api.callzest.in
+      # Off: only logins you create can use the app (a public sign-up could place real calls)
+      - key: SIGNUP_ENABLED
+        value: "false"
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      # Provider keys: Render asks for these when the Blueprint is created (copy them from
+      # your development .env). Leave a field empty to skip that provider.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: GROQ_API_KEYS
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: EXOTEL_API_KEY
+        sync: false
+      - key: EXOTEL_API_TOKEN
+        sync: false
+      - key: EXOTEL_ACCOUNT_SID
+        sync: false
+      - key: EXOTEL_SUBDOMAIN
+        sync: false
+      - key: EXOTEL_APP_ID
+        sync: false
+      - key: EXOTEL_CALLER_ID
+        sync: false
+
+  - type: keyvalue
+    name: callzest-redis
+    region: singapore
+    plan: free
+    ipAllowList: [] # only Render services can connect
+
+databases:
+  - name: callzest-db
+    region: singapore
+    plan: free
+    databaseName: callzest
+    user: callzest

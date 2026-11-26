@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:3000"
     frontend_url: str = "http://localhost:3000"
     public_backend_url: str | None = None
+    # Run the background worker (calls, retries, evaluations, crons) inside the API process
+    # instead of as its own service: for hosts with a single free service (Render free).
+    run_worker_in_api: bool = False
 
     # OpenAI (Phase 2)
     openai_api_key: SecretStr | None = None
@@ -144,20 +147,22 @@ class Settings(BaseSettings):
     calling_hour_start: int = Field(default=10, ge=0, le=23)
     calling_hour_end: int = Field(default=19, ge=1, le=24)
 
-    # Kitten TTS (Phase 3). Empty values use the model baked into the image and the voice the
-    # user chose in the Phase 3 listening test.
+    # Kitten TTS (Phase 3): a local voice model, switched off for now (TTS_PROVIDER below). To
+    # use it again, uncomment its steps in backend/Dockerfile and set TTS_PROVIDER=kitten.
+    # Empty values use the model baked into the image and the voice chosen in Phase 3.
     kitten_model_path: str | None = None
     kitten_voice: str | None = None
     tts_threads: int = Field(default=2, ge=1, le=16)  # ONNX Runtime threads per synthesis
     tts_timeout_s: float = Field(default=3.0, gt=0, le=30)
     # Load the voice model at startup. Tests turn this off; nothing can speak without it.
     tts_preload: bool = True
-    # Which TTS speaks first. auto/kitten = Kitten (Iris, local), with Deepgram Aura as the
-    # fallback when DEEPGRAM_API_KEY is set; deepgram = Deepgram first, Kitten as the fallback.
-    # (Kitten chosen as primary 2026-11-19 after live calls.)
-    tts_provider: Literal["auto", "deepgram", "kitten"] = "auto"
-    # Keep the other voice loaded and use it when the first one fails.
-    tts_fallback: bool = True
+    # Which voice speaks. auto/deepgram = Deepgram Aura over its API (the default since
+    # 2026-11-23: no local model, a lighter image for small servers); kitten = Kitten (Iris,
+    # local; needs the model in the image), with Deepgram as the fallback when TTS_FALLBACK=true.
+    tts_provider: Literal["auto", "deepgram", "kitten"] = "deepgram"
+    # Keep the other voice loaded and use it when the first one fails. Off by default: the
+    # API voice's fallback is Kitten, which isn't in the image now.
+    tts_fallback: bool = False
     deepgram_tts_voice: str | None = None  # e.g. aura-2-asteria-en; empty = aura-2-harmonia-en
     deepgram_tts_gain_db: float = Field(default=6.0, ge=-12, le=12)  # loudness match with Kitten
     deepgram_tts_first_byte_timeout_s: float = Field(default=1.5, gt=0, le=10)
@@ -239,12 +244,18 @@ class Settings(BaseSettings):
             raise ValueError("must be at least 32 characters")
         return value
 
-    @field_validator("database_url")
+    @field_validator("database_url", mode="before")
     @classmethod
-    def _async_postgres(cls, value: SecretStr) -> SecretStr:
-        if not value.get_secret_value().startswith("postgresql+asyncpg://"):
-            raise ValueError("must start with postgresql+asyncpg://")
-        return value
+    def _async_postgres(cls, value: object) -> object:
+        """Hosting platforms hand out postgres:// or postgresql:// URLs: use the async driver."""
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if isinstance(raw, str):
+            for prefix in ("postgres://", "postgresql://"):
+                if raw.startswith(prefix):
+                    raw = "postgresql+asyncpg://" + raw.removeprefix(prefix)
+            if not raw.startswith("postgresql+asyncpg://"):
+                raise ValueError("must be a PostgreSQL URL (postgresql+asyncpg://…)")
+        return raw
 
     @field_validator("redis_url")
     @classmethod
@@ -331,7 +342,7 @@ class Settings(BaseSettings):
             "openai": bool(self.openai_api_key and self.openai_model),
             "deepgram": bool(self.deepgram_api_key),
             "exotel": self.exotel_configured,
-            "kitten_tts": True,  # local model with defaults; whether it loaded is in TTS status
+            "kitten_tts": self.tts_provider == "kitten",  # local model: only when chosen
         }
 
 

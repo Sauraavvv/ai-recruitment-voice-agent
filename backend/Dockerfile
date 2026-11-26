@@ -7,20 +7,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# No system packages are needed for TTS: Kitten TTS 2's English path uses no espeak, and the
-# onnxruntime wheel is self-contained.
+# The agent's voice comes from an API (TTS_PROVIDER=deepgram, the default), so the local
+# Kitten TTS model is left out of the image for now: lighter and quicker to build on a small
+# server. To bring Kitten back: uncomment the two marked blocks below, rebuild, and set
+# TTS_PROVIDER=kitten (no system packages needed: its English path uses no espeak).
 
 COPY requirements.txt requirements-dev.txt requirements-nodeps.txt ./
 ARG INSTALL_DEV=false
 RUN pip install --require-hashes -r requirements.txt \
-    && pip install --no-deps --require-hashes -r requirements-nodeps.txt \
     && if [ "$INSTALL_DEV" = "true" ]; then pip install -r requirements-dev.txt; fi
 
-# The TTS model is baked into the image (pinned revision): a call never waits on a download.
-# Only the download script is copied here, so code changes don't invalidate this layer.
-COPY app/scripts/download_tts_model.py /tmp/download_tts_model.py
-RUN python /tmp/download_tts_model.py --dest /opt/models/kitten-tts-2-nano \
-    && rm -rf /tmp/download_tts_model.py /opt/models/kitten-tts-2-nano/.cache
+# [Kitten 1/2] The Kitten package itself (installed without its unused PyTorch dependencies)
+# RUN pip install --no-deps --require-hashes -r requirements-nodeps.txt
+
+# [Kitten 2/2] The model, baked into the image (pinned revision): a call never waits on a
+# download. Only the download script is copied, so code changes don't invalidate this layer.
+# COPY app/scripts/download_tts_model.py /tmp/download_tts_model.py
+# RUN python /tmp/download_tts_model.py --dest /opt/models/kitten-tts-2-nano \
+#     && rm -rf /tmp/download_tts_model.py /opt/models/kitten-tts-2-nano/.cache
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 
