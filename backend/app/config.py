@@ -117,6 +117,16 @@ class Settings(BaseSettings):
     # Comma-separated words to boost on every call; job-specific ones are added per call
     deepgram_stt_keyterms: str = "CTC,LPA,lakhs,notice period"
 
+    # Browser demo on the home page ("Try a demo call"): the visitor talks to the agent in the
+    # browser, no phone involved. Nothing is stored; limits keep the cost down.
+    demo_enabled: bool = True
+    demo_max_call_s: int = Field(default=150, ge=60, le=600)
+    # One demo per visitor (IP address) in this many days; a call that fails on our side
+    # doesn't count
+    demo_calls_per_ip: int = Field(default=1, ge=1, le=100)
+    demo_ip_window_days: int = Field(default=30, ge=1, le=365)
+    demo_max_concurrent: int = Field(default=3, ge=1, le=50)
+
     # Exotel (Phase 5). docs/telephony.md
     exotel_api_key: SecretStr | None = None
     exotel_api_token: SecretStr | None = None
@@ -311,6 +321,16 @@ class Settings(BaseSettings):
                 "answer_gap_s": self.telephonic_answer_gap_s,
                 "answer_unfinished_extra_s": self.telephonic_unfinished_extra_s,
                 "answer_max_wait_s": self.telephonic_answer_max_wait_s,
+            }
+        )
+
+    def for_demo_call(self) -> "Settings":
+        """These settings with the browser demo's short call limit (the agent reads back and
+        closes a minute before it)."""
+        return self.model_copy(
+            update={
+                "max_call_duration_s": self.demo_max_call_s,
+                "call_wrap_up_s": max(60, self.demo_max_call_s - 60),
             }
         )
 

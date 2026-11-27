@@ -70,6 +70,8 @@ services:
     build: ./frontend
     environment:
       BACKEND_INTERNAL_URL: http://backend:8000
+      # The browser demo's WebSocket goes straight to the backend (no proxy for WebSockets)
+      NEXT_PUBLIC_DEMO_WS_URL: ws://localhost:${BACKEND_PORT:-8000}/api/v1/demo/stream
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

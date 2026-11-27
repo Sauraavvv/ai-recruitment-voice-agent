@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+import { DemoCallButton } from "@/components/demo/demo-call";
 import { FlowPreview } from "@/components/flow/flow-canvas";
 import { LiveCall } from "@/components/landing/live-call";
 import { Reveal, ScrollProgress, SpotlightRows, type Row } from "@/components/landing/motion";
@@ -172,13 +173,17 @@ function Hero() {
               <PrimaryPill href="/signup" large>
                 Create your account
               </PrimaryPill>
-              <GhostPill href="#walkthrough" large>
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                  <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
-                </svg>
-                Watch the walkthrough
-              </GhostPill>
+              <DemoCallButton large />
             </div>
+            <a
+              href="#walkthrough"
+              className="mt-5 inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.22em] text-zinc-500 uppercase transition-colors hover:text-white"
+            >
+              <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
+              </svg>
+              Or watch the walkthrough
+            </a>
           </Reveal>
         </div>
 
@@ -409,6 +414,7 @@ function FinalCta() {
             <PrimaryPill href="/signup" large>
               Create your account
             </PrimaryPill>
+            <DemoCallButton large />
             <GhostPill href="/login" large>
               I already have one
             </GhostPill>

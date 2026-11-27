@@ -16,6 +16,7 @@ from app.api.health import router as health_router
 from app.api.middleware import RequestContextMiddleware
 from app.api.responses import register_error_handlers
 from app.api.v1 import api_router
+from app.api.v1.demo import router as demo_router
 from app.api.v1.webhooks import callback_router
 from app.api.v1.webhooks import router as webhooks_router
 from app.config import AppEnv, Settings, get_settings
@@ -147,4 +148,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Provider-facing: token in the URL instead of a session, no CSRF origin check
     app.include_router(webhooks_router)
     app.include_router(callback_router)
+    # The home page's browser demo call: public, Origin-checked, limited per visitor
+    app.include_router(demo_router)
     return app

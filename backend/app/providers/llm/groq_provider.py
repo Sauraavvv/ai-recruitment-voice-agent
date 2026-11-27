@@ -20,6 +20,7 @@ from typing import Any
 import openai
 import structlog
 from openai import AsyncOpenAI
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
 
 from app.providers.llm.base import (
@@ -54,13 +55,17 @@ class GroqProvider(LLMProvider):
         reasoning_effort: str | None = None,
         max_retries: int = 2,
         clients: list[Any] | None = None,
+        json_schema: bool = False,
     ) -> None:
+        """`json_schema`: send the Pydantic schema (strict) instead of asking for any JSON object.
+        Needed by prompts that don't spell out their output format (the screening agent)."""
         keys = [api_keys] if isinstance(api_keys, str) else list(api_keys)
         if not keys and not clients:
             raise LLMConfigError("No Groq API key")
         self.model = model
         self.reasoning_effort = reasoning_effort
         self.max_retries = max_retries
+        self.json_schema = json_schema
         self._clients: list[Any] = clients or [
             AsyncOpenAI(api_key=key, base_url=GROQ_BASE_URL, max_retries=0) for key in keys
         ]
@@ -92,6 +97,8 @@ class GroqProvider(LLMProvider):
         max_tokens: int = 1000,
         cache_key: str | None = None,
     ) -> LLMResult[M]:
+        if self.json_schema:
+            return await self._structured_with_schema(messages, schema, timeout_s, max_tokens)
         params = self._params(messages, max_tokens)
         params["response_format"] = {"type": "json_object"}
         last_error: Exception | None = None
@@ -105,6 +112,52 @@ class GroqProvider(LLMProvider):
             try:
                 value = schema.model_validate(json.loads(content))
             except (json.JSONDecodeError, ValidationError) as exc:
+                last_error = exc
+                log.warning(
+                    "llm_bad_output",
+                    schema=schema.__name__,
+                    output_try=output_try + 1,
+                    error=type(exc).__name__,
+                )
+                continue
+            return self._result(response, value, latency_ms, attempts, schema.__name__)
+        raise LLMOutputError(f"Output failed validation: {type(last_error).__name__}")
+
+    async def _structured_with_schema(
+        self, messages: list[Message], schema: type[M], timeout_s: float, max_tokens: int
+    ) -> LLMResult[M]:
+        """Strict json_schema output. Groq checks the output after generating it and answers
+        400 `json_validate_failed` when it doesn't fit (it isn't constrained decoding). When the
+        only problem is a missing empty list / null / false field, the generation is kept."""
+        json_schema = to_strict_json_schema(schema)
+        params = self._params(messages, max_tokens)
+        params["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": schema.__name__, "schema": json_schema, "strict": True},
+        }
+
+        async def call(client: Any) -> Any:
+            try:
+                return await client.chat.completions.create(**params, timeout=timeout_s)
+            except openai.BadRequestError as exc:
+                failed = _failed_generation(exc)
+                if failed is None:
+                    raise
+                return _Failed(failed)
+
+        last_error: Exception | None = None
+        for output_try in range(2):
+            response, latency_ms, attempts = await self._with_retries(
+                call, timeout_s, schema.__name__
+            )
+            if isinstance(response, _Failed):
+                content, response = response.text, _Failed.as_response(self.model)
+            else:
+                content = (response.choices[0].message.content or "").strip()
+            try:
+                data = json.loads(content)
+                value = schema.model_validate(_fill_missing(data, json_schema))
+            except (json.JSONDecodeError, ValidationError, TypeError) as exc:
                 last_error = exc
                 log.warning(
                     "llm_bad_output",
@@ -210,3 +263,55 @@ class GroqProvider(LLMProvider):
             request_id=request_id,
             attempts=attempts,
         )
+
+
+class _Failed:
+    """A generation Groq refused as not matching the schema (kept to try to repair it)."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    @staticmethod
+    def as_response(model: str) -> Any:
+        return type("Response", (), {"usage": None, "model": model, "_request_id": None})()
+
+
+def _failed_generation(exc: openai.BadRequestError) -> str | None:
+    body = exc.body if isinstance(exc.body, dict) else {}
+    body = body.get("error", body) if isinstance(body.get("error"), dict) else body
+    if body.get("code") != "json_validate_failed":
+        return None
+    failed = body.get("failed_generation")
+    return failed if isinstance(failed, str) and failed.strip() else None
+
+
+def _allowed_types(prop: dict[str, Any]) -> set[str]:
+    kinds: set[str] = set()
+    kind = prop.get("type")
+    if isinstance(kind, str):
+        kinds.add(kind)
+    elif isinstance(kind, list):
+        kinds.update(k for k in kind if isinstance(k, str))
+    for option in prop.get("anyOf", []) or []:
+        if isinstance(option, dict):
+            kinds |= _allowed_types(option)
+    return kinds
+
+
+def _fill_missing(data: Any, json_schema: dict[str, Any]) -> Any:
+    """Top-level required fields the model left out, when an empty value is a safe answer:
+    a list → [], nullable → None, a flag → False. Anything else stays missing (and fails)."""
+    if not isinstance(data, dict):
+        return data
+    properties = json_schema.get("properties") or {}
+    for key in json_schema.get("required") or []:
+        if key in data or not isinstance(properties.get(key), dict):
+            continue
+        kinds = _allowed_types(properties[key])
+        if "array" in kinds:
+            data[key] = []
+        elif "null" in kinds:
+            data[key] = None
+        elif kinds == {"boolean"}:
+            data[key] = False
+    return data

@@ -127,3 +127,63 @@ def test_settings_collect_the_keys() -> None:
     )
     assert settings.groq_keys == ["k1", "k2", "k3", "k4"]
     assert make_settings().model_copy(update={"groq_api_keys": None}).groq_keys == []
+
+
+# --- json_schema mode (the home page demo's screening agent) ---------------------------------
+
+
+class Turn(BaseModel):
+    reply: str
+    unknown_fields: list[str]
+    note: str | None
+    done: bool
+
+
+def _invalid_json(failed: str) -> openai.BadRequestError:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    body = {"code": "json_validate_failed", "failed_generation": failed, "message": "no"}
+    return openai.BadRequestError("no", response=httpx.Response(400, request=request), body=body)  # type: ignore[arg-type]
+
+
+async def test_json_schema_mode_sends_the_strict_schema() -> None:
+    client = FakeClient("a", ['{"reply": "hi", "unknown_fields": [], "note": null, "done": false}'])
+    result = await _provider(client, json_schema=True).structured(
+        [Message("user", "hi")], Turn, timeout_s=5
+    )
+    assert result.value.reply == "hi"
+    fmt = client.sent[0]["response_format"]
+    assert fmt["type"] == "json_schema" and fmt["json_schema"]["strict"] is True
+    assert set(fmt["json_schema"]["schema"]["required"]) == {
+        "reply",
+        "unknown_fields",
+        "note",
+        "done",
+    }
+
+
+async def test_json_schema_mode_repairs_a_missing_empty_field() -> None:
+    # Groq refused the output: only the empty list, the null and the flag were left out
+    client = FakeClient("a", [_invalid_json('{"reply": "Thanks."}')])
+    result = await _provider(client, json_schema=True).structured(
+        [Message("user", "hi")], Turn, timeout_s=5
+    )
+    assert result.value == Turn(reply="Thanks.", unknown_fields=[], note=None, done=False)
+    assert len(client.sent) == 1
+
+
+async def test_json_schema_mode_never_invents_real_answers() -> None:
+    # `reply` can't be filled in: one more try, then a clear output error
+    client = FakeClient("a", [_invalid_json('{"done": true}'), _invalid_json('{"done": true}')])
+    with pytest.raises(LLMOutputError):
+        await _provider(client, json_schema=True).structured(
+            [Message("user", "hi")], Turn, timeout_s=5
+        )
+    assert len(client.sent) == 2
+
+
+async def test_json_schema_mode_other_bad_requests_stay_errors() -> None:
+    client = FakeClient("a", [_error(openai.BadRequestError, 400)])
+    with pytest.raises(LLMConfigError):
+        await _provider(client, json_schema=True).structured(
+            [Message("user", "hi")], Turn, timeout_s=5
+        )
