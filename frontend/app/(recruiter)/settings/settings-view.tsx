@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState, Skeleton } from "@/components/states";
 import { useToast } from "@/components/toast";
-import { Button, Card, Field, PageHeader, buttonClass, inputClass } from "@/components/ui";
+import { Button, Card, Field, PageHeader, inputClass } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { useLoad } from "@/lib/use-load";
 import { getSettings, updateSettings } from "@/services/settings";
@@ -39,11 +38,7 @@ export function SettingsView() {
   const settings = useLoad("settings", getSettings);
   return (
     <>
-      <PageHeader title="Settings" subtitle="Calling, the AI's introduction and retries.">
-        <Link href="/settings/job" className={buttonClass("secondary")}>
-          Job settings
-        </Link>
-      </PageHeader>
+      <PageHeader title="Settings" subtitle="Calling, the AI's introduction and retries." />
       {settings.error && !settings.data && (
         <ErrorState error={settings.error} onRetry={settings.reload} />
       )}

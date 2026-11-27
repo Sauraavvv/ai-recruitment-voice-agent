@@ -11,6 +11,8 @@ import { useToast } from "@/components/toast";
 import { Button, Card } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { ATTENTION_LABELS, END_REASON_LABELS, shortDate, timeAgo } from "@/lib/labels";
+import { useLoad } from "@/lib/use-load";
+import { me } from "@/services/auth";
 import { resolveConflict } from "@/services/candidates";
 import type { ActivityItem, AttentionItem, DashboardStats, QuickStart } from "@/types";
 
@@ -124,6 +126,8 @@ export function CallingProgress({
   onStarted: () => void;
 }) {
   const [targets, setTargets] = useState<CallTarget[] | null>(null);
+  const { data: user } = useLoad("me", me);
+  const isSuperAdmin = user?.role === "super_admin";
   const bars = stats
     ? [
         { label: "On the call", value: stats.calls_in_progress, color: "bg-[#0ca30c]" },
@@ -170,11 +174,14 @@ export function CallingProgress({
             {quick.blocked_message
               ? `Can't call right now: ${quick.blocked_message}.`
               : "Everyone has been called."}{" "}
-            {quick.blocked_reason === "calling_paused" && (
-              <Link href="/settings" className="text-[#93b4ff] hover:underline">
-                Resume calling
-              </Link>
-            )}
+            {quick.blocked_reason === "calling_paused" &&
+              (isSuperAdmin ? (
+                <Link href="/settings" className="text-[#93b4ff] hover:underline">
+                  Resume calling
+                </Link>
+              ) : (
+                "A super admin can resume it."
+              ))}
           </p>
         )}
         {quick && (

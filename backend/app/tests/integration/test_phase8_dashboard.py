@@ -371,7 +371,7 @@ async def test_summary_is_latest_call_with_data(
 
 
 async def test_quick_start_lists_eligible_never_called(
-    authed: AsyncClient, active_job: dict[str, Any], db_session: AsyncSession
+    admin: AsyncClient, authed: AsyncClient, active_job: dict[str, Any], db_session: AsyncSession
 ) -> None:
     fresh = await _candidate(authed, "+91 90000 07501", "Fresh")
     called = await _candidate(authed, "+91 90000 07502", "Called")
@@ -387,7 +387,7 @@ async def test_quick_start_lists_eligible_never_called(
     assert (data["total"], data["limit"], data["blocked_reason"]) == (1, 20, None)
     assert data["calling_now"] is True
 
-    await authed.patch("/api/v1/settings", json={"calling_enabled": False})
+    await admin.patch("/api/v1/settings", json={"calling_enabled": False})
     paused = (await authed.get("/api/v1/dashboard/quick-start")).json()["data"]
     assert paused["candidates"] == [] and paused["blocked_reason"] == "calling_paused"
     assert paused["calling_now"] is False

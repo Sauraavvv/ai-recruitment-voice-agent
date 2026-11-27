@@ -35,21 +35,21 @@ def _parts() -> dict[str, Any]:
 
 
 async def test_settings_page_switches_the_engine(
-    authed: AsyncClient, active_job: Any, db_session: AsyncSession
+    admin: AsyncClient, authed: AsyncClient, active_job: Any, db_session: AsyncSession
 ) -> None:
-    data = (await authed.get("/api/v1/settings")).json()["data"]
+    data = (await admin.get("/api/v1/settings")).json()["data"]
     assert data["general"]["voice_engine"] is None
     assert data["limits"]["voice_engine_env"] == "pipeline"
     assert data["limits"]["realtime_model"] == "gpt-realtime-2.1-mini"
 
-    response = await authed.patch("/api/v1/settings", json={"voice_engine": "realtime"})
+    response = await admin.patch("/api/v1/settings", json={"voice_engine": "realtime"})
     assert response.json()["data"]["general"]["voice_engine"] == "realtime"
     effective = await settings_service.effective(db_session, make_settings())
     assert effective.voice_engine == "realtime"
 
-    bad = await authed.patch("/api/v1/settings", json={"voice_engine": "magic"})
+    bad = await admin.patch("/api/v1/settings", json={"voice_engine": "magic"})
     assert bad.status_code == 422
-    back = await authed.patch("/api/v1/settings", json={"voice_engine": None})
+    back = await admin.patch("/api/v1/settings", json={"voice_engine": None})
     assert back.json()["data"]["general"]["voice_engine"] is None
     effective = await settings_service.effective(db_session, make_settings())
     assert effective.voice_engine == "pipeline"

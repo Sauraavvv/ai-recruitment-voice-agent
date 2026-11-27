@@ -425,7 +425,8 @@ async def _conversation_call(
     **result: Any,
 ) -> CallAttempt:
     """An answered call whose conversation ended with `result`, finalized like the worker does.
-    `settings_page`: saved on the Settings page after dialing (finalization reads it)."""
+    `settings_page`: saved on the Settings page after dialing (finalization reads it); the
+    test must be logged in as a super admin for that (the `admin` fixture)."""
     attempt = await _dialed(authed, db, settings, phone)
     if settings_page:
         response = await authed.patch("/api/v1/settings", json=settings_page)
@@ -508,6 +509,7 @@ async def test_callback_at_the_requested_time(
 
 
 async def test_callback_outside_the_window_is_moved_and_noted(
+    admin: AsyncClient,
     authed: AsyncClient,
     active_job: dict[str, Any],
     enqueued: list[str],
@@ -538,6 +540,7 @@ async def test_callback_outside_the_window_is_moved_and_noted(
 
 
 async def test_vague_callback_and_callback_limit_go_to_attention(
+    admin: AsyncClient,
     authed: AsyncClient,
     active_job: dict[str, Any],
     enqueued: list[str],
@@ -749,9 +752,13 @@ class _Pool:
 
 
 async def test_settings_retry_section(
-    authed: AsyncClient, active_job: dict[str, Any], db_session: AsyncSession, sessions: None
+    admin: AsyncClient,
+    authed: AsyncClient,
+    active_job: dict[str, Any],
+    db_session: AsyncSession,
+    sessions: None,
 ) -> None:
-    response = await authed.patch("/api/v1/settings", json={"retry": {"enabled": False}})
+    response = await admin.patch("/api/v1/settings", json={"retry": {"enabled": False}})
     assert response.status_code == 200, response.text
     retry = response.json()["data"]["general"]["retry"]
     assert retry == {
@@ -761,7 +768,7 @@ async def test_settings_retry_section(
         "max_callbacks": 2,
         "alternate_slots": True,
     }
-    bad = await authed.patch("/api/v1/settings", json={"retry": {"interval_days": 5}})
+    bad = await admin.patch("/api/v1/settings", json={"retry": {"interval_days": 5}})
     assert bad.status_code == 422
-    bad = await authed.patch("/api/v1/settings", json={"retry": {"max_callbacks": 9}})
+    bad = await admin.patch("/api/v1/settings", json={"retry": {"max_callbacks": 9}})
     assert bad.status_code == 422

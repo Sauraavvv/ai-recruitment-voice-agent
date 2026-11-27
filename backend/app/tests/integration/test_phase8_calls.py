@@ -103,8 +103,9 @@ async def _finish(db_session: AsyncSession, attempt_id: str, status: str = "no_a
     await db_session.flush()
 
 
-async def _pause(authed: AsyncClient) -> None:
-    response = await authed.patch("/api/v1/settings", json={"calling_enabled": False})
+async def _pause(client: AsyncClient) -> None:
+    """Pause calling (a super admin's setting): pass the admin client."""
+    response = await client.patch("/api/v1/settings", json={"calling_enabled": False})
     assert response.status_code == 200, response.text
 
 
@@ -291,6 +292,7 @@ async def test_candidate_rows_carry_eligibility_and_last_call(
 
 
 async def test_pause_blocks_start_retry_and_the_worker(
+    admin: AsyncClient,
     authed: AsyncClient,
     active_job: dict[str, Any],
     enqueued: list[str],
@@ -304,7 +306,7 @@ async def test_pause_blocks_start_retry_and_the_worker(
     (done,) = await _start(authed, other)
     await _finish(db_session, done["call_attempt_id"])
 
-    await _pause(authed)
+    await _pause(admin)
     (refused,) = await _start(authed, other)
     assert refused["error"] == {
         "code": "calling_paused",
@@ -326,13 +328,13 @@ async def test_pause_blocks_start_retry_and_the_worker(
     assert attempt.failure_reason == "ineligible:calling_paused"
 
     # resume → calls go out again
-    await authed.patch("/api/v1/settings", json={"calling_enabled": True})
+    await admin.patch("/api/v1/settings", json={"calling_enabled": True})
     (again,) = await _start(authed, other)
     assert again["ok"] is True
 
 
 async def test_calling_window_from_settings_applies(
-    authed: AsyncClient, active_job: dict[str, Any], enqueued: list[str]
+    admin: AsyncClient, authed: AsyncClient, active_job: dict[str, Any], enqueued: list[str]
 ) -> None:
     cid = await _candidate(authed, "+91 90000 08013")
     # a window that's never open today: one day other than today, one hour
@@ -341,7 +343,7 @@ async def test_calling_window_from_settings_applies(
 
     today = datetime.now(UTC).astimezone(ZoneInfo("Asia/Kolkata")).weekday()
     day = settings_service.DAYS[(today + 3) % 7]
-    response = await authed.patch(
+    response = await admin.patch(
         "/api/v1/settings", json={"calling": {"days": [day], "start_hour": 10, "end_hour": 11}}
     )
     assert response.status_code == 200, response.text
@@ -353,8 +355,10 @@ async def test_calling_window_from_settings_applies(
 # --- Settings ---------------------------------------------------------------------------------
 
 
-async def test_settings_defaults_and_validation(authed: AsyncClient, active_job: Any) -> None:
-    data = (await authed.get("/api/v1/settings")).json()["data"]
+async def test_settings_defaults_and_validation(
+    admin: AsyncClient, authed: AsyncClient, active_job: Any
+) -> None:
+    data = (await admin.get("/api/v1/settings")).json()["data"]
     assert data["general"]["calling_enabled"] is True
     assert data["general"]["calling"]["days"] == ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     assert data["limits"] == {
@@ -379,14 +383,14 @@ async def test_settings_defaults_and_validation(authed: AsyncClient, active_job:
         {"unknown_section": 1},
     ]
     for body in bad:
-        response = await authed.patch("/api/v1/settings", json=body)
+        response = await admin.patch("/api/v1/settings", json=body)
         assert response.status_code == 422, body
 
 
 async def test_settings_update_template_and_concurrency_cap(
-    authed: AsyncClient, active_job: Any, db_session: AsyncSession
+    admin: AsyncClient, authed: AsyncClient, active_job: Any, db_session: AsyncSession
 ) -> None:
-    response = await authed.patch(
+    response = await admin.patch(
         "/api/v1/settings",
         json={
             "organization_name": "  Talent   Partners ",
@@ -413,7 +417,7 @@ async def test_settings_update_template_and_concurrency_cap(
     assert (effective.max_call_attempts, effective.retry_interval_days) == (4, 3)
 
     # clearing the template → back to the built-in line; other sections unchanged
-    cleared = await authed.patch("/api/v1/settings", json={"agent_introduction": None})
+    cleared = await admin.patch("/api/v1/settings", json={"agent_introduction": None})
     body = cleared.json()["data"]
     assert body["introduction"]["built_in"] is True
     assert body["general"]["retry"] == {
@@ -450,7 +454,7 @@ async def test_intro_template_reaches_the_call(db_session: AsyncSession, active_
 
 
 async def test_status_never_contains_secrets(
-    authed: AsyncClient, monkeypatch: pytest.MonkeyPatch, settings: Settings
+    admin: AsyncClient, authed: AsyncClient, monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
     seen: list[str] = []
 
@@ -462,7 +466,7 @@ async def test_status_never_contains_secrets(
 
     monkeypatch.setattr(provider_status_service, "_get", fake_get)
 
-    response = await authed.get("/api/v1/settings/status", params={"refresh": "true"})
+    response = await admin.get("/api/v1/settings/status", params={"refresh": "true"})
     assert response.status_code == 200, response.text
     text = response.text
     for secret in SECRETS.values():
@@ -481,10 +485,10 @@ async def test_status_never_contains_secrets(
     assert len(seen) == 3
 
     # cached: a second call makes no requests
-    await authed.get("/api/v1/settings/status")
+    await admin.get("/api/v1/settings/status")
     assert len(seen) == 3
     # and every other settings response is clean too
-    body = (await authed.get("/api/v1/settings")).text
+    body = (await admin.get("/api/v1/settings")).text
     assert not any(s in body for s in SECRETS.values() if "SECRET" in s)
 
 
@@ -542,3 +546,12 @@ async def test_super_admin_role(api: AsyncClient, db_session: AsyncSession) -> N
         "/api/v1/auth/login", json={"email": admin.email, "password": TEST_PASSWORD}
     )
     assert response.json()["data"]["role"] == "super_admin"
+
+
+async def test_settings_are_for_super_admins(authed: AsyncClient) -> None:
+    """Recruiters can read the settings (the start-calls dialog shows the calling hours) but
+    can't change them or see the provider status."""
+    assert (await authed.get("/api/v1/settings")).status_code == 200
+    changed = await authed.patch("/api/v1/settings", json={"calling_enabled": False})
+    assert changed.status_code == 403 and changed.json()["error"]["code"] == "admin_required"
+    assert (await authed.get("/api/v1/settings/status")).status_code == 403

@@ -160,7 +160,8 @@ const LINKS: NavLink[] = [
   { href: "/default-questions", label: "Default questions", icon: ICONS.questions },
   // Super admins only: add and manage their company's logins
   { href: "/accounts", label: "Accounts", icon: ICONS.accounts, superAdminOnly: true },
-  { href: "/settings", label: "Settings", icon: ICONS.settings, disabled: "off" },
+  // Super admins only: calling, the AI's introduction, retries
+  { href: "/settings", label: "Settings", icon: ICONS.settings, superAdminOnly: true },
 ];
 
 // The collapsed choice lives in localStorage; components re-read it when it changes.

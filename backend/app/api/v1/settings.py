@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from app.agent.prompts import CandidateContext, JobConfig, introduction
-from app.api.deps import CurrentUser, RedisDep, SessionDep, SettingsDep
+from app.api.deps import AdminUser, RedisDep, SessionDep, SettingsDep
 from app.api.responses import AppError, ok
 from app.config import Settings
 from app.schemas.common import DataResponse
@@ -57,15 +57,17 @@ async def _body(session: Any, env: Settings, general: GeneralSettings) -> dict[s
 
 @router.get("", response_model=DataResponse[SettingsOut])
 async def get_settings_page(session: SessionDep, env: SettingsDep) -> dict[str, Any]:
+    """Readable by every user: the start-calls dialog shows the calling hours from it."""
     general = await settings_service.load(session, env)
     return ok(await _body(session, env, general))
 
 
 @router.patch("", response_model=DataResponse[SettingsOut])
 async def update_settings(
-    body: GeneralUpdate, session: SessionDep, env: SettingsDep, user: CurrentUser
+    body: GeneralUpdate, session: SessionDep, env: SettingsDep, user: AdminUser
 ) -> dict[str, Any]:
-    """Partial update; each section is validated. Changes are logged with the user id."""
+    """Partial update (super admins only); each section is validated. Changes are logged with
+    the user id."""
     general = await settings_service.update_general(session, env, body, user_id=user.id)
     return ok(await _body(session, env, general))
 
@@ -76,9 +78,11 @@ async def provider_status(
     session: SessionDep,
     redis: RedisDep,
     env: SettingsDep,
+    _admin: AdminUser,
     refresh: bool = False,
 ) -> dict[str, Any]:
-    """Per provider: configured, reachable, last checked, message. Cached for 60 s."""
+    """Per provider (super admins only): configured, reachable, last checked, message. Cached
+    for 60 s."""
     effective = await settings_service.effective(session, env)
     providers = await provider_status_service.all_statuses(
         redis, effective, tts=getattr(request.app.state, "tts", None), refresh=refresh
