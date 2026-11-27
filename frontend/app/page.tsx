@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+import { FlowPreview } from "@/components/flow/flow-canvas";
+import { LiveCall } from "@/components/landing/live-call";
+import { Reveal, ScrollProgress, SpotlightRows, type Row } from "@/components/landing/motion";
 import { Logo } from "@/components/logo";
-
-import { WavePanel } from "./login/wave-panel";
+import { TOTAL_SECONDS } from "@/components/walkthrough/scenes";
+import { Walkthrough } from "@/components/walkthrough/walkthrough";
 
 export const metadata = {
   title: "CallZest · AI phone screening for recruiters",
@@ -11,20 +14,18 @@ export const metadata = {
     "CallZest's AI recruiter calls your candidates, asks your screening questions and hands you structured answers, a transcript and a summary.",
 };
 
-const primaryButton =
-  "inline-flex items-center justify-center rounded-xl bg-[#1d4ed8] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#2563eb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb]";
-const secondaryButton =
-  "inline-flex items-center justify-center rounded-xl border border-[#34363d] bg-[#24262b] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#2c2e34] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400";
-
 export default function Home() {
   return (
-    <div className="flex-1 bg-black font-sans text-white">
+    <div className="relative flex-1 overflow-x-clip bg-black font-sans text-white">
+      <ScrollProgress />
       <Header />
-      <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6">
+      <main>
         <Hero />
-        <Stats />
-        <HowItWorks />
+        <Marquee />
         <Features />
+        <WalkthroughSection />
+        <FlowSection />
+        <Numbers />
         <Responsible />
         <FinalCta />
       </main>
@@ -33,278 +34,319 @@ export default function Home() {
   );
 }
 
-function Header() {
+/* Shared pieces */
+
+function Arrow({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-      <Link href="/" aria-label="CallZest home">
-        <Logo className="text-white" markClassName="h-7 w-7" textClassName="text-xl" />
-      </Link>
-      <nav className="flex items-center gap-1 text-sm sm:gap-2">
-        <a href="#how-it-works" className="hidden rounded-lg px-3 py-2 text-zinc-400 hover:text-white md:block">
-          How it works
-        </a>
-        <a href="#features" className="hidden rounded-lg px-3 py-2 text-zinc-400 hover:text-white md:block">
-          Features
-        </a>
-        <a href="#responsible" className="hidden rounded-lg px-3 py-2 text-zinc-400 hover:text-white md:block">
-          Calling responsibly
-        </a>
-        <Link href="/login" className="ml-2 rounded-lg px-3 py-2 text-zinc-300 hover:text-white">
-          Log in
-        </Link>
-        <Link href="/signup" className={`${primaryButton} px-4 py-2`}>
-          Sign up
-        </Link>
-      </nav>
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7 17 17 7M8 7h9v9" />
+    </svg>
+  );
+}
+
+function PrimaryPill({ href, children, large = false }: { href: string; children: ReactNode; large?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`group inline-flex items-center gap-3 rounded-full bg-white font-medium text-black shadow-[0_0_40px_-8px_rgb(255_255_255/0.35)] transition hover:bg-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+        large ? "py-2 pr-2 pl-6 text-base" : "py-1.5 pr-1.5 pl-5 text-sm"
+      }`}
+    >
+      {children}
+      <span
+        className={`flex items-center justify-center rounded-full bg-black text-white transition-transform duration-300 group-hover:rotate-45 ${
+          large ? "h-10 w-10" : "h-8 w-8"
+        }`}
+      >
+        <Arrow />
+      </span>
+    </Link>
+  );
+}
+
+function GhostPill({ href, children, large = false }: { href: string; children: ReactNode; large?: boolean }) {
+  const className = `inline-flex items-center gap-2.5 rounded-full border border-white/15 font-medium text-white transition hover:border-white/30 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+    large ? "px-6 py-3.5 text-base" : "px-5 py-2.5 text-sm"
+  }`;
+  return href.startsWith("#") ? (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ) : (
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+function Label({ children, live = false }: { children: ReactNode; live?: boolean }) {
+  return (
+    <p className="flex items-center gap-2.5 font-mono text-[11px] tracking-[0.25em] text-zinc-400 uppercase">
+      <span className={`h-1.5 w-1.5 rounded-full ${live ? "animate-pulse bg-emerald-400" : "bg-zinc-500"}`} aria-hidden="true" />
+      {children}
+    </p>
+  );
+}
+
+/** Two-tone headline: the first line bright, the second grey. */
+function Headline({ top, bottom, className = "" }: { top: ReactNode; bottom: ReactNode; className?: string }) {
+  return (
+    <h2 className={`font-display leading-[0.95] font-semibold tracking-[-0.045em] ${className}`}>
+      <span className="block text-white">{top}</span>
+      <span className="block text-zinc-600">{bottom}</span>
+    </h2>
+  );
+}
+
+const container = "mx-auto w-full max-w-6xl px-5 sm:px-8";
+
+/* Header */
+
+function Header() {
+  const link = "hidden rounded-lg px-3 py-2 font-mono text-[11px] tracking-[0.22em] text-zinc-400 uppercase transition-colors hover:text-white md:block";
+  return (
+    <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-black/70 backdrop-blur-xl">
+      <div className={`${container} flex h-16 items-center justify-between`}>
+        <div className="flex items-center gap-6">
+          <Link href="/" aria-label="CallZest home">
+            <Logo className="text-white" markClassName="h-6 w-6" textClassName="text-lg" />
+          </Link>
+          <nav className="flex items-center">
+            <a href="#features" className={link}>
+              Features
+            </a>
+            <a href="#walkthrough" className={link}>
+              Walkthrough
+            </a>
+            <a href="#flow" className={link}>
+              How it works
+            </a>
+            <a href="#responsible" className={link}>
+              Responsibly
+            </a>
+          </nav>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/login" className="rounded-lg px-3 py-2 font-mono text-[11px] tracking-[0.22em] text-zinc-300 uppercase transition-colors hover:text-white">
+            Log in
+          </Link>
+          <PrimaryPill href="/signup">Sign up</PrimaryPill>
+        </div>
+      </div>
     </header>
   );
 }
 
+/* Hero */
+
 function Hero() {
   return (
-    <section className="relative overflow-hidden rounded-3xl">
-      <div className="absolute inset-0">
-        <WavePanel />
-      </div>
-      {/* Only the buttons take the pointer, so the waves still react to the cursor elsewhere */}
-      <div className="pointer-events-none relative grid items-center gap-12 px-6 py-16 sm:px-12 lg:grid-cols-[1.1fr_1fr] lg:py-24">
+    <section className="relative">
+      <div className="cz-grid pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div
+        className="pointer-events-none absolute -top-40 right-[-10%] h-[620px] w-[620px] rounded-full bg-white/[0.06] blur-[120px]"
+        aria-hidden="true"
+      />
+      <div className={`${container} relative grid items-center gap-14 pt-16 pb-20 sm:pt-24 lg:grid-cols-[13fr_7fr] lg:gap-10 lg:pt-24 lg:pb-28`}>
         <div>
-          <p className="inline-flex items-center gap-2 rounded-full border border-[#34363d] bg-black/40 px-3 py-1 text-xs text-zinc-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-            AI phone screening for recruiters
-          </p>
-          <h1 className="font-display mt-6 text-4xl leading-[1.1] font-semibold tracking-tight sm:text-5xl lg:text-[56px]">
-            Screen every candidate with one phone call.
-          </h1>
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-400">
-            CallZest&apos;s AI recruiter calls your candidates, asks your screening questions and
-            hands you structured answers, a transcript and a summary. Your team only talks to
-            the people worth talking to.
-          </p>
-          <div className="pointer-events-auto mt-9 flex flex-wrap gap-3">
-            <Link href="/signup" className={primaryButton}>
-              Create your account
-            </Link>
-            <Link href="/login" className={secondaryButton}>
-              Log in
-            </Link>
-            <a href="#how-it-works" className={secondaryButton}>
-              See how it works
-            </a>
-          </div>
+          <Reveal>
+            <Label live>AI phone screening for recruiters</Label>
+          </Reveal>
+
+          <Reveal delay={80}>
+            <h1 className="font-display mt-8 text-[52px] leading-[0.95] font-semibold tracking-[-0.05em] sm:text-7xl lg:text-[68px] xl:text-[78px]">
+              <span className="block text-white">Every candidate.</span>
+              <span className="block text-zinc-600">One phone call.</span>
+            </h1>
+          </Reveal>
+
+          <Reveal delay={160}>
+            <p className="mt-8 max-w-lg text-lg leading-relaxed text-zinc-400">
+              CallZest&apos;s AI recruiter calls your candidates, asks your screening questions and
+              hands you structured answers, a transcript and a summary. Your team only talks to the
+              people worth talking to.
+            </p>
+          </Reveal>
+          <Reveal delay={220}>
+            <div className="mt-10 flex flex-wrap gap-3">
+              <PrimaryPill href="/signup" large>
+                Create your account
+              </PrimaryPill>
+              <GhostPill href="#walkthrough" large>
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
+                </svg>
+                Watch the walkthrough
+              </GhostPill>
+            </div>
+          </Reveal>
         </div>
-        <CallPreview />
+
+        <Reveal delay={280} className="flex justify-center lg:block">
+          <LiveCall />
+        </Reveal>
       </div>
     </section>
   );
 }
 
-/** A still picture of a call in progress, built like the app's own transcript. */
-function CallPreview() {
+/* Marquee */
+
+const KEYWORDS = [
+  "Real phone calls",
+  "Live transcripts",
+  "Structured answers",
+  "Excel & CSV upload",
+  "Automatic retries",
+  "Scheduled callbacks",
+  "Conflict checks",
+  "Scored second round",
+  "Calling hours",
+  "Opt-outs respected",
+];
+
+function Marquee() {
+  const items = [...KEYWORDS, ...KEYWORDS];
   return (
-    <div className="rounded-3xl border border-[#2a2c31] bg-[#18191c]/95 p-5 shadow-2xl shadow-black/60 sm:p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#24262b] text-xs font-medium text-zinc-300">
-            PN
+    <div className="overflow-hidden border-y border-white/[0.08] py-5 [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]" aria-hidden="true">
+      <div className="cz-marquee flex w-max items-center gap-10">
+        {items.map((k, i) => (
+          <span key={i} className="flex items-center gap-10 font-mono text-xs tracking-[0.28em] whitespace-nowrap text-zinc-400 uppercase">
+            {k}
+            <span className="h-1 w-1 rounded-full bg-zinc-600" />
           </span>
-          <div>
-            <p className="text-sm font-medium">Priya Nair</p>
-            <p className="text-xs text-zinc-500">Backend Developer</p>
-          </div>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden="true" />
-          On call · 01:12
-        </span>
-      </div>
-      <ol className="mt-5 space-y-3 text-sm">
-        <Line who="ai">
-          Hi Priya, this is CallZest, an AI assistant calling about the Backend Developer role.
-          Is now a good time?
-        </Line>
-        <Line who="candidate">Yes, go ahead.</Line>
-        <Line who="ai">Great. What is your current CTC?</Line>
-        <Line who="candidate">Around twelve lakhs.</Line>
-      </ol>
-      <div className="mt-5 rounded-2xl border border-[#2a2c31] bg-[#202226] p-4">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-zinc-500">Current CTC</span>
-          <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-sky-400">Answered</span>
-        </div>
-        <p className="mt-1.5 font-medium">12 LPA</p>
-        <p className="mt-0.5 text-xs text-zinc-500 italic">&ldquo;Around twelve lakhs&rdquo;</p>
+        ))}
       </div>
     </div>
   );
 }
 
-function Line({ who, children }: { who: "ai" | "candidate"; children: ReactNode }) {
-  const ai = who === "ai";
+/* Walkthrough */
+
+function WalkthroughSection() {
   return (
-    <li className={`flex flex-col ${ai ? "items-start" : "items-end"}`}>
-      <span className="mb-1 text-[11px] text-zinc-500">{ai ? "CallZest AI" : "Candidate"}</span>
-      <span
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2 leading-relaxed ${
-          ai ? "rounded-tl-md bg-[#24262b] text-zinc-200" : "rounded-tr-md bg-[#1d4ed8]/25 text-blue-100"
-        }`}
-      >
-        {children}
-      </span>
-    </li>
+    <section id="walkthrough" className={`${container} scroll-mt-20 pt-24 sm:pt-32`}>
+      <Reveal className="flex flex-wrap items-center justify-between gap-4">
+        <Label>Walkthrough · {TOTAL_SECONDS} seconds</Label>
+        <p className="hidden font-mono text-[11px] tracking-[0.25em] text-zinc-500 uppercase md:block">
+          Job → List → Call → Live → Review → Round
+        </p>
+      </Reveal>
+      <Reveal delay={80}>
+        <Headline top="See it work." bottom="Feature by feature." className="mt-6 mb-12 text-5xl sm:text-6xl lg:text-7xl" />
+      </Reveal>
+      <Reveal delay={140}>
+        <Walkthrough />
+      </Reveal>
+    </section>
   );
 }
+
+/* How it works: the flow chart preview */
+
+function FlowSection() {
+  return (
+    <section id="flow" className={`${container} scroll-mt-20 pt-28 sm:pt-36`}>
+      <Reveal className="flex flex-wrap items-center justify-between gap-4">
+        <Label>How it works</Label>
+        <p className="hidden font-mono text-[11px] tracking-[0.25em] text-zinc-500 uppercase md:block">25 steps · 5 stages</p>
+      </Reveal>
+      <Reveal delay={80} className="mt-6 mb-12 flex flex-wrap items-end justify-between gap-6">
+        <Headline top="From a job" bottom="to a shortlist." className="text-5xl sm:text-6xl lg:text-7xl" />
+        <p className="max-w-sm leading-relaxed text-zinc-400">
+          Every step, every check and every outcome, the way CallZest actually runs. Open the full
+          flow to explore each step.
+        </p>
+      </Reveal>
+      <Reveal delay={140}>
+        <FlowPreview />
+      </Reveal>
+    </section>
+  );
+}
+
+/* Numbers */
 
 const STATS = [
-  { value: "0.7 s", label: "until the AI starts replying" },
-  { value: "10", label: "standard screening questions, plus your own" },
-  { value: "3", label: "call attempts, retried automatically" },
-  { value: "100%", label: "of answers backed by the candidate's own words" },
+  { value: "0.7s", label: "until the AI starts replying" },
+  { value: "10", label: "standard questions, plus your own" },
+  { value: "3", label: "call attempts, retried for you" },
+  { value: "100%", label: "of answers in the candidate's words" },
 ];
 
-function Stats() {
+function Numbers() {
   return (
-    <section aria-label="CallZest in numbers" className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-3xl bg-[#2a2c31] lg:grid-cols-4">
-      {STATS.map((s) => (
-        <div key={s.label} className="bg-[#18191c] px-6 py-7">
-          <p className="font-display text-3xl font-semibold tracking-tight">{s.value}</p>
-          <p className="mt-1.5 text-sm text-zinc-500">{s.label}</p>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function SectionHeading({ id, kicker, title, intro }: { id: string; kicker: string; title: string; intro: string }) {
-  return (
-    <div id={id} className="max-w-2xl scroll-mt-8">
-      <p className="text-sm font-medium text-[#6b8cff]">{kicker}</p>
-      <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h2>
-      <p className="mt-4 text-lg leading-relaxed text-zinc-400">{intro}</p>
-    </div>
-  );
-}
-
-const STEPS = [
-  {
-    title: "Add your candidates",
-    text: "Upload a spreadsheet or add people by hand. Every row is checked and previewed before anything is saved, and duplicates are caught.",
-  },
-  {
-    title: "The AI makes the calls",
-    text: "Inside your calling hours, CallZest phones each candidate, says it is an AI, and asks your questions one at a time, like a recruiter would.",
-  },
-  {
-    title: "Answers arrive structured",
-    text: "Experience, CTC, notice period, location, interest and availability, each with the exact words the candidate used, plus a transcript and a summary.",
-  },
-  {
-    title: "Your team picks it up",
-    text: "Results land on the dashboard. Missed calls are retried and callbacks happen at the time the candidate asked for.",
-  },
-];
-
-function HowItWorks() {
-  return (
-    <section className="mt-28">
-      <SectionHeading
-        id="how-it-works"
-        kicker="How it works"
-        title="From a spreadsheet to screened candidates"
-        intro="Four steps, and only the first one needs you."
-      />
-      <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {STEPS.map((step, i) => (
-          <li key={step.title} className="rounded-3xl bg-[#18191c] p-6">
-            <span className="font-display flex h-9 w-9 items-center justify-center rounded-full bg-[#24262b] text-sm font-semibold text-zinc-300">
-              {i + 1}
-            </span>
-            <h3 className="font-display mt-5 text-lg font-semibold">{step.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">{step.text}</p>
-          </li>
+    <section aria-label="CallZest in numbers" className={`${container} pt-28 sm:pt-36`}>
+      <div className="grid grid-cols-2 border-t border-l border-white/10 lg:grid-cols-4">
+        {STATS.map((s, i) => (
+          <Reveal key={s.label} delay={i * 80} className="border-r border-b border-white/10 p-6 sm:p-8">
+            <p className="font-display text-5xl font-semibold tracking-[-0.04em] sm:text-6xl">{s.value}</p>
+            <p className="mt-3 font-mono text-[11px] leading-relaxed tracking-[0.18em] text-zinc-500 uppercase">{s.label}</p>
+          </Reveal>
         ))}
-      </ol>
+      </div>
     </section>
   );
 }
 
-const FEATURES: { title: string; text: string; icon: ReactNode }[] = [
+/* Features */
+
+const FEATURES: Row[] = [
   {
     title: "Real phone calls",
     text: "Candidates get a normal call on their phone. No app, no link, nothing to install.",
-    icon: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />,
+    tag: "Nothing to install",
   },
   {
     title: "A natural conversation",
     text: "The AI waits for the candidate to finish, handles interruptions, accepts corrections and reads the answers back at the end.",
-    icon: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12Z" />,
+    tag: "Talks like a recruiter",
   },
   {
     title: "Answers you can trust",
     text: "Every value comes with the candidate's own words. When two answers disagree, you choose which one to keep.",
-    icon: <path d="M9 12l2 2 4-4M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z" />,
+    tag: "Their own words",
   },
   {
     title: "Watch calls live",
     text: "Follow the transcript line by line while a call is in progress, and end it whenever you need to.",
-    icon: (
-      <>
-        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-        <circle cx="12" cy="12" r="3" />
-      </>
-    ),
+    tag: "Live transcript",
   },
   {
     title: "A second round, scored",
-    text: "Interested candidates get a short round of questions made from the job description. Each answer is scored with the candidate's own words, and you decide.",
-    icon: (
-      <>
-        <path d="M9 6h11M9 12h11M9 18h11" />
-        <path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
-      </>
-    ),
+    text: "Interested candidates get a short round of questions made from the job description. Each answer is scored, and you decide.",
+    tag: "From the JD",
   },
   {
     title: "Retries and callbacks",
-    text: "Unanswered calls are tried again on later days, morning and afternoon. \"Call me tomorrow at 5\" becomes a scheduled callback.",
-    icon: <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5" />,
+    text: "Unanswered calls are tried again on later days. \"Call me tomorrow at 5\" becomes a scheduled callback.",
+    tag: "Automatic",
   },
 ];
 
 function Features() {
   return (
-    <section className="mt-28">
-      <SectionHeading
-        id="features"
-        kicker="Features"
-        title="Everything a first screening call needs"
-        intro="Built around how recruiting teams in India actually screen: CTC in lakhs, notice periods and callbacks included."
-      />
-      <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FEATURES.map((f) => (
-          <div key={f.title} className="rounded-3xl bg-[#18191c] p-6">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#24262b] text-zinc-200">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                {f.icon}
-              </svg>
-            </span>
-            <h3 className="font-display mt-5 text-lg font-semibold">{f.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">{f.text}</p>
-          </div>
-        ))}
+    <section id="features" className={`${container} scroll-mt-20 pt-28 sm:pt-36`}>
+      <div className="mb-14 flex flex-wrap items-end justify-between gap-8">
+        <Reveal>
+          <Label>Why CallZest</Label>
+          <Headline top="Built for how" bottom="India screens." className="mt-6 text-5xl sm:text-6xl lg:text-7xl" />
+        </Reveal>
+        <Reveal delay={120} className="flex items-end gap-4">
+          <span className="font-display text-8xl leading-none font-semibold tracking-[-0.06em] text-white sm:text-9xl">06</span>
+          <span className="pb-3 font-mono text-[11px] leading-relaxed tracking-[0.22em] text-zinc-500 uppercase">
+            Features in
+            <br />
+            every call
+          </span>
+        </Reveal>
       </div>
+      <SpotlightRows rows={FEATURES} />
     </section>
   );
 }
+
+/* Calling responsibly */
 
 const PROMISES = [
   "The AI always says it is an AI at the start of every call.",
@@ -316,58 +358,63 @@ const PROMISES = [
 
 function Responsible() {
   return (
-    <section className="mt-28 grid gap-10 rounded-3xl bg-[#18191c] p-6 sm:p-10 lg:grid-cols-2 lg:p-12">
-      <SectionHeading
-        id="responsible"
-        kicker="Calling responsibly"
-        title="Polite, honest and on the candidate's terms"
-        intro="A screening call is often a candidate's first contact with your company. CallZest is built to make it a good one."
-      />
-      <ul className="space-y-3 self-center">
-        {PROMISES.map((p) => (
-          <li key={p} className="flex gap-3 rounded-2xl bg-[#202226] px-4 py-3.5 text-sm leading-relaxed text-zinc-300">
-            <svg
-              viewBox="0 0 24 24"
-              className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M5 12.5l4.5 4.5L19 7.5" />
-            </svg>
-            {p}
-          </li>
-        ))}
-      </ul>
+    <section id="responsible" className={`${container} scroll-mt-20 pt-28 sm:pt-36`}>
+      <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-20">
+        <Reveal>
+          <Label>Calling responsibly</Label>
+          <Headline top="Polite. Honest." bottom="On their terms." className="mt-6 text-5xl sm:text-6xl" />
+          <p className="mt-6 max-w-md text-lg leading-relaxed text-zinc-400">
+            A screening call is often a candidate&apos;s first contact with your company. CallZest is
+            built to make it a good one.
+          </p>
+        </Reveal>
+        <ul className="border-t border-white/10">
+          {PROMISES.map((p, i) => (
+            <Reveal key={p} delay={i * 60}>
+              <li className="flex gap-5 border-b border-white/10 py-5">
+                <span className="pt-0.5 font-mono text-xs text-zinc-600">{String(i + 1).padStart(2, "0")}</span>
+                <span className="flex-1 leading-relaxed text-zinc-200">{p}</span>
+                <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12.5l4.5 4.5L19 7.5" />
+                </svg>
+              </li>
+            </Reveal>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
 
+/* Final call to action */
+
 function FinalCta() {
   return (
-    <section className="relative mt-28 overflow-hidden rounded-3xl">
-      <div className="absolute inset-0">
-        <WavePanel />
-      </div>
-      <div className="pointer-events-none relative px-6 py-20 text-center sm:px-12">
-        <h2 className="font-display mx-auto max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">
-          Spend your time on interviews, not first calls.
-        </h2>
-        <p className="mx-auto mt-4 max-w-lg text-zinc-400">
-          Create an account for your company and start screening today. Your team can join with
-          logins from you.
-        </p>
-        <div className="pointer-events-auto mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="/signup" className={primaryButton}>
-            Create your account
-          </Link>
-          <Link href="/login" className={secondaryButton}>
-            Log in
-          </Link>
-        </div>
+    <section className="relative mt-28 overflow-hidden border-t border-white/[0.08] sm:mt-36">
+      <div className="cz-grid pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div
+        className="pointer-events-none absolute bottom-[-280px] left-1/2 h-[520px] w-[900px] -translate-x-1/2 rounded-full bg-white/[0.07] blur-[120px]"
+        aria-hidden="true"
+      />
+      <div className={`${container} relative py-24 sm:py-32`}>
+        <Reveal>
+          <Label>Get started</Label>
+          <h2 className="font-display mt-8 text-5xl leading-[0.95] font-semibold tracking-[-0.05em] sm:text-7xl lg:text-[96px]">
+            <span className="block text-white">Spend your time on interviews.</span>
+            <span className="block text-zinc-600">Not on first calls.</span>
+          </h2>
+        </Reveal>
+        <Reveal delay={120}>
+          <div className="mt-12 flex flex-wrap items-center gap-3">
+            <PrimaryPill href="/signup" large>
+              Create your account
+            </PrimaryPill>
+            <GhostPill href="/login" large>
+              I already have one
+            </GhostPill>
+          </div>
+          <p className="mt-6 text-sm text-zinc-500">Your team can join with logins from you.</p>
+        </Reveal>
       </div>
     </section>
   );
@@ -375,9 +422,19 @@ function FinalCta() {
 
 function Footer() {
   return (
-    <footer className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 border-t border-[#1f2024] px-4 py-8 text-sm text-zinc-500 sm:flex-row sm:px-6">
-      <Logo className="text-zinc-400" markClassName="h-5 w-5" textClassName="text-base" />
-      <p>© 2026 CallZest. AI phone screening for recruiters.</p>
+    <footer className="border-t border-white/[0.08]">
+      <div className={`${container} flex flex-col items-center justify-between gap-5 py-10 sm:flex-row`}>
+        <Logo className="text-white" markClassName="h-5 w-5" textClassName="text-base" />
+        <p className="font-mono text-[11px] tracking-[0.22em] text-zinc-500 uppercase">© 2026 CallZest · AI phone screening</p>
+        <div className="flex gap-6 font-mono text-[11px] tracking-[0.22em] text-zinc-400 uppercase">
+          <Link href="/login" className="hover:text-white">
+            Log in
+          </Link>
+          <Link href="/signup" className="hover:text-white">
+            Sign up
+          </Link>
+        </div>
+      </div>
     </footer>
   );
 }
