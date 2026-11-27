@@ -45,3 +45,6 @@ artifacts/
 
 # Local key files (never commit)
 /grok_api.txt
+
+# Raw project media (unblurred personal details): never commit
+Project Media/

@@ -125,6 +125,9 @@ function Header() {
             <a href="#responsible" className={link}>
               Responsibly
             </a>
+            <Link href="/proof" className={link}>
+              Proof
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-2">
@@ -433,6 +436,9 @@ function Footer() {
         <Logo className="text-white" markClassName="h-5 w-5" textClassName="text-base" />
         <p className="font-mono text-[11px] tracking-[0.22em] text-zinc-500 uppercase">© 2026 CallZest · AI phone screening</p>
         <div className="flex gap-6 font-mono text-[11px] tracking-[0.22em] text-zinc-400 uppercase">
+          <Link href="/proof" className="hover:text-white">
+            Proof
+          </Link>
           <Link href="/login" className="hover:text-white">
             Log in
           </Link>
